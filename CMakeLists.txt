@@ -14,7 +14,7 @@ set(LIB_SOURCE
     uvc/drm.c
 )
 add_library(rkuvc SHARED ${LIB_SOURCE})
-target_link_libraries(rkuvc pthread drm rockchip_mpp)
+target_link_libraries(rkuvc pthread drm rockchip_mpp )
 
 set(SOURCE
     main.c
@@ -22,13 +22,22 @@ set(SOURCE
 )
 
 ADD_EXECUTABLE(uvc_app ${SOURCE})
-target_link_libraries(uvc_app pthread drm rockchip_mpp)
+target_link_libraries(uvc_app pthread drm rockchip_mpp )
+
+set(SOURCE
+    camera2uvc.c
+    ${LIB_SOURCE}
+)
+
+ADD_EXECUTABLE(camera2uvc ${SOURCE})
+target_link_libraries(camera2uvc pthread drm rockchip_mpp rkisp rkisp_api )
 
 install(TARGETS rkuvc DESTINATION lib)
 install(DIRECTORY ./uvc DESTINATION include
         FILES_MATCHING PATTERN "*.h")
 
 install(TARGETS uvc_app DESTINATION bin)
+install(TARGETS camera2uvc DESTINATION bin)
 install(DIRECTORY . DESTINATION bin
         FILES_MATCHING PATTERN "*.sh"
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE

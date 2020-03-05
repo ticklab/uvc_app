@@ -5,6 +5,9 @@
 #include "mpi_enc.h"
 #include "drm.h"
 
+#define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
+
+
 int main(int argc, char* argv[])
 {
     int fd;
@@ -36,11 +39,11 @@ int main(int argc, char* argv[])
     if (fd < 0)
         return -1;
 
-    size = width * height * 3 / 2;
+    size = ALIGN(width,16) * ALIGN(height,16) * 3 / 2;
     ret = drm_alloc(fd, size, 16, &handle, 0);
     if (ret)
         return -1;
-
+printf("size:%d",size);
     ret = drm_handle_to_fd(fd, handle, &handle_fd, 0);
     if (ret)
         return -1;
