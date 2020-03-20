@@ -3400,15 +3400,15 @@ uvc_gadget_main(int id)
             FD_SET(vdev->v4l2_fd, &fdsv);
 
         /* Timeout. */
-        tv.tv_sec = 2;
-        tv.tv_usec = 0;
+        tv.tv_sec = 0;
+        tv.tv_usec = 500000;
 
         if (!dummy_data_gen_mode && !mjpeg_image) {
             nfds = max(vdev->v4l2_fd, udev->uvc_fd);
             ret = select(nfds + 1, &fdsv, &dfds, &efds, &tv);
         } else {
             ret = select(udev->uvc_fd + 1, NULL,
-                         &dfds, &efds, NULL);
+                         &dfds, &efds, &tv);
         }
 
         if (-1 == ret) {

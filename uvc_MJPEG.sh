@@ -20,6 +20,11 @@ echo "2019" > /sys/kernel/config/usb_gadget/rockchip/strings/0x409/serialnumber
 echo "rockchip" > /sys/kernel/config/usb_gadget/rockchip/strings/0x409/manufacturer
 echo "UVC" > /sys/kernel/config/usb_gadget/rockchip/strings/0x409/product
 
+if [ "$1"x == "rndis"x  ]; then
+   # config rndis
+   mkdir /sys/kernel/config/usb_gadget/rockchip/functions/rndis.gs0
+fi
+
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6
 #cat /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket
 echo 1 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_bulk
@@ -117,7 +122,14 @@ echo 500 > /sys/kernel/config/usb_gadget/rockchip/configs/b.1/MaxPower
 ln -s /sys/kernel/config/usb_gadget/rockchip/configs/b.1 /sys/kernel/config/usb_gadget/rockchip/os_desc/b.1
 
 echo 0x0005 > /sys/kernel/config/usb_gadget/rockchip/idProduct
-echo "uvc" > /sys/kernel/config/usb_gadget/rockchip/configs/b.1/strings/0x409/configuration
+
+if [ "$1"x == "rndis"x  ]; then
+   echo "uvc_rndis" > /sys/kernel/config/usb_gadget/rockchip/configs/b.1/strings/0x409/configuration
+   echo "config uvc and rndis..."
+else
+   echo "uvc" > /sys/kernel/config/usb_gadget/rockchip/configs/b.1/strings/0x409/configuration
+fi
+
 USB_CONFIGS_DIR=/sys/kernel/config/usb_gadget/rockchip/configs/b.1
 if [ -e ${USB_CONFIGS_DIR}/ffs.adb ]; then
    #for rk1808 kernel 4.4
@@ -127,5 +139,16 @@ else
 fi
 ln -s /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6 /sys/kernel/config/usb_gadget/rockchip/configs/b.1/f1
 
+if [ "$1"x == "rndis"x  ]; then
+   ln -s /sys/kernel/config/usb_gadget/rockchip/functions/rndis.gs0 /sys/kernel/config/usb_gadget/rockchip/configs/b.1/f2
+fi
+
 UDC=`ls /sys/class/udc/| awk '{print $1}'`
 echo $UDC > /sys/kernel/config/usb_gadget/rockchip/UDC
+
+if [ "$1"x == "rndis"x  ]; then
+   sleep 1
+   echo "config usb0 IP :172.16.110.6 ..."
+   ifconfig usb0 172.16.110.6 
+   ifconfig usb0 up
+fi

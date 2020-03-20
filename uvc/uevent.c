@@ -84,6 +84,33 @@ static void video_uevent(const struct _uevent *event)
     }
 }
 
+int read_sysfs_string(const char *filename, char *str)
+{
+	int ret = 0;
+	FILE  *sysfsfp;
+
+	sysfsfp = fopen(filename, "r");
+	if (!sysfsfp) {
+		ret = -errno;
+		goto error_free;
+	}
+
+	errno = 0;
+	if (fscanf(sysfsfp, "%s\n", str) != 1) {
+		ret = errno ? -errno : -ENODATA;
+		if (fclose(sysfsfp))
+			perror("read_sysfs_string(): Failed to close dir");
+
+		goto error_free;
+	}
+printf("read_sysfs_string:file:%s,str:%s\n",filename,str);
+	if (fclose(sysfsfp))
+		ret = -errno;
+
+error_free:
+	return ret;
+}
+
 /*
  * e.g uevent info
  * ACTION=change
@@ -92,9 +119,13 @@ static void video_uevent(const struct _uevent *event)
  * CVR_DEV_NAME=gsensor
  * CVR_DEV_TYPE=2
  */
+static const char udc_path[] = {"/sys/devices/virtual/android_usb/android0/state"};
+
 static void parse_event(const struct _uevent *event)
 {
     char *sysfs = NULL;
+    char tmp[64];
+    int ret;
 
     if (event->size <= 0)
         return;
@@ -102,6 +133,13 @@ static void parse_event(const struct _uevent *event)
     sysfs = event->strs[2] + 10;
     if (!strcmp(sysfs, "video4linux")) {
         video_uevent(event);
+    } else if (!strcmp(sysfs, "udc")) {
+        ret = read_sysfs_string(udc_path, tmp);
+        if (ret < 0) {
+            fprintf(stderr, "[ERR] failed to get sysfs\n");
+        }
+        if (memcmp(tmp, "CONFIGURED", sizeof("CONFIGURED")))
+            uvc_control_signal();
     }
 }
 

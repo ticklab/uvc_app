@@ -26,6 +26,7 @@ static int format = V4L2_PIX_FMT_NV12;
 static int fd = -1;
 
 static int timeout = 0;
+static int loop = 0;
 
 static int silent = 0;
 
@@ -47,11 +48,12 @@ void parse_args(int argc, char **argv)
             {"device",   required_argument, 0, 'd' },
             {"debug",   required_argument, 0, 'f' },
             {"timeout",   required_argument, 0, 't' },
+            {"loop",   required_argument, 0, 'l' },
             {"help",     no_argument,       0, 'p' },
             {0,          0,                 0,  0  }
         };
 
-        c = getopt_long(argc, argv, "w:h:m:f:i:d:o:c:t:e:g:ps",
+        c = getopt_long(argc, argv, "w:h:m:f:i:d:o:c:t:l:e:g:ps",
             long_options, &option_index);
         if (c == -1)
             break;
@@ -66,11 +68,15 @@ void parse_args(int argc, char **argv)
         case 'd':
             strcpy(dev_name, optarg);
             break;
-		case 'f':
+	case 'f':
             silent = atoi(optarg);
-		case 't':
+            break;
+	case 't':
             timeout = atoi(optarg);
-        break;
+            break;
+        case 'l' :
+            loop = atoi(optarg);
+            break;
         case '?':
         case 'p':
             ERR("Usage: %s to capture rkisp1 frames\n"
@@ -139,7 +145,10 @@ int main(int argc, char **argv)
         default:
                 DBG("width no support for camera list.");
 	}
-    flags = UVC_CONTROL_LOOP_ONCE;
+    if(loop)
+      flags = UVC_CONTROL_CHECK_STRAIGHT;//UVC_CONTROL_LOOP_ONCE;
+    else
+      flags = UVC_CONTROL_LOOP_ONCE;
     uvc_control_run(flags);
 
     struct timeval startTime;
@@ -157,19 +166,17 @@ int main(int argc, char **argv)
            gettimeofday(&curTime, NULL);
            long seconds;
            seconds  = curTime.tv_sec  - startTime.tv_sec;
-           if (timeout > seconds){
+           if (timeout < seconds){
                ERR("timeout to exit uvc camera now ...\n");
                break;
            }
          }
     } while (1);
-
+ERR("uvc_control_join before\n");
     uvc_control_join(flags);
 
     rkisp_stop_capture(ctx);
     rkisp_close_device(ctx);
-
-    return 0;
-
+ERR("exit ....\n");
     return 0;
 }
