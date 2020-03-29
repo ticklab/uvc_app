@@ -15,6 +15,7 @@
  */
 
 #include "mpi_enc.h"
+#include "uvc_video.h"
 
 #if 0
 static OptionInfo mpi_enc_cmd[] = {
@@ -29,6 +30,22 @@ static OptionInfo mpi_enc_cmd[] = {
 };
 #endif
 static MppFrameFormat g_format = MPP_FMT_YUV420SP;
+
+RK_S32 mpi_get_env_u32(const char *name, RK_U32 *value, RK_U32 default_value)
+{
+    char *ptr = getenv(name);
+    if (NULL == ptr) {
+        *value = default_value;
+    } else {
+        char *endptr;
+        int base = (ptr[0] == '0' && ptr[1] == 'x') ? (16) : (10);
+        *value = strtoul(ptr, &endptr, base);
+        if (ptr == endptr) {
+            *value = default_value;
+        }
+    }
+    return 0;
+}
 
 static MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
 {
@@ -128,6 +145,9 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
 
     if (NULL == p)
         return MPP_ERR_NULL_PTR;
+
+    mpi_get_env_u32("enc_version", &p->enc_version, RK_MPP_VERSION_DEFAULT);
+    printf("enc_version:%d\n", p->enc_version);
 
     mpi = p->mpi;
     ctx = p->ctx;
@@ -250,13 +270,23 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
     }
 
     /* optional */
-    p->sei_mode = MPP_ENC_SEI_MODE_ONE_FRAME;
+    p->sei_mode = MPP_ENC_SEI_MODE_DISABLE;
     ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->sei_mode);
     if (ret) {
         printf("mpi control enc set sei cfg failed ret %d\n", ret);
         goto RET;
     }
 
+    if (p->enc_version == 1 &&
+       (codec_cfg->coding == MPP_VIDEO_CodingAVC ||
+        codec_cfg->coding == MPP_VIDEO_CodingHEVC)) {
+        int header_mode = MPP_ENC_HEADER_MODE_EACH_IDR;
+        ret = mpi->control(ctx, MPP_ENC_SET_HEADER_MODE, &header_mode);
+        if (ret) {
+            printf("mpi control enc set codec cfg failed ret %d\n", ret);
+            goto RET;
+        }
+    }
 RET:
     return ret;
 }
@@ -274,23 +304,28 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     mpi = p->mpi;
     ctx = p->ctx;
 
-    if (p->type == MPP_VIDEO_CodingAVC) {
-        MppPacket packet = NULL;
-        ret = mpi->control(ctx, MPP_ENC_GET_EXTRA_INFO, &packet);
-        if (ret) {
-            printf("mpi control enc get extra info failed\n");
-            goto RET;
-        }
+    if (p->enc_version == 1) {
+        //no need to get the sps/pps in addition
+    } else {
+        if (p->type == MPP_VIDEO_CodingAVC) {
+            MppPacket packet = NULL;
 
-        /* get and write sps/pps for H.264 */
-        if (packet) {
-            void *ptr   = mpp_packet_get_pos(packet);
-            size_t len  = mpp_packet_get_length(packet);
+            ret = mpi->control(ctx, MPP_ENC_GET_EXTRA_INFO, &packet);
+            if (ret) {
+                printf("mpi control enc get extra info failed\n");
+                goto RET;
+            }
 
-            if (p->fp_output)
-                fwrite(ptr, 1, len, p->fp_output);
+            /* get and write sps/pps for H.264 */
+            if (packet) {
+                void *ptr   = mpp_packet_get_pos(packet);
+                size_t len  = mpp_packet_get_length(packet);
 
-            packet = NULL;
+                if (p->fp_output)
+                    fwrite(ptr, 1, len, p->fp_output);
+
+                packet = NULL;
+            }
         }
     }
 
@@ -332,8 +367,10 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
         ret = mpi->encode_put_frame(ctx, frame);
         if (ret) {
             printf("mpp encode put frame failed\n");
+            mpp_frame_deinit(&frame);
             goto RET;
         }
+        mpp_frame_deinit(&frame);
 
         ret = mpi->encode_get_packet(ctx, &p->packet);
         if (ret) {
@@ -350,14 +387,17 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 
             if (p->fp_output)
                 fwrite(ptr, 1, len, p->fp_output);
+            mpp_packet_deinit(&p->packet);
             p->enc_data = ptr;
             p->enc_len = len;
         }
     } while (0);
 RET:
 
-    if (buf)
+    if (buf) {
         mpp_buffer_put(buf);
+		buf = NULL;
+		}
     return ret;
 }
 
@@ -596,6 +636,28 @@ static void mpi_enc_test_show_options(MpiEncTestCmd* cmd)
     printf("type       : %d\n", cmd->type);
     printf("debug flag : %x\n", cmd->debug);
 }
+void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height,int fcc)
+{
+    memset((void*)cmd, 0, sizeof(*cmd));
+    cmd->width = width;
+    cmd->height = height;
+    cmd->format = g_format;
+    switch (fcc) {
+    case V4L2_PIX_FMT_YUYV:
+        printf("%s: yuyv not need mpp encodec: %d\n", __func__, fcc);
+        break;
+    case V4L2_PIX_FMT_MJPEG:
+        cmd->type = MPP_VIDEO_CodingMJPEG;
+        break;
+    case V4L2_PIX_FMT_H264:
+        cmd->type = MPP_VIDEO_CodingAVC;
+        break;
+    default:
+        printf("%s: not support fcc: %d\n", __func__, fcc);
+        break;
+    }
+
+}
 
 void mpi_enc_cmd_config_mjpg(MpiEncTestCmd *cmd, int width, int height)
 {
@@ -606,7 +668,48 @@ void mpi_enc_cmd_config_mjpg(MpiEncTestCmd *cmd, int width, int height)
     cmd->type = MPP_VIDEO_CodingMJPEG;
 }
 
+void mpi_enc_cmd_config_h264(MpiEncTestCmd *cmd, int width, int height)
+{
+    memset((void*)cmd, 0, sizeof(*cmd));
+    cmd->width = width;
+    cmd->height = height;
+    cmd->format = g_format;
+    cmd->type = MPP_VIDEO_CodingAVC;
+}
 void mpi_enc_set_format(MppFrameFormat format)
 {
     g_format = format;
+}
+int mpi_enc_get_h264_extra(MpiEncTestData *p, void *buffer, size_t *size)
+{
+    MPP_RET ret;
+    MppApi *mpi;
+    MppCtx ctx;
+    if (NULL == p) {
+        *size = 0;
+        return -1;
+    }
+    mpi = p->mpi;
+    ctx = p->ctx;
+    MppPacket packet = NULL;
+    ret = mpi->control(ctx, MPP_ENC_GET_EXTRA_INFO, &packet);
+    if (ret) {
+        printf("mpi control enc get extra info failed\n");
+        *size = 0;
+        return -1;
+    }
+    if (packet) {
+        void *ptr   = mpp_packet_get_pos(packet);
+        size_t len  = mpp_packet_get_length(packet);
+        printf("%s: len = %d\n", __func__, len);
+        if (*size >= len) {
+            memcpy(buffer, ptr, len);
+            *size = len;
+        } else {
+            printf("%s: input buffer size = %d\n", __func__, *size);
+            *size = 0;
+        }
+        packet = NULL;
+    }
+    return 0;
 }

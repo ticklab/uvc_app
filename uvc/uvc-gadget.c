@@ -170,16 +170,16 @@ static const struct uvc_frame_info uvc_frames_mjpeg[] = {
 };
 
 static const struct uvc_frame_info uvc_frames_h264[] = {
-//    {  640, 360, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
+    {  640, 480, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
 //    { 1280, 720, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
     { 1920, 1080, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
     { 0, 0, { 0, }, },
 };
 
 static const struct uvc_format_info uvc_formats[] = {
-//    { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
     { V4L2_PIX_FMT_MJPEG, uvc_frames_mjpeg },
-//    { V4L2_PIX_FMT_H264, uvc_frames_h264 },
+    { V4L2_PIX_FMT_H264, uvc_frames_h264 },
+    { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
 };
 
 /* ---------------------------------------------------------------------------
@@ -1395,7 +1395,7 @@ uvc_handle_streamon_event(struct uvc_device *dev)
         dev->is_streaming = 1;
     }
 
-    uvc_control_init(dev->width, dev->height);
+    uvc_control_init(dev->width, dev->height, dev->fcc);
     return 0;
 
 err:
@@ -3244,7 +3244,7 @@ uvc_gadget_main(int id)
         CLEAR(fmt);
         fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         fmt.fmt.pix.width = (default_resolution == 0) ? 640 : 1280;
-        fmt.fmt.pix.height = (default_resolution == 0) ? 360 : 720;
+        fmt.fmt.pix.height = (default_resolution == 0) ? 480 : 720;
         fmt.fmt.pix.sizeimage = (default_format == 0) ?
                                 (fmt.fmt.pix.width * fmt.fmt.pix.height * 2) :
                                 (fmt.fmt.pix.width * fmt.fmt.pix.height * 1.5);
@@ -3287,7 +3287,7 @@ uvc_gadget_main(int id)
 
     /* Set parameters as passed by user. */
     udev->width = (default_resolution == 0) ? 640 : uvc_frames_mjpeg[num_uvc_frame].width;
-    udev->height = (default_resolution == 0) ? 360 : uvc_frames_mjpeg[num_uvc_frame].height;
+    udev->height = (default_resolution == 0) ? 480 : uvc_frames_mjpeg[num_uvc_frame].height;
     udev->imgsize = (default_format == 0) ?
                     (udev->width * udev->height * 2) :
                     (udev->width * udev->height * 1.5);

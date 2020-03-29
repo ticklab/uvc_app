@@ -35,16 +35,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int uvc_encode_init(struct uvc_encode *e, int width, int height)
+int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc)
 {
-    printf("%s: width = %d, height = %d\n", __func__, width, height);
+    printf("%s: width = %d, height = %d, fcc = %d\n", __func__, width, height,fcc);
     memset(e, 0, sizeof(*e));
     e->video_id = -1;
     e->width = -1;
     e->height = -1;
     e->width = width;
     e->height = height;
-    mpi_enc_cmd_config_mjpg(&e->mpi_cmd, width, height);
+    mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc);
+    //mpi_enc_cmd_config_mjpg(&e->mpi_cmd, width, height);
+    if(fcc == V4L2_PIX_FMT_YUYV)
+        return 0;
     if (mpi_enc_test_init(&e->mpi_cmd, &e->mpi_data) != MPP_OK)
         return -1;
 
@@ -78,12 +81,11 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
             uvc_buffer_write(0, NULL, 0, virt, width * height * 2, fcc, e->video_id);
         break;
     case V4L2_PIX_FMT_MJPEG:
+    case V4L2_PIX_FMT_H264:
         if (fd >= 0 && mpi_enc_test_run(&e->mpi_data, fd, size) == MPP_OK) {
             uvc_buffer_write(0, e->extra_data, e->extra_size,
                              e->mpi_data->enc_data, e->mpi_data->enc_len, fcc, e->video_id);
         }
-        break;
-    case V4L2_PIX_FMT_H264: 
         break;
     default:
         printf("%s: not support fcc: %u\n", __func__, fcc);

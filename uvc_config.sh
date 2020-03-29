@@ -16,7 +16,7 @@ echo 0x2207 > /sys/kernel/config/usb_gadget/rockchip/idVendor
 echo 0x0310 > /sys/kernel/config/usb_gadget/rockchip/bcdDevice
 echo 0x0200 > /sys/kernel/config/usb_gadget/rockchip/bcdUSB
 
-echo "2019" > /sys/kernel/config/usb_gadget/rockchip/strings/0x409/serialnumber
+echo "2020" > /sys/kernel/config/usb_gadget/rockchip/strings/0x409/serialnumber
 echo "rockchip" > /sys/kernel/config/usb_gadget/rockchip/strings/0x409/manufacturer
 echo "UVC" > /sys/kernel/config/usb_gadget/rockchip/strings/0x409/product
 
@@ -33,6 +33,24 @@ mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/header/h
 ln -s /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/header/h /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/class/fs/h
 ln -s /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/header/h /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/class/ss/h
 
+##YUYV support config
+mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u
+w=640
+h=480
+mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p
+echo $w > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p/wWidth
+echo $h > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p/wHeight
+echo 666666 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p/dwDefaultFrameInterval
+echo $((w*h*80)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p/dwMinBitRate
+echo $((w*h*160)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p/dwMaxBitRate
+echo $((w*h*2)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p/dwMaxVideoFrameBufferSize
+cat <<EOF > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/uncompressed/u/480p/dwFrameInterval
+666666
+1000000
+2000000
+EOF
+
+##mjpeg support config
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/mjpeg/m
 w=640
 h=480
@@ -104,6 +122,38 @@ echo $((w*h*80)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/stre
 echo $((w*h*160)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/mjpeg/m/1944p/dwMaxBitRate
 echo $((w*h*2)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/mjpeg/m/1944p/dwMaxVideoFrameBufferSize
 cat <<EOF > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/mjpeg/m/1944p/dwFrameInterval
+666666
+1000000
+2000000
+EOF
+
+## h.264 support config
+mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h
+w=640
+h=480
+mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p
+echo $w > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p/wWidth
+echo $h > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p/wHeight
+echo 666666 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p/dwDefaultFrameInterval
+echo $((w*h*80)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p/dwMinBitRate
+echo $((w*h*160)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p/dwMaxBitRate
+echo $((w*h*2)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p/dwMaxVideoFrameBufferSize
+cat <<EOF > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/480p/dwFrameInterval
+666666
+1000000
+2000000
+EOF
+
+w=1920
+h=1080
+mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p
+echo $w > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p/wWidth
+echo $h > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p/wHeight
+echo 666666 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p/dwDefaultFrameInterval
+echo $((w*h*80)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p/dwMinBitRate
+echo $((w*h*160)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p/dwMaxBitRate
+echo $((w*h*2)) > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p/dwMaxVideoFrameBufferSize
+cat <<EOF > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/h264/h/1080p/dwFrameInterval
 666666
 1000000
 2000000

@@ -39,7 +39,7 @@ int main(int argc, char* argv[])
     if (fd < 0)
         return -1;
 
-    size = ALIGN(width,16) * ALIGN(height,16) * 3 / 2;
+    size = width * height * 2;
     ret = drm_alloc(fd, size, 16, &handle, 0);
     if (ret)
         return -1;

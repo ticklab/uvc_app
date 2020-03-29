@@ -41,6 +41,7 @@ extern "C" {
 //#include "utils.h"
 
 #define MAX_FILE_NAME_LENGTH        256
+#define RK_MPP_VERSION_DEFAULT 0
 
 typedef struct {
     char            file_input[MAX_FILE_NAME_LENGTH];
@@ -99,13 +100,17 @@ typedef struct {
     MppPacket packet;
     void *enc_data;
     size_t enc_len;
+    RK_U32 enc_version;
 } MpiEncTestData;
 
 MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data);
 MPP_RET mpi_enc_test_run(MpiEncTestData **data, int fd, size_t size);
 MPP_RET mpi_enc_test_deinit(MpiEncTestData **data);
+void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height,int fcc);
 void mpi_enc_cmd_config_mjpg(MpiEncTestCmd *cmd, int width, int height);
+void mpi_enc_cmd_config_h264(MpiEncTestCmd *cmd, int width, int height);
 void mpi_enc_set_format(MppFrameFormat format);
+int mpi_enc_get_h264_extra(MpiEncTestData *p, void *buffer, size_t *size);
 
 #ifdef __cplusplus
 }
