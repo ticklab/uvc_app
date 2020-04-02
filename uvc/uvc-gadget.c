@@ -177,9 +177,9 @@ static const struct uvc_frame_info uvc_frames_h264[] = {
 };
 
 static const struct uvc_format_info uvc_formats[] = {
+//    { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
     { V4L2_PIX_FMT_MJPEG, uvc_frames_mjpeg },
-    { V4L2_PIX_FMT_H264, uvc_frames_h264 },
-    { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
+//    { V4L2_PIX_FMT_H264, uvc_frames_h264 },
 };
 
 /* ---------------------------------------------------------------------------
@@ -3117,7 +3117,7 @@ uvc_gadget_main(int id)
     char *mjpeg_image = NULL;
     fd_set fdsv, fdsu;
     int ret, nfds;
-    int bulk_mode = 1;
+    int bulk_mode = 0;
     int dummy_data_gen_mode = 1;
     /* Frame format/resolution related params. */
     int default_format = 1;

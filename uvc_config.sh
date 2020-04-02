@@ -26,8 +26,9 @@ if [ "$1"x == "rndis"x  ]; then
 fi
 
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6
-#cat /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket
-echo 1 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_bulk
+echo 1024 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket
+cat /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket
+#echo 1 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_bulk
 
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/header/h
 ln -s /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/header/h /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/class/fs/h
