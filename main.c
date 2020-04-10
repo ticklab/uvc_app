@@ -2,7 +2,11 @@
 #include <unistd.h>
 #include "uvc_control.h"
 #include "uvc_video.h"
+
+#ifdef CAMERA_CONTROL
 #include "camera_control.h"
+#endif
+
 #include "mpi_enc.h"
 #include "uevent.h"
 #include "drm.h"
@@ -23,6 +27,7 @@ int main(int argc, char *argv[])
     int extra_cnt = 0;
     uint32_t flags = 0;
 
+#ifdef CAMERA_CONTROL
     if (argc != 3)
     {
         printf("uvc_app loop from v4l2.\n");
@@ -43,6 +48,13 @@ int main(int argc, char *argv[])
         StopAllThread();
         return 0;
     }
+#else
+   if (argc != 3) {
+     printf("please select true control mode!!\n");
+     return 0;
+   }
+#endif
+
     width = atoi(argv[1]);
     height = atoi(argv[2]);
     if (width == 0 || height == 0)
