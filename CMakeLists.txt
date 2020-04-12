@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
+set(CMAKE_CXX_STANDARD 11)
+add_definitions(-fno-rtti)
 PROJECT(uvc_app)
 
 include_directories(uvc)
@@ -16,13 +18,16 @@ set(LIB_SOURCE
 add_library(rkuvc SHARED ${LIB_SOURCE})
 target_link_libraries(rkuvc pthread drm rockchip_mpp )
 
+include_directories(process)
 set(SOURCE
     main.c
+    process/camera_control.cpp
+    process/camera_pu_control.cpp
     ${LIB_SOURCE}
 )
 
 ADD_EXECUTABLE(uvc_app ${SOURCE})
-target_link_libraries(uvc_app pthread drm rockchip_mpp )
+target_link_libraries(uvc_app pthread drm rockchip_mpp easymedia)
 
 install(TARGETS rkuvc DESTINATION lib)
 install(DIRECTORY ./uvc DESTINATION include

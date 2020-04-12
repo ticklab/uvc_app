@@ -51,7 +51,7 @@
 //#include "uvc_iq_tool.h"
 
 /* Enable debug prints. */
-#undef ENABLE_BUFFER_DEBUG
+//#define ENABLE_BUFFER_DEBUG
 #define ENABLE_USB_REQUEST_DEBUG
 
 #define CLEAR(x)    memset (&(x), 0, sizeof (x))
@@ -71,8 +71,7 @@
 #define pixfmtstr(x)    (x) & 0xff, ((x) >> 8) & 0xff, ((x) >> 16) & 0xff, \
             ((x) >> 24) & 0xff
 
-static int silent = 1;
-
+static int silent=1;
 #define DBG(...) do { if(silent) printf(__VA_ARGS__); } while(0)
 
 /*
@@ -104,10 +103,10 @@ static int silent = 1;
 #define PU_CONTRAST_STEP_SIZE       1
 #define PU_CONTRAST_DEFAULT_VAL     127
 
-#define PU_HUE_MIN_VAL              0
-#define PU_HUE_MAX_VAL              255
+#define PU_HUE_MIN_VAL              -32768
+#define PU_HUE_MAX_VAL              32767
 #define PU_HUE_STEP_SIZE            1
-#define PU_HUE_DEFAULT_VAL          127
+#define PU_HUE_DEFAULT_VAL          0
 
 #define PU_SATURATION_MIN_VAL       0
 #define PU_SATURATION_MAX_VAL       255
@@ -997,7 +996,7 @@ uvc_video_process(struct uvc_device *dev)
         dev->qbuf_count++;
 
 #ifdef ENABLE_BUFFER_DEBUG
-        printf("%d: ReQueueing buffer at UVC side = %d\n", dev->video_id, dev->ubuf.index);
+        printf("%d: ReQueueing buffer at UVC side = %d size = %d\n", dev->video_id, dev->ubuf.index, dev->ubuf.bytesused);
 #endif
     } else {
         /* UVC - V4L2 integrated path. */
@@ -1396,6 +1395,9 @@ uvc_handle_streamon_event(struct uvc_device *dev)
     }
 
     uvc_control_init(dev->width, dev->height, dev->fcc);
+
+    set_uvc_control_start(dev->video_id, dev->width, dev->height,
+                                  dev->fps);
     return 0;
 
 err:
@@ -1425,13 +1427,11 @@ uvc_fill_streaming_control(struct uvc_device *dev,
     while (format->frames[nframes].width != 0)
         ++nframes;
 
-DBG("uvc_fill_streaming_control:before+++ iframe:%d \n",iframe);
     if (iframe < 0)
         iframe = nframes + iframe;
     if (iframe < 0 || iframe >= (int)nframes)
         return;
     frame = &format->frames[iframe];
-DBG("uvc_fill_streaming_control:after+++ iframe:%d \n",iframe);
 
     memset(ctrl, 0, sizeof * ctrl);
 
@@ -1823,13 +1823,15 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MIN:
-                resp->data[0] = PU_HUE_MIN_VAL;
+                resp->data[0] = PU_HUE_MIN_VAL % 256;
+                resp->data[1] = PU_HUE_MIN_VAL / 256;
                 resp->length = 2;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MAX:
-                resp->data[0] = PU_HUE_MAX_VAL;
+                resp->data[0] = PU_HUE_MAX_VAL % 256;
+                resp->data[1] = PU_HUE_MAX_VAL / 256;
                 resp->length = 2;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
@@ -2501,6 +2503,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
     if (resp->length == -EL2HLT) {
         printf("unsupported: req=%02x, cs=%d, entity_id=%d, len=%d\n",
                req, cs, entity_id, len);
+        resp->length = 0;
     }
     printf("control request (req %02x cs %02x)\n", req, cs);
 }
@@ -2585,13 +2588,11 @@ uvc_events_process_class(struct uvc_device *dev, struct usb_ctrlrequest *ctrl,
         return;
 
     if ((ctrl->wIndex & 0xff) % 2 != get_uvc_streaming_intf() % 2) {
-DBG("uvc_events_process_class:uvc_events_process_control++\n");
         uvc_events_process_control(dev, ctrl->bRequest,
                                    ctrl->wValue >> 8,
                                    ctrl->wIndex >> 8,
                                    ctrl->wLength, resp);
     } else {
-DBG("uvc_events_process_class:uvc_events_process_streaming++ \n");
         uvc_events_process_streaming(dev, ctrl->bRequest,
                                      ctrl->wValue >> 8, resp);
     }
@@ -2832,14 +2833,12 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
     iframe = clamp((unsigned int)ctrl->bFrameIndex, 1U, nframes);
     frame = &format->frames[iframe - 1];
     interval = frame->intervals;
-	printf("uvc_events_process_data:nframes:%d,bFrameIndex:%d\n",nframes,target->bFrameIndex);
 
     while (interval[0] < ctrl->dwFrameInterval && interval[1])
         ++interval;
 
     target->bFormatIndex = iformat;
     target->bFrameIndex = iframe;
-	printf("uvc_events_process_data:bFormatIndex:%d,bFrameIndex:%d\n",target->bFormatIndex,target->bFrameIndex);
     switch (format->fcc) {
     case V4L2_PIX_FMT_YUYV:
         target->dwMaxVideoFrameSize = frame->width * frame->height * 2;
@@ -2851,12 +2850,12 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
 		dev->width = frame->width;
         dev->height = frame->height;
 		dev->imgsize = frame->width * frame->height * 1.5;
-		printf("uvc_events_process_data:dev->width:%d,dev->imgsize:%d\n",dev->width,dev->imgsize);
+		printf("uvc_events_process_data:format->fcc:%d,dev->width:%d,dev->imgsize:%d\n",format->fcc,dev->width,dev->imgsize);
         target->dwMaxVideoFrameSize = dev->imgsize;
         break;
     }
     target->dwFrameInterval = *interval;
-	target->dwMaxPayloadTransferSize = target->dwMaxVideoFrameSize;
+//	target->dwMaxPayloadTransferSize = target->dwMaxVideoFrameSize;
 
     if (dev->control == UVC_VS_COMMIT_CONTROL) {
         if (uvc_video_get_uvc_process(dev->video_id))
@@ -2942,11 +2941,9 @@ uvc_events_process(struct uvc_device *dev)
 
     switch (v4l2_event.type) {
     case UVC_EVENT_CONNECT:
-DBG("uvc_events_process:UVC_EVENT_CONNECT \n");
         return;
 
     case UVC_EVENT_DISCONNECT:
-DBG("uvc_events_process:UVC_EVENT_DISCONNECT \n");
         dev->uvc_shutdown_requested = 1;
         printf("UVC: Possible USB shutdown requested from "
                "Host, seen via UVC_EVENT_DISCONNECT \n");
@@ -2979,7 +2976,7 @@ DBG("uvc_events_process:UVC_EVENT_STREAMOFF \n");
             v4l2_stop_capturing(dev->vdev);
             dev->vdev->is_streaming = 0;
         }
-
+        
         /* ... and now UVC streaming.. */
         if (dev->is_streaming) {
             uvc_video_stream(dev, 0);
@@ -2988,9 +2985,10 @@ DBG("uvc_events_process:UVC_EVENT_STREAMOFF \n");
             dev->is_streaming = 0;
             dev->first_buffer_queued = 0;
         }
-
         uvc_buffer_deinit(dev->video_id);
+        //join mpp thread
         uvc_control_exit();
+        set_uvc_control_stop();
 
         return;
     }
@@ -3022,7 +3020,6 @@ uvc_events_init(struct uvc_device *dev)
     }
 
     uvc_fill_streaming_control(dev, &dev->probe, 0, 0);
-DBG("uvc_events_init:++\n");
     uvc_fill_streaming_control(dev, &dev->commit, 0, 0);
 
     if (dev->bulk) {
@@ -3113,7 +3110,7 @@ uvc_gadget_main(int id)
     struct timeval tv;
     struct v4l2_format fmt;
     char uvc_devname[32] = {0};
-    char *v4l2_devname = "/dev/video1";
+    char *v4l2_devname = "/dev/video0";
     char *mjpeg_image = NULL;
     fd_set fdsv, fdsu;
     int ret, nfds;
@@ -3126,7 +3123,7 @@ uvc_gadget_main(int id)
     /* USB speed related params */
     int mult = 0;
     int burst = 0;
-    enum usb_device_speed speed = USB_SPEED_SUPER;  /* High-Speed */
+    enum usb_device_speed speed = USB_SPEED_HIGH;  /* High-Speed  1109 is usb 2.0*/
     enum io_method uvc_io_method = IO_METHOD_MMAP;
     snprintf(uvc_devname, sizeof(uvc_devname), "/dev/video%d", id);
     int num_uvc_frame = 0;
@@ -3400,7 +3397,7 @@ uvc_gadget_main(int id)
             FD_SET(vdev->v4l2_fd, &fdsv);
 
         /* Timeout. */
-        tv.tv_sec = 0;
+        tv.tv_sec = 2;
         tv.tv_usec = 500000;
 
         if (!dummy_data_gen_mode && !mjpeg_image) {
@@ -3458,6 +3455,10 @@ uvc_gadget_main(int id)
     uvc_close(udev);
 
     uvc_buffer_deinit(id);
+    //join mpp thread
+    uvc_control_exit();
+    set_uvc_control_stop();
+    set_uvc_control_restart();
 
     return 0;
 }

@@ -40,25 +40,39 @@
 #include "uvc_encode.h"
 #include "uvc_video.h"
 #include "uevent.h"
+//#include "camera_control.h"
 
-#define SYS_ISP_NAME "isp"
-#define SYS_CIF_NAME "cif"
+//#define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/bInterfaceNumber"
 #define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_intf"
 
-struct uvc_ctrl {
+static void (*camera_start_callback)(int fd, int width, int height, int fps);
+static void (*camera_stop_callback)();
+
+struct uvc_ctrl
+{
     int id;
+    bool start;
+    bool stop;
     int width;
     int height;
     int fps;
 };
 
-static struct uvc_ctrl uvc_ctrl[2];
+static struct uvc_ctrl uvc_ctrl[3] = {
+    {-1, false, false, -1, -1, -1},
+    {-1, false, false, -1, -1, -1},
+    {-1, false, false, -1, -1, -1}, //isp
+};
+
 struct uvc_encode uvc_enc;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int uvc_streaming_intf = -1;
 
 static pthread_t run_id = 0;
+static bool uvc_restart = false;
 static bool run_flag = true;
+static uint32_t uvc_flags = UVC_CONTROL_CAMERA;
+
 static pthread_mutex_t run_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t run_cond = PTHREAD_COND_INITIALIZER;
 static pthread_cond_t video_added = PTHREAD_COND_INITIALIZER;
@@ -76,13 +90,16 @@ static void query_uvc_streaming_intf(void)
     int fd;
 
     fd = open(UVC_STREAMING_INTF_PATH, O_RDONLY);
-    if (fd >= 0) {
+    if (fd >= 0)
+    {
         char intf[32] = {0};
         read(fd, intf, sizeof(intf) - 1);
         uvc_streaming_intf = atoi(intf);
         printf("uvc_streaming_intf = %d\n", uvc_streaming_intf);
         close(fd);
-    } else {
+    }
+    else
+    {
         printf("open %s failed!\n", UVC_STREAMING_INTF_PATH);
     }
 }
@@ -92,6 +109,16 @@ int get_uvc_streaming_intf(void)
     return uvc_streaming_intf;
 }
 
+void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps))
+{
+    camera_start_callback = callback;
+}
+
+void uvc_control_stop_setcallback(void (*callback)(int fd, int width, int height, int fps))
+{
+    camera_stop_callback = callback;
+}
+
 int check_uvc_video_id(void)
 {
     FILE *fp = NULL;
@@ -99,28 +126,36 @@ int check_uvc_video_id(void)
     int i;
     char cmd[128];
 
-    memset(&uvc_ctrl, 0, sizeof(uvc_ctrl));
     uvc_ctrl[0].id = -1;
     uvc_ctrl[1].id = -1;
-    for (i = 0; i < 30; i++) {
+    for (i = 0; i < 30; i++)
+    {
         snprintf(cmd, sizeof(cmd), "/sys/class/video4linux/video%d/name", i);
         if (access(cmd, F_OK))
             continue;
         snprintf(cmd, sizeof(cmd), "cat /sys/class/video4linux/video%d/name", i);
         fp = popen(cmd, "r");
-        if (fp) {
-            if (fgets(buf, sizeof(buf), fp)) {
-                if (is_uvc_video(buf)) {
+        if (fp)
+        {
+            if (fgets(buf, sizeof(buf), fp))
+            {
+                if (is_uvc_video(buf))
+                {
                     if (uvc_ctrl[0].id < 0)
                         uvc_ctrl[0].id = i;
                     else if (uvc_ctrl[1].id < 0)
                         uvc_ctrl[1].id = i;
+                    else if (uvc_ctrl[2].id < 0)
+                        uvc_ctrl[2].id = i;
+                    printf("found uvc video port.\n");
                 }
             }
             pclose(fp);
         }
     }
-    if (uvc_ctrl[0].id < 0 && uvc_ctrl[1].id < 0) {
+
+    if (uvc_ctrl[0].id < 0 && uvc_ctrl[1].id < 0)
+    {
         printf("Please configure uvc...\n");
         return -1;
     }
@@ -140,7 +175,8 @@ void uvc_control_init(int width, int height, int fcc)
 {
     pthread_mutex_lock(&lock);
     memset(&uvc_enc, 0, sizeof(uvc_enc));
-    if (uvc_encode_init(&uvc_enc, width, height, fcc)) {
+    if (uvc_encode_init(&uvc_enc, width, height, fcc))
+    {
         printf("%s fail!\n", __func__);
         abort();
     }
@@ -156,15 +192,18 @@ void uvc_control_exit()
 }
 
 void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
-                            void* extra_data, size_t extra_size)
+                            void *extra_data, size_t extra_size)
 {
     pthread_mutex_lock(&lock);
-    if (cam_size <= uvc_enc.width * uvc_enc.height * 2) {
+    if (cam_size <= uvc_enc.width * uvc_enc.height * 2)
+    {
         uvc_enc.video_id = uvc_video_id_get(0);
         uvc_enc.extra_data = extra_data;
         uvc_enc.extra_size = extra_size;
         uvc_encode_process(&uvc_enc, cam_buf, cam_fd, cam_size);
-    } else if (uvc_enc.width > 0 && uvc_enc.height > 0) {
+    }
+    else if (uvc_enc.width > 0 && uvc_enc.height > 0)
+    {
         printf("%s: cam_size = %u, uvc_enc.width = %d, uvc_enc.height = %d\n",
                __func__, cam_size, uvc_enc.width, uvc_enc.height);
     }
@@ -205,8 +244,10 @@ static void *uvc_control_thread(void *arg)
 {
     uint32_t flag = *(uint32_t *)arg;
 
-    while (run_flag) {
-        if (!check_uvc_video_id()) {
+    while (run_flag)
+    {
+        if (!check_uvc_video_id())
+        {
             add_uvc_video();
             /* Ensure main was waiting for this signal */
             usleep(500);
@@ -215,23 +256,60 @@ static void *uvc_control_thread(void *arg)
                 break;
             uvc_control_wait();
             uvc_video_id_exit_all();
-        } else {
+        }
+        else
+        {
             uvc_control_wait();
         }
     }
     pthread_exit(NULL);
 }
 
+void uvc_control_loop(void)
+{
+    if (uvc_restart)
+    {
+        uvc_video_id_exit_all();
+        add_uvc_video();
+        uvc_restart = false;
+    }
+    if (uvc_ctrl[2].stop)
+    {
+        if (camera_stop_callback)
+            camera_stop_callback();
+
+        uvc_ctrl[2].stop = false;
+    }
+
+    if (uvc_ctrl[2].start)
+    {
+        printf("%s: video_id:%d, width:%d,height:%d,fps:%d !\n", __func__,
+               uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
+        if (camera_start_callback)
+        {
+            printf("%s  camera_start_callback start!\n", __func__);
+            camera_start_callback(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
+        }
+        //camera_control_start(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
+        uvc_ctrl[2].start = false;
+    }
+}
+
 int uvc_control_run(uint32_t flags)
 {
-    if (flags & UVC_CONTROL_CHECK_STRAIGHT) {
+    uvc_flags = flags;
+    if ((flags & UVC_CONTROL_CHECK_STRAIGHT) || (flags & UVC_CONTROL_CAMERA))
+    {
         if (!check_uvc_video_id())
+        {
             add_uvc_video();
-        else
-            return -1;
-    } else {
+        }
+    }
+    else
+    {
         uevent_monitor_run(flags);
-        if (pthread_create(&run_id, NULL, uvc_control_thread, &flags)) {
+        if (pthread_create(&run_id, NULL, uvc_control_thread, &flags))
+        {
             printf("%s: pthread_create failed!\n", __func__);
             return -1;
         }
@@ -243,13 +321,51 @@ int uvc_control_run(uint32_t flags)
 
 void uvc_control_join(uint32_t flags)
 {
-    if (flags & UVC_CONTROL_CHECK_STRAIGHT) {
+    uvc_flags = flags;
+    if ((flags & UVC_CONTROL_CHECK_STRAIGHT) || (flags & UVC_CONTROL_CAMERA))
+    {
         uvc_video_id_exit_all();
-    } else {
+        if (camera_stop_callback)
+            camera_stop_callback();
+    }
+    else
+    {
         run_flag = false;
         uvc_control_signal();
         pthread_join(run_id, NULL);
-        if (flags & UVC_CONTROL_LOOP_ONCE);
-            uvc_video_id_exit_all();
+        if (flags & UVC_CONTROL_LOOP_ONCE)
+            ;
+        uvc_video_id_exit_all();
+    }
+}
+
+void set_uvc_control_start(int video_id, int width, int height, int fps)
+{
+    printf("%s!\n", __func__);
+    if (uvc_video_id_get(0) == video_id)
+    {
+        printf("%s: video_id:%d, width:%d,height:%d,fps:%d !\n", __func__, video_id, width, height, fps);
+        uvc_ctrl[2].id = video_id;
+        uvc_ctrl[2].width = width;
+        uvc_ctrl[2].height = height;
+        uvc_ctrl[2].fps = fps;
+        uvc_ctrl[2].start = true;
+    }
+    else
+        printf("unexpect uvc!\n");
+}
+
+void set_uvc_control_stop(void)
+{
+    printf("%s!\n", __func__);
+    uvc_ctrl[2].stop = true;
+}
+
+void set_uvc_control_restart(void)
+{
+    if (uvc_flags & UVC_CONTROL_CAMERA)
+    {
+        printf("%s!\n", __func__);
+        uvc_restart = true;
     }
 }

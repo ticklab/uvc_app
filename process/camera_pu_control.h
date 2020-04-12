@@ -30,48 +30,20 @@
  * SOFTWARE.
  */
 
-#ifndef __UVC_CONTROL_H__
-#define __UVC_CONTROL_H__
+#ifndef __VIDEO_H__
+#define __VIDEO_H__
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-#include <stdint.h>
+#include <uvc-gadget.h>
 
-#ifdef USE_RK_MODULE
-#define ISP_SEQ 1
-#define ISP_FMT HAL_FRMAE_FMT_NV12
-#define CIF_SEQ 0
-#define CIF_FMT HAL_FRMAE_FMT_SBGGR10
-#else
-#define ISP_SEQ 0
-#define ISP_FMT HAL_FRMAE_FMT_SBGGR8
-#define CIF_SEQ 1
-#define CIF_FMT HAL_FRMAE_FMT_NV12
-#endif
-
-#define UVC_CONTROL_LOOP_ONCE (1 << 0)
-#define UVC_CONTROL_CHECK_STRAIGHT (1 << 1)
-#define UVC_CONTROL_CAMERA (1 << 2)
-
-    void add_uvc_video();
-    void uvc_control_loop(void);
-    int check_uvc_video_id(void);
-    void set_uvc_control_start(int video_id, int width, int height, int fps);
-    void set_uvc_control_stop(void);
-    void set_uvc_control_restart(void);
-    void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps));
-    void uvc_control_stop_setcallback(void (*callback)());
-    void uvc_control_init(int width, int height, int fcc);
-    void uvc_control_exit();
-    void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
-                                void *extra_data, size_t extra_size);
-    int get_uvc_streaming_intf(void);
-    void uvc_control_signal(void);
-    int uvc_control_run(uint32_t flags);
-    void uvc_control_join(uint32_t flags);
+    void camera_pu_control_init(int type,int def,int min,int max);
+    int camera_pu_control_get(int type,int def);
+    int camera_pu_control_set(int type,int value);
+    int camera_pu_control_check(int deviceid);
 
 #ifdef __cplusplus
 }
