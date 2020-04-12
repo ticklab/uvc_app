@@ -461,15 +461,12 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
 {
     MPP_RET ret = MPP_OK;
     MpiEncTestData *p = *data;
-
     if (p->packet)
         mpp_packet_deinit(&p->packet);
-
     ret = p->mpi->reset(p->ctx);
     if (ret) {
         printf("mpi->reset failed\n");
     }
-
     if (p->ctx) {
         mpp_destroy(p->ctx);
         p->ctx = NULL;
@@ -482,12 +479,13 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     }
 #endif
 
-    if (MPP_OK == ret)
-        printf("mpi_enc_test success total frame %d bps %lld\n",
-                p->frame_count, (RK_U64)((p->stream_size * 8 * p->fps) / p->frame_count));
-    else
+    if (MPP_OK == ret){
+        printf("mpi_enc_test success \n");
+        //printf("mpi_enc_test success total frame %d bps %lld\n",
+        //        p->frame_count, (RK_U64)((p->stream_size * 8 * p->fps) / p->frame_count));
+    } else {
         printf("mpi_enc_test failed ret %d\n", ret);
-
+    }
     test_ctx_deinit(&p);
 
     return ret;
