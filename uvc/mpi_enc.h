@@ -41,7 +41,7 @@ extern "C" {
 //#include "utils.h"
 
 #define MAX_FILE_NAME_LENGTH        256
-#define RK_MPP_VERSION_DEFAULT 0
+#define RK_MPP_VERSION_DEFAULT 1
 
 typedef struct {
     char            file_input[MAX_FILE_NAME_LENGTH];
