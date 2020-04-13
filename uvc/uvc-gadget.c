@@ -2977,6 +2977,7 @@ DBG("uvc_events_process:UVC_EVENT_STREAMOFF \n");
             dev->vdev->is_streaming = 0;
         }
         
+        set_uvc_control_stop();
         /* ... and now UVC streaming.. */
         if (dev->is_streaming) {
             uvc_video_stream(dev, 0);
@@ -2988,7 +2989,6 @@ DBG("uvc_events_process:UVC_EVENT_STREAMOFF \n");
         uvc_buffer_deinit(dev->video_id);
         //join mpp thread
         uvc_control_exit();
-        set_uvc_control_stop();
 
         return;
     }
@@ -3441,6 +3441,7 @@ uvc_gadget_main(int id)
         vdev->is_streaming = 0;
     }
 
+    set_uvc_control_stop();
     if (udev->is_streaming) {
         /* ... and now UVC streaming.. */
         uvc_video_stream(udev, 0);
@@ -3457,7 +3458,6 @@ uvc_gadget_main(int id)
     uvc_buffer_deinit(id);
     //join mpp thread
     uvc_control_exit();
-    set_uvc_control_stop();
     set_uvc_control_restart();
 
     return 0;
