@@ -83,7 +83,12 @@ static MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
         }
     }
 
+    mpi_get_env_u32("uvc_enc_out", &cmd->have_output, 0);
+
     if (cmd->have_output) {
+        char *next = "/data/uvc_enc_out.bin";
+        strncpy(cmd->file_output, next, MAX_FILE_NAME_LENGTH);
+        cmd->file_output[strlen(next)] = '\0';
         p->fp_output = fopen(cmd->file_output, "w+b");
         if (NULL == p->fp_output) {
             printf("failed to open output file %s\n", cmd->file_output);

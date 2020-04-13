@@ -74,6 +74,7 @@ struct Camera_Stream
     pthread_t record_id;
     int deviceid;
     volatile int pthread_run;
+    RK_U32 uvc_flow_output;
 };
 
 static bool do_uvc(easymedia::Flow *f,
@@ -184,6 +185,8 @@ static void *uvc_camera(void *arg)
     printf("%s \n", __func__);
     prctl(PR_SET_NAME, "uvc_camera", 0, 0, 0);
 
+    std::shared_ptr<easymedia::Flow> video_save_flow;
+
     std::string input_path = "/dev/video0"; //isp main path
     std::string input_format = IMAGE_NV12;
 
@@ -218,16 +221,34 @@ static void *uvc_camera(void *arg)
         goto record_exit;
     }
 
-    stream->uvc_flow = std::make_shared<UVCJoinFlow>(stream->deviceid);
-    if (!stream->uvc_flow)
-    {
-        fprintf(stderr, "Create flow UVCJoinFlow failed\n");
-        goto record_exit;
+    mpi_get_env_u32("uvc_flow_output", &stream->uvc_flow_output, 0);
+    if (stream->uvc_flow_output) {
+        // test dump
+        std::string output_path = "/data/uvc_flow_output_nv12.yuv";
+        flow_name = "file_write_flow";
+        flow_param = "";
+        PARAM_STRING_APPEND(flow_param, KEY_PATH, output_path.c_str());
+        PARAM_STRING_APPEND(flow_param, KEY_OPEN_MODE, "w+"); // read and close-on-exec
+        printf("\n#FileWrite:\n%s\n", flow_param.c_str());
+        video_save_flow = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
+            flow_name.c_str(), flow_param.c_str());
+        if (!video_save_flow)
+        {
+            fprintf(stderr, "Create flow video_save_flow failed\n");
+            goto record_exit;
+        }
+        stream->input->AddDownFlow(video_save_flow, 0, 0);
+    } else {
+        stream->uvc_flow = std::make_shared<UVCJoinFlow>(stream->deviceid);
+        if (!stream->uvc_flow)
+        {
+            fprintf(stderr, "Create flow UVCJoinFlow failed\n");
+            goto record_exit;
+        }
+        stream->input->AddDownFlow(stream->uvc_flow, 0, 0);
     }
 
-    stream->input->AddDownFlow(stream->uvc_flow, 0, 0);
-
-    printf("%s start\n", __func__);
+    printf("%s start,uvc_flow_output=%d\n", __func__, stream->uvc_flow_output);
 
     while (stream->pthread_run)
     {
@@ -237,7 +258,17 @@ static void *uvc_camera(void *arg)
 
 record_exit:
     printf("%s exit\n", __func__);
+    if (stream->uvc_flow_output) {
+        if (stream->input) {
+            if (video_save_flow)
+                stream->input->RemoveDownFlow(video_save_flow);
+            stream->input.reset();
+        }
+        if (video_save_flow)
+            video_save_flow.reset();
+    }
     camera_stop(stream);
+
     stream = NULL;
     pthread_exit(NULL);
 }
