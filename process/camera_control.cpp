@@ -186,8 +186,8 @@ static void *uvc_camera(void *arg)
     prctl(PR_SET_NAME, "uvc_camera", 0, 0, 0);
 
     std::shared_ptr<easymedia::Flow> video_save_flow;
-
-    std::string input_path = "/dev/video0"; //isp main path
+   // std::string input_path = "/dev/video0";
+    std::string input_path = "rkispp_scale0";//"/dev/video0"; //isp main path
     std::string input_format = IMAGE_NV12;
 
     //Reading yuv from camera
@@ -249,6 +249,7 @@ static void *uvc_camera(void *arg)
     }
 
     printf("%s start,uvc_flow_output=%d\n", __func__, stream->uvc_flow_output);
+    system("mediaserver -d -c /oem/usr/share/mediaserver/camera_nv12_rga_nn_link.conf &");
 
     while (stream->pthread_run)
     {
@@ -258,6 +259,8 @@ static void *uvc_camera(void *arg)
 
 record_exit:
     printf("%s exit\n", __func__);
+    system("killall mediaserver");
+    usleep(500000);
     if (stream->uvc_flow_output) {
         if (stream->input) {
             if (video_save_flow)
