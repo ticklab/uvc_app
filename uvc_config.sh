@@ -87,8 +87,8 @@ mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/mjpeg/m
 configure_uvc_resolution_mjpeg 640 480
 configure_uvc_resolution_mjpeg 1280 720
 configure_uvc_resolution_mjpeg 1920 1080
-configure_uvc_resolution_mjpeg 2560 1440
-configure_uvc_resolution_mjpeg 2592 1944
+#configure_uvc_resolution_mjpeg 2560 1440
+#configure_uvc_resolution_mjpeg 2592 1944
 
 ## h.264 support config
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/framebased/f
