@@ -125,11 +125,12 @@ if [ -e ${USB_CONFIGS_DIR}/ffs.adb ]; then
 else
    ls ${USB_CONFIGS_DIR} | grep f[0-9] | xargs -I {} rm ${USB_CONFIGS_DIR}/{}
 fi
-ln -s /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6 /sys/kernel/config/usb_gadget/rockchip/configs/b.1/f1
 
 if [ "$1"x == "rndis"x  ]; then
    ln -s /sys/kernel/config/usb_gadget/rockchip/functions/rndis.gs0 /sys/kernel/config/usb_gadget/rockchip/configs/b.1/f2
 fi
+
+ln -s /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6 /sys/kernel/config/usb_gadget/rockchip/configs/b.1/f1
 
 UDC=`ls /sys/class/udc/| awk '{print $1}'`
 echo $UDC > /sys/kernel/config/usb_gadget/rockchip/UDC
