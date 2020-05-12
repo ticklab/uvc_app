@@ -175,7 +175,6 @@ static void camera_stop(struct Camera_Stream *stream)
 
     if (stream)
         free(stream);
-
     pthread_rwlock_unlock(&notelock);
 }
 
@@ -260,7 +259,7 @@ static void *uvc_camera(void *arg)
 record_exit:
     printf("%s exit\n", __func__);
     system("killall mediaserver");
-    usleep(500000);
+    //usleep(500000);//rkisp requst the stream without init aiq close first!
     if (stream->uvc_flow_output) {
         if (stream->input) {
             if (video_save_flow)
@@ -271,8 +270,11 @@ record_exit:
             video_save_flow.reset();
     }
     camera_stop(stream);
+    usleep(500000);//make sure rkispp deint
 
     stream = NULL;
+    if(stream_list)
+        stream_list = NULL;
     pthread_exit(NULL);
 }
 
@@ -302,6 +304,10 @@ extern "C" int camera_control_start(int id, int width, int height, int fps)
     stream->deviceid = id;
 
     printf("stream%d is uvc video device\n", stream->deviceid);
+    while (stream_list) {
+        printf("%s wait for release stream_list!\n", __func__);
+        usleep(100000);//wait for next
+    }
     stream_list = stream;
     if (pthread_create(&stream->record_id, NULL, uvc_camera, stream))
     {
