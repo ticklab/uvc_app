@@ -83,17 +83,23 @@ ln -s /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/header/h 
 
 ##mjpeg support config
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/mjpeg/m
+configure_uvc_resolution_mjpeg 320 240
+configure_uvc_resolution_mjpeg 640 360
 configure_uvc_resolution_mjpeg 640 480
+configure_uvc_resolution_mjpeg 768 448
 configure_uvc_resolution_mjpeg 1280 720
+configure_uvc_resolution_mjpeg 1024 768
 configure_uvc_resolution_mjpeg 1920 1080
-#configure_uvc_resolution_mjpeg 2560 1440
+configure_uvc_resolution_mjpeg 2560 1440
 #configure_uvc_resolution_mjpeg 2592 1944
 
 ## h.264 support config
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/framebased/f
 configure_uvc_resolution_h264 640 480
-##configure_uvc_resolution_h264 1280 720
+configure_uvc_resolution_h264 1280 720
 configure_uvc_resolution_h264 1920 1080
+configure_uvc_resolution_h264 2560 1440
+configure_uvc_resolution_h264 3840 2160
 
 
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/header/h

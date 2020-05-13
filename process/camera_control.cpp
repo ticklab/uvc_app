@@ -159,32 +159,27 @@ static struct Camera_Stream *getfastvideo(void)
 
 static void camera_stop(struct Camera_Stream *stream)
 {
-    pthread_rwlock_wrlock(&notelock);
     printf("%s \n", __func__);
-    if (stream->input)
-    {
-        if (stream->uvc_flow)
-            stream->input->RemoveDownFlow(stream->uvc_flow);
-        stream->input.reset();
-    }
-    if (stream->uvc_flow)
-        stream->uvc_flow.reset();
-
-    pthread_mutex_destroy(&stream->record_mutex);
-    pthread_cond_destroy(&stream->record_cond);
-
-    if (stream)
-        free(stream);
-    pthread_rwlock_unlock(&notelock);
 }
 
 static void *uvc_camera(void *arg)
 {
     struct Camera_Stream *stream = (struct Camera_Stream *)arg;
-    printf("%s \n", __func__);
+    printf("%s :uvc width:%d,height:%d \n", __func__,stream->width,stream->height);
     prctl(PR_SET_NAME, "uvc_camera", 0, 0, 0);
-
-    std::shared_ptr<easymedia::Flow> video_save_flow;
+    int needRGA = 0;
+    int rga_width = 0;
+    int rga_height = 0;
+    if(stream->height < 480){
+      printf("usb RGA for isp resolusion \n");
+      rga_width = stream->width;
+      rga_height = stream->height;
+      stream->height = 720;
+      stream->width = 1280;
+      needRGA = 1;
+    }
+    std::shared_ptr<easymedia::Flow> video_rga_flow=NULL;
+    std::shared_ptr<easymedia::Flow> video_save_flow=NULL;
    // std::string input_path = "/dev/video0";
     std::string input_path = "rkispp_scale0";//"/dev/video0"; //isp main path
     std::string input_format = IMAGE_NV12;
@@ -244,7 +239,40 @@ static void *uvc_camera(void *arg)
             fprintf(stderr, "Create flow UVCJoinFlow failed\n");
             goto record_exit;
         }
-        stream->input->AddDownFlow(stream->uvc_flow, 0, 0);
+        if(needRGA) {
+             flow_name = "filter";
+             flow_param = "";
+             PARAM_STRING_APPEND(flow_param, KEY_NAME, "rkrga");
+             PARAM_STRING_APPEND(flow_param, KEY_INPUTDATATYPE, input_format);
+             //Set output buffer type.
+             PARAM_STRING_APPEND(flow_param, KEY_OUTPUTDATATYPE, input_format);
+             //Set output buffer size.
+             PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_WIDTH, rga_width);
+             PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_HEIGHT, rga_height);
+             PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_VIR_WIDTH, rga_width);
+             PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_VIR_HEIGHT, rga_height);
+             std::string filter_param = "";
+             ImageRect src_rect = {0, 0, stream->width, stream->height};
+             ImageRect dst_rect = {0, 0, rga_width, rga_height};
+             std::vector<ImageRect> rect_vect;
+             rect_vect.push_back(src_rect);
+             rect_vect.push_back(dst_rect);
+             PARAM_STRING_APPEND(filter_param, KEY_BUFFER_RECT,
+             easymedia::TwoImageRectToString(rect_vect).c_str());
+             PARAM_STRING_APPEND_TO(filter_param, KEY_BUFFER_ROTATE, 0);
+             flow_param = easymedia::JoinFlowParam(flow_param, 1, filter_param);
+             printf("\n#Rkrga Filter flow param:\n%s\n", flow_param.c_str());
+             video_rga_flow = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
+             flow_name.c_str(), flow_param.c_str());
+             if (!video_rga_flow) {
+                 fprintf(stderr, "Create flow %s failed\n", flow_name.c_str());
+                 goto record_exit;
+              }
+              video_rga_flow->AddDownFlow(stream->uvc_flow, 0, 0);
+              stream->input->AddDownFlow(video_rga_flow, 0, 0);
+        } else {
+              stream->input->AddDownFlow(stream->uvc_flow, 0, 0);
+        }
     }
 
     printf("%s start,uvc_flow_output=%d\n", __func__, stream->uvc_flow_output);
@@ -258,6 +286,7 @@ static void *uvc_camera(void *arg)
 
 record_exit:
     printf("%s exit\n", __func__);
+    pthread_rwlock_wrlock(&notelock);
     system("killall -9 mediaserver");
     //usleep(500000);//rkisp requst the stream without init aiq close first!
     if (stream->uvc_flow_output) {
@@ -269,7 +298,30 @@ record_exit:
         if (video_save_flow)
             video_save_flow.reset();
     }
-    camera_stop(stream);
+    if (stream->input)
+    {
+        if (stream->uvc_flow) {
+          if (needRGA) {
+            stream->input->RemoveDownFlow(video_rga_flow);
+            stream->input.reset();
+            video_rga_flow->RemoveDownFlow(stream->uvc_flow);
+            video_rga_flow.reset();
+          } else {
+            stream->input->RemoveDownFlow(stream->uvc_flow);
+            stream->input.reset();
+          }
+        }
+        stream->uvc_flow.reset();
+    }
+
+    pthread_mutex_destroy(&stream->record_mutex);
+    pthread_cond_destroy(&stream->record_cond);
+
+    if (stream)
+        free(stream);
+    pthread_rwlock_unlock(&notelock);
+
+    //camera_stop(stream);
     usleep(500000);//make sure rkispp deint
 
     stream = NULL;
