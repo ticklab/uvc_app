@@ -44,6 +44,7 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc)
     e->height = -1;
     e->width = width;
     e->height = height;
+    e->fcc = fcc;
     mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc);
     //mpi_enc_cmd_config_mjpg(&e->mpi_cmd, width, height);
     if(fcc == V4L2_PIX_FMT_YUYV)
@@ -56,10 +57,12 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc)
 
 void uvc_encode_exit(struct uvc_encode *e)
 {
-    mpi_enc_test_deinit(&e->mpi_data);
+    if(e->fcc != V4L2_PIX_FMT_YUYV)
+        mpi_enc_test_deinit(&e->mpi_data);
     e->video_id = -1;
     e->width = -1;
     e->height = -1;
+    e->fcc = -1;
 }
 
 bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)

@@ -44,6 +44,7 @@ struct uvc_encode {
     int width;
     int height;
     int video_id;
+    int fcc;
     MpiEncTestCmd mpi_cmd;
     MpiEncTestData *mpi_data;
     void* extra_data;
