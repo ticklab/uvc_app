@@ -258,7 +258,7 @@ static void *uvc_camera(void *arg)
 
 record_exit:
     printf("%s exit\n", __func__);
-    system("killall mediaserver");
+    system("killall -9 mediaserver");
     //usleep(500000);//rkisp requst the stream without init aiq close first!
     if (stream->uvc_flow_output) {
         if (stream->input) {
