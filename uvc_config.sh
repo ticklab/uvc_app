@@ -69,7 +69,7 @@ fi
 
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6
 echo 3072 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket
-cat /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket
+echo 2 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/uvc_num_request
 #echo 1 > /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_bulk
 
 mkdir /sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/control/header/h
