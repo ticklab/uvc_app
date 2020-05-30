@@ -404,8 +404,10 @@ extern "C" int camera_control_stop(int deviceid)
 {
     struct Camera_Stream *stream;
 
-    pthread_rwlock_rdlock(&notelock);
     stream = getfastvideo();
+    if(!stream)
+       usleep(200000);//wait for stream on over
+    pthread_rwlock_rdlock(&notelock);
     while (stream)
     {
         if (stream->deviceid == deviceid)
