@@ -276,7 +276,7 @@ static void *uvc_camera(void *arg)
     }
 
     printf("%s start,uvc_flow_output=%d\n", __func__, stream->uvc_flow_output);
-    system("mediaserver -d -c /oem/usr/share/mediaserver/camera_nv12_rga_nn_link.conf &");
+    //system("mediaserver -d -c /oem/usr/share/mediaserver/camera_nv12_rga_nn_link.conf &");
 
     while (stream->pthread_run)
     {
@@ -287,7 +287,7 @@ static void *uvc_camera(void *arg)
 record_exit:
     printf("%s exit\n", __func__);
     pthread_rwlock_wrlock(&notelock);
-    system("killall -9 mediaserver");
+    //system("killall -9 mediaserver");
     //usleep(500000);//rkisp requst the stream without init aiq close first!
     if (stream->uvc_flow_output) {
         if (stream->input) {
