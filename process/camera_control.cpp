@@ -66,6 +66,7 @@ struct Camera_Stream
     int width;
     int height;
     int fps;
+    int eptz;
     pthread_mutex_t record_mutex;
     pthread_cond_t record_cond;
     std::shared_ptr<easymedia::Flow> input;
@@ -330,7 +331,7 @@ record_exit:
     pthread_exit(NULL);
 }
 
-extern "C" int camera_control_start(int id, int width, int height, int fps)
+extern "C" int camera_control_start(int id, int width, int height, int fps, int eptz)
 {
     struct Camera_Stream *stream;
     int ret = 0;
@@ -354,6 +355,7 @@ extern "C" int camera_control_start(int id, int width, int height, int fps)
     stream->width = width;
     stream->height = height;
     stream->deviceid = id;
+    stream->eptz = eptz;
 
     printf("stream%d is uvc video device\n", stream->deviceid);
     while (stream_list) {

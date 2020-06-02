@@ -46,9 +46,7 @@
 #include <errno.h>
 #include <pthread.h>
 
-//#include "process/video.h"
 #include "uvc-gadget.h"
-//#include "uvc_iq_tool.h"
 
 /* Enable debug prints. */
 //#define ENABLE_BUFFER_DEBUG
@@ -137,6 +135,9 @@ static int silent=1;
 #define PU_HUE_AUTO_MAX_VAL         255
 #define PU_HUE_AUTO_STEP_SIZE       1
 #define PU_HUE_AUTO_DEFAULT_VAL     127
+
+#define XU_CAMERA_VERSION_DEFAULT  "1100010233010110010"
+#define XU_EPTZ_FLAG_DEFAULT_VAL     0
 
 /* ---------------------------------------------------------------------------
  * UVC specific stuff
@@ -883,6 +884,7 @@ uvc_open(struct uvc_device **uvc, char *devname)
     printf("uvc open succeeded, file descriptor = %d\n", fd);
 
     dev->uvc_fd = fd;
+    dev->eptz_flag = XU_EPTZ_FLAG_DEFAULT_VAL;
 
     dev->brightness_val = PU_BRIGHTNESS_DEFAULT_VAL;
     dev->contrast_val = PU_CONTRAST_DEFAULT_VAL;
@@ -894,6 +896,9 @@ uvc_open(struct uvc_device **uvc, char *devname)
     dev->gain_val = PU_GAIN_DEFAULT_VAL;
     dev->hue_auto_val = PU_HUE_AUTO_DEFAULT_VAL;
     dev->power_line_frequency_val = V4L2_CID_POWER_LINE_FREQUENCY_50HZ;
+
+    char *ver = XU_CAMERA_VERSION_DEFAULT;
+    strncpy(dev->ex_sn_data, ver, MAX_UVC_REQUEST_DATA_LENGTH);
 
     *uvc = dev;
 
@@ -1403,7 +1408,7 @@ uvc_handle_streamon_event(struct uvc_device *dev)
     uvc_control_init(dev->width, dev->height, dev->fcc);
 
     set_uvc_control_start(dev->video_id, dev->width, dev->height,
-                                  dev->fps);
+                                  dev->fps,dev->eptz_flag);
     return 0;
 
 err:
@@ -2237,153 +2242,40 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
 
         break;
 
+/* Extension unit 'UVC_VC_Extension_Unit'. */
     case 6:
         switch (cs) {
-        case 1:
-            switch (req) {
+        case CMD_GET_CAMERA_VERSION:
+           switch (req) {
             case UVC_GET_LEN:
-                resp->data[0] = 0x4;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = sizeof(resp->data);
                 resp->length = len;
-                /*
-                 * For every successfully handled control
-                 * request set the request error code to no
-                 * error
-                 */
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_SET_CUR:
-                resp->data[0] = 0x0;
-                resp->length = len;
-                /*
-                 * For every successfully handled control
-                 * request set the request error code to no
-                 * error
-                 */
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_MIN:
-                resp->data[0] = 0;
-                resp->length = 4;
-                /*
-                 * For every successfully handled control
-                 * request set the request error code to no
-                 * error
-                 */
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_MAX:
-                resp->data[0] = 0xFF;
-                resp->data[1] = 0xFF;
-                resp->data[2] = 0xFF;
-                resp->data[3] = 0xFF;
-                resp->length = 4;
-                /*
-                 * For every successfully handled control
-                 * request set the request error code to no
-                 * error
-                 */
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_CUR:
-                resp->length = len < sizeof(dev->extension_io_data) ? len : sizeof(dev->extension_io_data);
-                memcpy(resp->data, dev->extension_io_data, resp->length);
-                /*
-                 * For every successfully handled control
-                 * request set the request error code to no
-                 * error
-                 */
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_INFO:
-                /*
-                 * We support Set and Get requests and don't
-                 * support async updates on an interrupt endpt
-                 */
-                resp->data[0] = 0x03;
-                resp->length = 1;
-                /*
-                 * For every successfully handled control
-                 * request, set the request error code to no
-                 * error.
-                 */
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_DEF:
-                resp->data[0] = 0;
-                resp->length = 4;
-                /*
-                 * For every successfully handled control
-                 * request, set the request error code to no
-                 * error.
-                 */
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_RES:
-                resp->data[0] = 1;
-                resp->length = 4;
-                /*
-                 * For every successfully handled control
-                 * request, set the request error code to no
-                 * error.
-                 */
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            default:
-                /*
-                 * We don't support this control, so STALL the
-                 * default control ep.
-                 */
-                resp->length = -EL2HLT;
-                /*
-                 * For every unsupported control request
-                 * set the request error code to appropriate
-                 * code.
-                 */
-                dev->request_error_code.data[0] = 0x07;
-                dev->request_error_code.length = 1;
-                break;
-            }
-            break;
-
-        case 2:
-            switch (req) {
-            case UVC_GET_LEN:
-                resp->data[0] = 0x10;
-                resp->data[1] = 0x00;
-                resp->length = 2;
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_SET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 0x0;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MIN:
-                resp->data[0] = 0;
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MAX:
-                resp->data[0] = 0xFF;
+                memset(resp->data, 0xFF, sizeof(resp->data));
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_CUR:
-                resp->length = len;
-                if (sizeof(dev->ex_ctrl) >= resp->length)
-                    memcpy(resp->data, dev->ex_ctrl, resp->length);
+                resp->length = len < sizeof(dev->ex_sn_data) ? len : sizeof(dev->ex_sn_data);
+                memcpy(resp->data, dev->ex_sn_data, resp->length);
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
@@ -2394,12 +2286,14 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 0;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 1;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
@@ -2413,44 +2307,37 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             }
             break;
 
-        case 3:
-            switch (req) {
+        case CMD_SET_CAMERA_IP:
+           switch (req) {
             case UVC_GET_LEN:
-                if (!dev->ex_ctrl[1] && !dev->ex_ctrl[2]) {
-                    resp->data[0] = 0x02;
-                    resp->data[1] = 0x00;
-                } else {
-                    resp->data[0] = dev->ex_ctrl[1];
-                    resp->data[1] = dev->ex_ctrl[2];
-                }
-                resp->length = 2;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = sizeof(resp->data);
+                resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_SET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 0x0;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MIN:
-                resp->data[0] = 0;
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MAX:
-                resp->data[0] = 0xFF;
+                memset(resp->data, 0xFF, sizeof(resp->data));
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_CUR:
-                resp->length = len;
-                if (sizeof(dev->ex_data) >= resp->length) {
-                    //memcpy(resp->data, dev->ex_data, resp->length);
-                    //uvc_iq_tool_get_data(dev->ex_ctrl, resp->data, resp->length);
-                }
+                resp->length = len < sizeof(dev->ex_ip_data) ? len : sizeof(dev->ex_ip_data);
+                memcpy(resp->data, dev->ex_ip_data, resp->length);
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
@@ -2461,12 +2348,14 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 0;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 1;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
@@ -2479,6 +2368,70 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 break;
             }
             break;
+
+        case CMD_SET_EPTZ:
+           switch (req) {
+            case UVC_GET_LEN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = sizeof(resp->data);
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_SET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                memset(resp->data, 0xFF, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                resp->length = 1;
+                memcpy(&resp->data[0], &dev->eptz_flag,
+                       resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 1;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
+
 
         default:
             /*
@@ -2726,31 +2679,31 @@ uvc_events_process_control_data(struct uvc_device *dev,
         }
 
         break;
-
+    /* Extension unit 'UVC_VC_Extension_Unit'. */
     case 6:
         switch (cs) {
-        case 1:
-            if (sizeof(dev->extension_io_data) >= data->length) {
-                memcpy(dev->extension_io_data, data->data, data->length);
-                printf("extension ctrl 1 set cur data: 0x%02x\n", dev->extension_io_data[0]);
+        case CMD_SET_EPTZ:
+            if (sizeof(dev->eptz_flag) >= data->length) {
+                memcpy(&dev->eptz_flag, data->data, data->length);
+                printf("extension ctrl 1 set cur data: %d\n", dev->eptz_flag);
             }
             break;
 
-        case 2:
-            if (sizeof(dev->ex_ctrl) >= data->length) {
-                memcpy(dev->ex_ctrl, data->data, data->length);
-                printf("extension control: 0x%02x 0x%02x 0x%02x\n",
-                       dev->ex_ctrl[0], dev->ex_ctrl[1], dev->ex_ctrl[2]);
-                //if (dev->ex_ctrl[0] == 0xc5)
-                //    video_record_get_flt_parameter(dev->ex_ctrl[3], dev->ex_ctrl[4]);
+        case CMD_GET_CAMERA_VERSION:
+            if (sizeof(dev->ex_sn_data) >= data->length) {
+                memcpy(dev->ex_sn_data, data->data, data->length);
+                printf("extension sn control: 0x%02x 0x%02x 0x%02x\n",
+                       dev->ex_sn_data[0], dev->ex_sn_data[1], dev->ex_sn_data[2]);
+                //if (dev->ex_ip_data[0] == 0xc5)
+                //    video_record_get_flt_parameter(dev->ex_ip_data[3], dev->ex_ip_data[4]);
             }
             break;
 
-        case 3:
-            if (sizeof(dev->ex_data) >= data->length) {
-                memcpy(dev->ex_data, data->data, data->length);
-                //uvc_iq_tool_set_data(data->data, data->length);
-                printf("extension data: 0x%02x 0x%02x\n", dev->ex_data[0], dev->ex_data[1]);
+        case CMD_SET_CAMERA_IP:
+            if (sizeof(dev->ex_ip_data) >= data->length) {
+                memcpy(dev->ex_ip_data, data->data, data->length);
+                printf("extension data: 0x%02x 0x%02x\n", dev->ex_ip_data[0], dev->ex_ip_data[1]);
+                //todo
             }
             break;
 

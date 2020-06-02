@@ -85,6 +85,20 @@ extern "C" {
  * Generic stuff
  */
 
+enum XuCmd {
+    CMD_GET_CAMERA_VERSION = 0x01,
+    CMD_SET_CAMERA_IP,
+    CMD_START_CAMERA,
+    CMD_SHUTDOWN_CAMERA,
+    CMD_RESET_CAMERA,
+    CMD_SET_MOTOR_RATE = 0x06,
+    CMD_SET_MOTOR_BY_STEPS = 0x07,
+    CMD_SET_MOTOR_BY_USER = 0x08,
+    CMD_STOP_MOTOR_BY_USER = 0x09,
+    CMD_SET_EPTZ = 0x0a,
+    CMD_MAX_NUM = CMD_SET_EPTZ,
+};
+
 /* IO methods supported */
 enum io_method {
     IO_METHOD_MMAP,
@@ -122,9 +136,10 @@ struct uvc_device {
     unsigned int gain_val;
     unsigned int hue_auto_val;
     unsigned char power_line_frequency_val;
-    unsigned char extension_io_data[32];
-    unsigned char ex_ctrl[16];//byte:1 command, 2-3 data length, 4-16 no use
-    unsigned char ex_data[MAX_UVC_REQUEST_DATA_LENGTH];
+    unsigned char ex_sn_data[MAX_UVC_REQUEST_DATA_LENGTH];
+    unsigned char ex_ip_data[MAX_UVC_REQUEST_DATA_LENGTH];//
+    unsigned char ex_date_data[MAX_UVC_REQUEST_DATA_LENGTH];
+    unsigned int eptz_flag;
 
     /* uvc buffer specific */
     enum io_method io;

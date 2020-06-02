@@ -59,10 +59,10 @@ extern "C"
     void add_uvc_video();
     void uvc_control_loop(void);
     int check_uvc_video_id(void);
-    void set_uvc_control_start(int video_id, int width, int height, int fps);
+    void set_uvc_control_start(int video_id, int width, int height, int fps, int eptz);
     void set_uvc_control_stop(void);
     void set_uvc_control_restart(void);
-    void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps));
+    void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps, int eptz));
     void uvc_control_stop_setcallback(void (*callback)());
     void uvc_control_init(int width, int height, int fcc);
     void uvc_control_exit();
