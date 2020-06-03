@@ -45,7 +45,7 @@
 #define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/bInterfaceNumber"
 //#define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_intf"
 
-static void (*camera_start_callback)(int fd, int width, int height, int fps, int eptz);
+static void (*camera_start_callback)(int fd, int width, int height, int fps, int format, int eptz);
 static void (*camera_stop_callback)();
 
 struct uvc_ctrl
@@ -56,13 +56,14 @@ struct uvc_ctrl
     int width;
     int height;
     int fps;
+    int format;
     int eptz;
 };
 
 static struct uvc_ctrl uvc_ctrl[3] = {
-    {-1, false, false, -1, -1, -1, 0},
-    {-1, false, false, -1, -1, -1, 0},
-    {-1, false, false, -1, -1, -1, 0}, //isp
+    {-1, false, false, -1, -1, -1, 1,0},
+    {-1, false, false, -1, -1, -1, 1,0},
+    {-1, false, false, -1, -1, -1, 1,0}, //isp
 };
 
 struct uvc_encode uvc_enc;
@@ -110,7 +111,7 @@ int get_uvc_streaming_intf(void)
     return uvc_streaming_intf;
 }
 
-void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps, int eptz))
+void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps, int format, int eptz))
 {
     camera_start_callback = callback;
 }
@@ -284,12 +285,12 @@ void uvc_control_loop(void)
 
     if (uvc_ctrl[2].start)
     {
-        printf("%s: video_id:%d, width:%d,height:%d,fps:%d,eptz:%d !\n", __func__,
-               uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].eptz);
+        printf("%s: video_id:%d, width:%d,height:%d,fps:%d,format:%d,eptz:%d !\n", __func__,
+               uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].format,uvc_ctrl[2].eptz);
         if (camera_start_callback)
         {
             printf("%s  camera_start_callback start!\n", __func__);
-            camera_start_callback(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].eptz);
+            camera_start_callback(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps,uvc_ctrl[2].format, uvc_ctrl[2].eptz);
         }
         //camera_control_start(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
         uvc_ctrl[2].start = false;
@@ -340,7 +341,7 @@ void uvc_control_join(uint32_t flags)
     }
 }
 
-void set_uvc_control_start(int video_id, int width, int height, int fps,int eptz)
+void set_uvc_control_start(int video_id, int width, int height, int fps,int format, int eptz)
 {
     printf("%s!\n", __func__);
     if (uvc_video_id_get(0) == video_id)
@@ -350,6 +351,7 @@ void set_uvc_control_start(int video_id, int width, int height, int fps,int eptz
         uvc_ctrl[2].width = width;
         uvc_ctrl[2].height = height;
         uvc_ctrl[2].fps = fps;
+        uvc_ctrl[2].format = format;
         uvc_ctrl[2].start = true;
         uvc_ctrl[2].eptz = eptz;
     }

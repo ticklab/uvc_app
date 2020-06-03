@@ -72,12 +72,33 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
     int width, height;
     int jpeg_quant;
     void* hnd = NULL;
-
+#if RK_MPP_ENC_TEST_NATIVE
+    fcc = TEST_ENC_TPYE;
+#else
     if (!uvc_get_user_run_state(e->video_id) || !uvc_buffer_write_enable(e->video_id))
         return false;
 
     uvc_get_user_resolution(&width, &height, e->video_id);
     fcc = uvc_get_user_fcc(e->video_id);
+#endif
+
+    if (e->mpi_data->fp_input) {
+        fwrite(virt, 1, size, e->mpi_data->fp_input);
+#if RK_MPP_DYNAMIC_DEBUG_ON
+        if (access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
+            fclose(e->mpi_data->fp_input);
+            e->mpi_data->fp_input = NULL;
+            printf("debug in file close\n");
+        }
+    } else if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
+        e->mpi_data->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
+        if (e->mpi_data->fp_input) {
+            fwrite(virt, 1, size, e->mpi_data->fp_input);
+            printf("warnning:debug in file open, open it will lower the fps\n");
+        }
+#endif
+    }
+
     switch (fcc) {
     case V4L2_PIX_FMT_YUYV:
         if (virt)

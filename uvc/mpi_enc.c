@@ -75,25 +75,24 @@ static MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
         cmd->num_frames = 1;
     p->num_frames   = cmd->num_frames;
 
-    if (cmd->have_input) {
-        p->fp_input = fopen(cmd->file_input, "rb");
-        if (NULL == p->fp_input) {
-            printf("failed to open input file %s\n", cmd->file_input);
-            printf("create default yuv image for test\n");
-        }
-    }
-
     mpi_get_env_u32("uvc_enc_out", &cmd->have_output, 0);
 
-    if (cmd->have_output) {
-        char *next = "/data/uvc_enc_out.bin";
-        strncpy(cmd->file_output, next, MAX_FILE_NAME_LENGTH);
-        cmd->file_output[strlen(next)] = '\0';
-        p->fp_output = fopen(cmd->file_output, "w+b");
+    if (cmd->have_output || !access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0)) {
+        p->fp_output = fopen(RK_MPP_DEBUG_OUT_FILE, "w+b");
         if (NULL == p->fp_output) {
-            printf("failed to open output file %s\n", cmd->file_output);
+            printf("failed to open output file %s\n", RK_MPP_DEBUG_OUT_FILE);
             ret = MPP_ERR_OPEN_FILE;
         }
+        printf("debug out file open\n");
+    }
+
+    if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
+        p->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
+        if (NULL == p->fp_input) {
+            printf("failed to open in file %s\n", RK_MPP_DEBUG_IN_FILE);
+            ret = MPP_ERR_OPEN_FILE;
+        }
+        printf("warnning:debug in file open, open it will lower the fps\n");
     }
 
     // update resource parameter
@@ -143,148 +142,146 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
     MPP_RET ret;
     MppApi *mpi;
     MppCtx ctx;
-    MppEncCodecCfg *codec_cfg;
-    MppEncPrepCfg *prep_cfg;
-    MppEncRcCfg *rc_cfg;
-    MppPollType block = MPP_POLL_BLOCK;
+    MppEncCfg cfg;
+    MppEncRcMode rc_mode = MPP_ENC_RC_MODE_CBR;
 
     if (NULL == p)
         return MPP_ERR_NULL_PTR;
 
     mpi_get_env_u32("enc_version", &p->enc_version, RK_MPP_VERSION_DEFAULT);
-    printf("enc_version:%d\n", p->enc_version);
+    printf("enc_version:%d,RK_MPP_USE_FULL_RANGE:%d\n",
+           p->enc_version, RK_MPP_USE_FULL_RANGE);
 
     mpi = p->mpi;
     ctx = p->ctx;
-    codec_cfg = &p->codec_cfg;
-    prep_cfg = &p->prep_cfg;
-    rc_cfg = &p->rc_cfg;
+    cfg = p->cfg;
 
     /* setup default parameter */
-    p->fps = 30;
+    if (p->fps_in_den == 0)
+        p->fps_in_den = 1;
+    if (p->fps_in_num == 0)
+        p->fps_in_num = 30;
+    if (p->fps_out_den == 0)
+        p->fps_out_den = 1;
+    if (p->fps_out_num == 0)
+        p->fps_out_num = 30;
     p->gop = 60;
-    p->bps = p->width * p->height / 8 * p->fps;
+    if (!p->bps)
+        p->bps = p->width * p->height / 8 * (p->fps_out_num / p->fps_out_den);
+    mpp_enc_cfg_set_s32(cfg, "prep:width", p->width);
+    mpp_enc_cfg_set_s32(cfg, "prep:height", p->height);
+    mpp_enc_cfg_set_s32(cfg, "prep:hor_stride", p->hor_stride);
+    mpp_enc_cfg_set_s32(cfg, "prep:ver_stride", p->ver_stride);
+    mpp_enc_cfg_set_s32(cfg, "prep:format", p->fmt);
 
-    prep_cfg->change        = MPP_ENC_PREP_CFG_CHANGE_INPUT |
-                              MPP_ENC_PREP_CFG_CHANGE_ROTATION |
-                              MPP_ENC_PREP_CFG_CHANGE_FORMAT;
-    prep_cfg->width         = p->width;
-    prep_cfg->height        = p->height;
-    prep_cfg->hor_stride    = p->hor_stride;
-    prep_cfg->ver_stride    = p->ver_stride;
-    prep_cfg->format        = p->fmt;
-    prep_cfg->rotation      = MPP_ENC_ROT_0;
-    ret = mpi->control(ctx, MPP_ENC_SET_PREP_CFG, prep_cfg);
-    if (ret) {
-        printf("mpi control enc set prep cfg failed ret %d\n", ret);
-        goto RET;
-    }
-
-    ret = mpi->control(ctx, MPP_SET_OUTPUT_TIMEOUT, (MppParam)&block);
-    if (MPP_OK != ret) {
-        printf("mpi->control MPP_SET_OUTPUT_TIMEOUT failed\n");
-        goto RET;
-    }
-
-    rc_cfg->change  = MPP_ENC_RC_CFG_CHANGE_ALL;
-    rc_cfg->rc_mode = MPP_ENC_RC_MODE_CBR;
-    rc_cfg->quality = MPP_ENC_RC_QUALITY_MEDIUM;
-
-    if (rc_cfg->rc_mode == MPP_ENC_RC_MODE_CBR) {
-        /* constant bitrate has very small bps range of 1/16 bps */
-        rc_cfg->bps_target   = p->bps;
-        rc_cfg->bps_max      = p->bps * 17 / 16;
-        rc_cfg->bps_min      = p->bps * 15 / 16;
-    } else if (rc_cfg->rc_mode ==  MPP_ENC_RC_MODE_VBR) {
-        if (rc_cfg->quality == MPP_ENC_RC_QUALITY_CQP) {
-            /* constant QP does not have bps */
-            rc_cfg->bps_target   = -1;
-            rc_cfg->bps_max      = -1;
-            rc_cfg->bps_min      = -1;
-        } else {
-            /* variable bitrate has large bps range */
-            rc_cfg->bps_target   = p->bps;
-            rc_cfg->bps_max      = p->bps * 17 / 16;
-            rc_cfg->bps_min      = p->bps * 1 / 16;
-        }
+    mpp_enc_cfg_set_s32(cfg, "rc:mode", rc_mode);
+    switch (rc_mode) {
+    case MPP_ENC_RC_MODE_FIXQP : {
+        /* do not set bps on fix qp mode */
+    } break;
+    case MPP_ENC_RC_MODE_CBR : {
+        /* CBR mode has narrow bound */
+        mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->bps);
+        mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->bps * 17 / 16);
+        mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->bps * 15 / 16);
+    } break;
+    case MPP_ENC_RC_MODE_VBR : {
+        /* CBR mode has wide bound */
+        mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->bps);
+        mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->bps * 17 / 16);
+        mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->bps * 1 / 16);
+    } break;
+    default : {
+        printf("unsupport encoder rc mode %d\n", rc_mode);
+    } break;
     }
 
     /* fix input / output frame rate */
-    rc_cfg->fps_in_flex      = 0;
-    rc_cfg->fps_in_num       = p->fps;
-    rc_cfg->fps_in_denorm    = 1;
-    rc_cfg->fps_out_flex     = 0;
-    rc_cfg->fps_out_num      = p->fps;
-    rc_cfg->fps_out_denorm   = 1;
+    mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
+    mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", p->fps_in_num);
+    mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", p->fps_in_den);
+    mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
+    mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
+    mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+    mpp_enc_cfg_set_s32(cfg, "rc:gop", p->gop);
 
-    rc_cfg->gop              = p->gop;
-    rc_cfg->skip_cnt         = 0;
-
-    printf("mpi_enc_test bps %d fps %d gop %d\n",
-            rc_cfg->bps_target, rc_cfg->fps_out_num, rc_cfg->gop);
-    ret = mpi->control(ctx, MPP_ENC_SET_RC_CFG, rc_cfg);
-    if (ret) {
-        printf("mpi control enc set rc cfg failed ret %d\n", ret);
-        goto RET;
-    }
-
-    codec_cfg->coding = p->type;
-    switch (codec_cfg->coding) {
+    /* setup codec  */
+    mpp_enc_cfg_set_s32(cfg, "codec:type", p->type);
+    switch (p->type) {
     case MPP_VIDEO_CodingAVC : {
-        codec_cfg->h264.change = MPP_ENC_H264_CFG_CHANGE_PROFILE |
-                                 MPP_ENC_H264_CFG_CHANGE_ENTROPY |
-                                 MPP_ENC_H264_CFG_CHANGE_TRANS_8x8;
         /*
-         * H.264 profile_idc parameter
-         * 66  - Baseline profile
-         * 77  - Main profile
-         * 100 - High profile
-         */
-        codec_cfg->h264.profile  = 100;
+        * H.264 profile_idc parameter
+        * 66  - Baseline profile
+        * 77  - Main profile
+        * 100 - High profile
+        */
+        mpp_enc_cfg_set_s32(cfg, "h264:profile", 100);
         /*
-         * H.264 level_idc parameter
-         * 10 / 11 / 12 / 13    - qcif@15fps / cif@7.5fps / cif@15fps / cif@30fps
-         * 20 / 21 / 22         - cif@30fps / half-D1@@25fps / D1@12.5fps
-         * 30 / 31 / 32         - D1@25fps / 720p@30fps / 720p@60fps
-         * 40 / 41 / 42         - 1080p@30fps / 1080p@30fps / 1080p@60fps
-         * 50 / 51 / 52         - 4K@30fps
-         */
-        codec_cfg->h264.level    = 40;
-        codec_cfg->h264.entropy_coding_mode  = 1;
-        codec_cfg->h264.cabac_init_idc  = 0;
-        codec_cfg->h264.transform8x8_mode = 1;
+        * H.264 level_idc parameter
+        * 10 / 11 / 12 / 13        - qcif@15fps / cif@7.5fps / cif@15fps / cif@30fps
+        * 20 / 21 / 22                 - cif@30fps / half-D1@@25fps / D1@12.5fps
+        * 30 / 31 / 32                 - D1@25fps / 720p@30fps / 720p@60fps
+        * 40 / 41 / 42                 - 1080p@30fps / 1080p@30fps / 1080p@60fps
+        * 50 / 51 / 52                 - 4K@30fps
+        */
+        mpp_enc_cfg_set_s32(cfg, "h264:level", 40);
+        mpp_enc_cfg_set_s32(cfg, "h264:cabac_en", 1);
+        mpp_enc_cfg_set_s32(cfg, "h264:cabac_idc", 0);
+        mpp_enc_cfg_set_s32(cfg, "h264:trans8x8", 1);
     } break;
     case MPP_VIDEO_CodingMJPEG : {
-        codec_cfg->jpeg.change  = MPP_ENC_JPEG_CFG_CHANGE_QP;
-        codec_cfg->jpeg.quant   = 7;
+        mpp_enc_cfg_set_s32(cfg, "jpeg:quant", 7);
     } break;
     case MPP_VIDEO_CodingVP8 : {
     } break;
     case MPP_VIDEO_CodingHEVC : {
-        codec_cfg->h265.change = MPP_ENC_H265_CFG_INTRA_QP_CHANGE;
-        codec_cfg->h265.intra_qp = 26;
+        mpp_enc_cfg_set_s32(cfg, "h265:qp_init", rc_mode == MPP_ENC_RC_MODE_FIXQP ? -1 : 26);
+        mpp_enc_cfg_set_s32(cfg, "h265:qp_max", 51);
+        mpp_enc_cfg_set_s32(cfg, "h265:qp_min", 10);
+        mpp_enc_cfg_set_s32(cfg, "h265:qp_max_i", 46);
+        mpp_enc_cfg_set_s32(cfg, "h265:qp_min_i", 24);
     } break;
     default : {
-        printf("support encoder coding type %d\n", codec_cfg->coding);
+        printf("unsupport encoder coding type %d\n", p->type);
     } break;
     }
-    ret = mpi->control(ctx, MPP_ENC_SET_CODEC_CFG, codec_cfg);
+
+    p->split_mode= MPP_ENC_SPLIT_NONE;
+    p->split_arg = 0;
+
+    if (p->split_mode) {
+        printf("split_mode %d split_arg %d\n", p->split_mode, p->split_arg);
+        mpp_enc_cfg_set_s32(cfg, "split:mode", p->split_mode);
+        mpp_enc_cfg_set_s32(cfg, "split:arg", p->split_arg);
+    }
+
+#if RK_MPP_USE_FULL_RANGE
+    ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
+#else
+    ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
+#endif
     if (ret) {
-        printf("mpi control enc set codec cfg failed ret %d\n", ret);
+        printf("mpi control enc set prep:range failed ret %d\n", ret);
+        goto RET;
+    }
+
+    ret = mpi->control(ctx, MPP_ENC_SET_CFG, cfg);
+    if (ret) {
+        printf("mpi control enc set cfg failed ret %d\n", ret);
         goto RET;
     }
 
     /* optional */
-    p->sei_mode = MPP_ENC_SEI_MODE_DISABLE;
-    ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->sei_mode);
-    if (ret) {
-        printf("mpi control enc set sei cfg failed ret %d\n", ret);
-        goto RET;
-    }
+     p->sei_mode = MPP_ENC_SEI_MODE_DISABLE;
+     ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->sei_mode);
+     if (ret) {
+         printf("mpi control enc set sei cfg failed ret %d\n", ret);
+         goto RET;
+     }
 
     if (p->enc_version == 1 &&
-       (codec_cfg->coding == MPP_VIDEO_CodingAVC ||
-        codec_cfg->coding == MPP_VIDEO_CodingHEVC)) {
+       (p->type == MPP_VIDEO_CodingAVC ||
+        p->type == MPP_VIDEO_CodingHEVC)) {
         int header_mode = MPP_ENC_HEADER_MODE_EACH_IDR;
         ret = mpi->control(ctx, MPP_ENC_SET_HEADER_MODE, &header_mode);
         if (ret) {
@@ -292,6 +289,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
             goto RET;
         }
     }
+
 RET:
     return ret;
 }
@@ -311,6 +309,20 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 
     if (p->enc_version == 1) {
         //no need to get the sps/pps in addition
+        if (p->type == MPP_VIDEO_CodingAVC) {//force set idr when begin enc
+            if (p->h264_frm_count < (RK_MPP_H264_FORCE_IDR_COUNT * RK_MPP_H264_FORCE_IDR_PERIOD)) {
+                if ((p->h264_frm_count % RK_MPP_H264_FORCE_IDR_PERIOD) == 0) {
+                   ret = mpi->control(ctx, MPP_ENC_SET_IDR_FRAME, NULL);
+                   if (ret) {
+                       printf("mpi force idr frame control failed\n");
+                       goto RET;
+                   } else {
+                       printf("mpi force idr frame control ok, h264_frm_count:%d\n",p->h264_frm_count);
+                   }
+                }
+                p->h264_frm_count++;
+            }
+        }
     } else {
         if (p->type == MPP_VIDEO_CodingAVC) {
             MppPacket packet = NULL;
@@ -390,8 +402,23 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 
             p->pkt_eos = mpp_packet_get_eos(p->packet);
 
-            if (p->fp_output)
+            if (p->fp_output) {
                 fwrite(ptr, 1, len, p->fp_output);
+#if RK_MPP_DYNAMIC_DEBUG_ON
+                if (access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0)) {
+                    fclose(p->fp_output);
+                    p->fp_output = NULL;
+                    printf("debug out file close\n");
+                }
+            } else if (!access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0)) {
+                p->fp_output = fopen(RK_MPP_DEBUG_OUT_FILE, "w+b");
+                if (p->fp_output) {
+                    fwrite(ptr, 1, len, p->fp_output);
+                    printf("debug out file open\n");
+                }
+#endif
+            }
+
             mpp_packet_deinit(&p->packet);
             p->enc_data = ptr;
             p->enc_len = len;
@@ -401,8 +428,8 @@ RET:
 
     if (buf) {
         mpp_buffer_put(buf);
-		buf = NULL;
-		}
+        buf = NULL;
+    }
     return ret;
 }
 
@@ -441,6 +468,11 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     ret = mpp_init(p->ctx, MPP_CTX_ENC, p->type);
     if (ret) {
         printf("mpp_init failed ret %d\n", ret);
+        return ret;
+    }
+    ret = mpp_enc_cfg_init(&p->cfg);
+    if (ret) {
+        printf("mpp_enc_cfg_init failed ret %d\n", ret);
         return ret;
     }
 
@@ -496,149 +528,6 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     return ret;
 }
 
-static void mpi_enc_test_help()
-{
-    printf("usage: mpi_enc_test [options]\n");
-//    show_options(mpi_enc_cmd);
-    mpp_show_support_format();
-}
-
-static RK_S32 mpi_enc_test_parse_options(int argc, char **argv, MpiEncTestCmd* cmd)
-{
-    const char *opt;
-    const char *next;
-    RK_S32 optindex = 1;
-    RK_S32 handleoptions = 1;
-    RK_S32 err = MPP_NOK;
-
-    if ((argc < 2) || (cmd == NULL)) {
-        err = 1;
-        return err;
-    }
-
-    /* parse options */
-    while (optindex < argc) {
-        opt  = (const char*)argv[optindex++];
-        next = (const char*)argv[optindex];
-
-        if (handleoptions && opt[0] == '-' && opt[1] != '\0') {
-            if (opt[1] == '-') {
-                if (opt[2] != '\0') {
-                    opt++;
-                } else {
-                    handleoptions = 0;
-                    continue;
-                }
-            }
-
-            opt++;
-
-            switch (*opt) {
-            case 'i':
-                if (next) {
-                    strncpy(cmd->file_input, next, MAX_FILE_NAME_LENGTH);
-                    cmd->file_input[strlen(next)] = '\0';
-                    cmd->have_input = 1;
-                } else {
-                    printf("input file is invalid\n");
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            case 'o':
-                if (next) {
-                    strncpy(cmd->file_output, next, MAX_FILE_NAME_LENGTH);
-                    cmd->file_output[strlen(next)] = '\0';
-                    cmd->have_output = 1;
-                } else {
-                    printf("output file is invalid\n");
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            case 'd':
-                if (next) {
-                    cmd->debug = atoi(next);;
-                } else {
-                    printf("invalid debug flag\n");
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            case 'w':
-                if (next) {
-                    cmd->width = atoi(next);
-                } else {
-                    printf("invalid input width\n");
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            case 'h':
-                if ((*(opt + 1) != '\0') && !strncmp(opt, "help", 4)) {
-                    mpi_enc_test_help();
-                    err = 1;
-                    goto PARSE_OPINIONS_OUT;
-                } else if (next) {
-                    cmd->height = atoi(next);
-                } else {
-                    printf("input height is invalid\n");
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            case 'f':
-                if (next) {
-                    cmd->format = (MppFrameFormat)atoi(next);
-                    err = ((cmd->format >= MPP_FMT_YUV_BUTT && cmd->format < MPP_FRAME_FMT_RGB) ||
-                           cmd->format >= MPP_FMT_RGB_BUTT);
-                }
-
-                if (!next || err) {
-                    printf("invalid input format %d\n", cmd->format);
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            case 't':
-                if (next) {
-                    cmd->type = (MppCodingType)atoi(next);
-                    err = mpp_check_support_format(MPP_CTX_ENC, cmd->type);
-                }
-
-                if (!next || err) {
-                    printf("invalid input coding type\n");
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            case 'n':
-                if (next) {
-                    cmd->num_frames = atoi(next);
-                } else {
-                    printf("invalid input max number of frames\n");
-                    goto PARSE_OPINIONS_OUT;
-                }
-                break;
-            default:
-                goto PARSE_OPINIONS_OUT;
-                break;
-            }
-
-            optindex++;
-        }
-    }
-
-    err = 0;
-
-PARSE_OPINIONS_OUT:
-    return err;
-}
-
-static void mpi_enc_test_show_options(MpiEncTestCmd* cmd)
-{
-    printf("cmd parse result:\n");
-    printf("input  file name: %s\n", cmd->file_input);
-    printf("output file name: %s\n", cmd->file_output);
-    printf("width      : %d\n", cmd->width);
-    printf("height     : %d\n", cmd->height);
-    printf("format     : %d\n", cmd->format);
-    printf("type       : %d\n", cmd->type);
-    printf("debug flag : %x\n", cmd->debug);
-}
 void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height,int fcc)
 {
     memset((void*)cmd, 0, sizeof(*cmd));

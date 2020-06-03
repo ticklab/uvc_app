@@ -810,7 +810,7 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
         usleep(1000);
         v->idle_cnt++;
         pthread_mutex_lock(&mtx_v);
-        if (v->idle_cnt > 100)
+        if (v->idle_cnt > 1000)//first mpp data maybe delay more than 100ms
             break;
     }
     if (buffer) {
@@ -841,7 +841,7 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
             }
         }
     } else {
-        buf->bytesused = buf->length;
+        buf->bytesused = 0;// buf->length;
         memset(dev->mem[buf->index].start, 0, buf->length);
     }
 }

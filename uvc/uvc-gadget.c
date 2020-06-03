@@ -48,6 +48,11 @@
 
 #include "uvc-gadget.h"
 
+#ifdef CAMERA_CONTROL
+#include "camera_pu_control.h"
+#include "camera_control.h"
+#endif
+
 /* Enable debug prints. */
 //#define ENABLE_BUFFER_DEBUG
 #define ENABLE_USB_REQUEST_DEBUG
@@ -92,49 +97,60 @@ static int silent=1;
  * also work well in case there in no actual video capture device.
  */
 #define PU_BRIGHTNESS_MIN_VAL       0
-#define PU_BRIGHTNESS_MAX_VAL       255
+#define PU_BRIGHTNESS_MAX_VAL       100
 #define PU_BRIGHTNESS_STEP_SIZE     1
-#define PU_BRIGHTNESS_DEFAULT_VAL   127
+#define PU_BRIGHTNESS_DEFAULT_VAL   50
 
 #define PU_CONTRAST_MIN_VAL         0
-#define PU_CONTRAST_MAX_VAL         65535
+#define PU_CONTRAST_MAX_VAL         100
 #define PU_CONTRAST_STEP_SIZE       1
-#define PU_CONTRAST_DEFAULT_VAL     127
+#define PU_CONTRAST_DEFAULT_VAL     50
 
-#define PU_HUE_MIN_VAL              -32768
-#define PU_HUE_MAX_VAL              32767
+#define PU_HUE_MIN_VAL              -100
+#define PU_HUE_MAX_VAL              100
 #define PU_HUE_STEP_SIZE            1
 #define PU_HUE_DEFAULT_VAL          0
 
 #define PU_SATURATION_MIN_VAL       0
-#define PU_SATURATION_MAX_VAL       255
+#define PU_SATURATION_MAX_VAL       100
 #define PU_SATURATION_STEP_SIZE     1
-#define PU_SATURATION_DEFAULT_VAL   127
+#define PU_SATURATION_DEFAULT_VAL   50
 
 #define PU_SHARPNESS_MIN_VAL        0
-#define PU_SHARPNESS_MAX_VAL        255
+#define PU_SHARPNESS_MAX_VAL        5
 #define PU_SHARPNESS_STEP_SIZE      1
-#define PU_SHARPNESS_DEFAULT_VAL    127
+#define PU_SHARPNESS_DEFAULT_VAL    2
 
-#define PU_GAMMA_MIN_VAL            0
-#define PU_GAMMA_MAX_VAL            255
+#define PU_GAMMA_MIN_VAL            1
+#define PU_GAMMA_MAX_VAL            500
 #define PU_GAMMA_STEP_SIZE          1
-#define PU_GAMMA_DEFAULT_VAL        127
+#define PU_GAMMA_DEFAULT_VAL        100 //1.0
 
-#define PU_WHITE_BALANCE_TEMPERATURE_MIN_VAL        0
-#define PU_WHITE_BALANCE_TEMPERATURE_MAX_VAL        255
-#define PU_WHITE_BALANCE_TEMPERATURE_STEP_SIZE      1
-#define PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL    127
+#define PU_WHITE_BALANCE_TEMPERATURE_MIN_VAL        2800
+#define PU_WHITE_BALANCE_TEMPERATURE_MAX_VAL        6500
+#define PU_WHITE_BALANCE_TEMPERATURE_STEP_SIZE      100
+#define PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL    4000
 
 #define PU_GAIN_MIN_VAL             0
-#define PU_GAIN_MAX_VAL             255
+#define PU_GAIN_MAX_VAL             5
 #define PU_GAIN_STEP_SIZE           1
-#define PU_GAIN_DEFAULT_VAL         127
+#define PU_GAIN_DEFAULT_VAL         1
 
-#define PU_HUE_AUTO_MIN_VAL         0
-#define PU_HUE_AUTO_MAX_VAL         255
+#define PU_HUE_AUTO_MIN_VAL         -100
+#define PU_HUE_AUTO_MAX_VAL         100
 #define PU_HUE_AUTO_STEP_SIZE       1
-#define PU_HUE_AUTO_DEFAULT_VAL     127
+#define PU_HUE_AUTO_DEFAULT_VAL     0
+
+//ZOOM
+#define CT_ZOOM_ABSOLUTE_CONTROL_MIN_VAL         10
+#define CT_ZOOM_ABSOLUTE_CONTROL_MAX_VAL         50
+#define CT_ZOOM_ABSOLUTE_CONTROL_STEP_SIZE       1
+#define CT_ZOOM_ABSOLUTE_CONTROL_DEFAULT_VAL     10
+
+#define PU_DIGITAL_MULTIPLIER_CONTROL_MIN_VAL         10
+#define PU_DIGITAL_MULTIPLIER_CONTROL_MAX_VAL         50
+#define PU_DIGITAL_MULTIPLIER_CONTROL_STEP_SIZE       1
+#define PU_DIGITAL_MULTIPLIER_CONTROL_DEFAULT_VAL     10
 
 #define XU_CAMERA_VERSION_DEFAULT  "1100010233010110010"
 #define XU_EPTZ_FLAG_DEFAULT_VAL     0
@@ -211,6 +227,33 @@ struct v4l2_device {
     /* uvc device hook */
     struct uvc_device *udev;
 };
+
+void update_camera_ip(struct uvc_device *dev)
+{
+   char cmd[32] = {0};
+   char ip[20] = {0};
+   int num = snprintf(ip,sizeof(ip),"%d.%d.%d.%d",dev->ex_ip_data[0],dev->ex_ip_data[1],
+                                        dev->ex_ip_data[2],dev->ex_ip_data[3]);
+   snprintf(cmd,32,"ifconfig usb0 %d.%d.%d.%d",dev->ex_ip_data[0],dev->ex_ip_data[1],
+                                                        dev->ex_ip_data[2],dev->ex_ip_data[3]);
+   //system("ifconfig usb0 down");
+   printf("update_camera_ip num:%d,cmd:%s\n",num,cmd);
+   system(cmd);
+   //system("ifconfig usb0 up");
+
+   char *next = "/data/uvc_xu_ip_save";
+   FILE *fp_output=NULL;
+   strncpy(cmd, next, 32);
+   cmd[strlen(next)] = '\0';
+   fp_output = fopen(cmd, "w+b");
+   if (NULL == fp_output) {
+       printf("failed to open uvc xu ip file %s\n", cmd);
+   } else {
+       ip[num+1] = "\0";
+       fwrite(ip,num+1,1,fp_output);
+       fclose(fp_output);
+   }
+}
 
 /* forward declarations */
 static int uvc_video_stream(struct uvc_device *dev, int enable);
@@ -764,7 +807,7 @@ uvc_video_set_format(struct uvc_device *dev)
     fmt.fmt.pix.pixelformat = dev->fcc;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
     if (dev->fcc == V4L2_PIX_FMT_MJPEG)
-        fmt.fmt.pix.sizeimage = dev->imgsize * 2/*1.5*/;
+        fmt.fmt.pix.sizeimage = dev->width * dev->height * 2/*1.5*/;
     if (dev->fcc == V4L2_PIX_FMT_H264)
         fmt.fmt.pix.sizeimage = dev->width * dev->height * 2;
 
@@ -885,7 +928,44 @@ uvc_open(struct uvc_device **uvc, char *devname)
 
     dev->uvc_fd = fd;
     dev->eptz_flag = XU_EPTZ_FLAG_DEFAULT_VAL;
+#ifdef CAMERA_CONTROL
+    camera_pu_control_init(UVC_PU_BRIGHTNESS_CONTROL,PU_BRIGHTNESS_DEFAULT_VAL
+                               ,PU_BRIGHTNESS_MIN_VAL,PU_BRIGHTNESS_MAX_VAL);
+    dev->brightness_val = camera_pu_control_get(UVC_PU_BRIGHTNESS_CONTROL,PU_BRIGHTNESS_DEFAULT_VAL);
 
+    camera_pu_control_init(UVC_PU_CONTRAST_CONTROL,PU_CONTRAST_DEFAULT_VAL
+                               ,PU_CONTRAST_MIN_VAL,PU_CONTRAST_MAX_VAL);
+    dev->contrast_val = camera_pu_control_get(UVC_PU_CONTRAST_CONTROL,PU_CONTRAST_DEFAULT_VAL);
+
+    camera_pu_control_init(UVC_PU_HUE_CONTROL,PU_HUE_DEFAULT_VAL
+                               ,PU_HUE_MIN_VAL,PU_HUE_MAX_VAL);
+    dev->hue_val = camera_pu_control_get(UVC_PU_HUE_CONTROL,PU_HUE_DEFAULT_VAL); 
+
+    camera_pu_control_init(UVC_PU_SATURATION_CONTROL,PU_SATURATION_DEFAULT_VAL
+                               ,PU_SATURATION_MIN_VAL,PU_SATURATION_MAX_VAL);
+    dev->saturation_val = camera_pu_control_get(UVC_PU_SATURATION_CONTROL,PU_SATURATION_DEFAULT_VAL);
+
+    camera_pu_control_init(UVC_PU_SHARPNESS_CONTROL,PU_SHARPNESS_DEFAULT_VAL
+                               ,PU_SHARPNESS_MIN_VAL,PU_SHARPNESS_MAX_VAL);
+    dev->sharpness_val = camera_pu_control_get(UVC_PU_SHARPNESS_CONTROL,PU_SHARPNESS_DEFAULT_VAL);
+
+    camera_pu_control_init(UVC_PU_GAMMA_CONTROL,PU_GAMMA_DEFAULT_VAL
+                               ,PU_GAMMA_MIN_VAL,PU_GAMMA_MAX_VAL);
+    dev->gamma_val = camera_pu_control_get(UVC_PU_GAMMA_CONTROL,PU_GAMMA_DEFAULT_VAL);
+
+    camera_pu_control_init(UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL,PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL
+                               ,PU_WHITE_BALANCE_TEMPERATURE_MIN_VAL,PU_WHITE_BALANCE_TEMPERATURE_MAX_VAL);
+    dev->white_balance_temperature_val = camera_pu_control_get(UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL
+                                                               ,PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL);
+
+    camera_pu_control_init(UVC_PU_GAIN_CONTROL,PU_GAIN_DEFAULT_VAL
+                               ,PU_GAIN_MIN_VAL,PU_GAIN_MAX_VAL);
+    dev->gain_val = camera_pu_control_get(UVC_PU_GAIN_CONTROL,PU_GAIN_DEFAULT_VAL);
+
+    camera_pu_control_init(UVC_PU_HUE_AUTO_CONTROL,PU_HUE_AUTO_DEFAULT_VAL
+                               ,PU_HUE_AUTO_MIN_VAL,PU_HUE_AUTO_MAX_VAL);
+    dev->hue_auto_val = camera_pu_control_get(UVC_PU_HUE_AUTO_CONTROL,PU_HUE_AUTO_DEFAULT_VAL);
+#else
     dev->brightness_val = PU_BRIGHTNESS_DEFAULT_VAL;
     dev->contrast_val = PU_CONTRAST_DEFAULT_VAL;
     dev->hue_val = PU_HUE_DEFAULT_VAL;
@@ -895,7 +975,11 @@ uvc_open(struct uvc_device **uvc, char *devname)
     dev->white_balance_temperature_val = PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL;
     dev->gain_val = PU_GAIN_DEFAULT_VAL;
     dev->hue_auto_val = PU_HUE_AUTO_DEFAULT_VAL;
+#endif
     dev->power_line_frequency_val = V4L2_CID_POWER_LINE_FREQUENCY_50HZ;
+
+    //zoom
+    dev->zoom_val = CT_ZOOM_ABSOLUTE_CONTROL_DEFAULT_VAL;
 
     char *ver = XU_CAMERA_VERSION_DEFAULT;
     strncpy(dev->ex_sn_data, ver, MAX_UVC_REQUEST_DATA_LENGTH);
@@ -996,7 +1080,11 @@ uvc_video_process(struct uvc_device *dev)
         printf("%d: DeQueued buffer at UVC side = %d\n", dev->video_id, dev->ubuf.index);
 #endif
         uvc_video_fill_buffer(dev, &dev->ubuf);
-
+        if(!dev->ubuf.bytesused) {
+            printf("%d: UVC: Unable to queue buffer length is 0 ,drop it.\n",
+                   dev->video_id);
+            return 0;
+        }
         ret = ioctl(dev->uvc_fd, VIDIOC_QBUF, &dev->ubuf);
         if (ret < 0) {
             printf("%d: UVC: Unable to queue buffer: %s (%d).\n",
@@ -1408,7 +1496,7 @@ uvc_handle_streamon_event(struct uvc_device *dev)
     uvc_control_init(dev->width, dev->height, dev->fcc);
 
     set_uvc_control_start(dev->video_id, dev->width, dev->height,
-                                  dev->fps,dev->eptz_flag);
+                                  dev->fps,dev->fcc,dev->eptz_flag);
     return 0;
 
 err:
@@ -1522,11 +1610,59 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
         /* Camera terminal unit 'UVC_VC_INPUT_TERMINAL'. */
     case 1:
         switch (cs) {
-            /*
-             * We support only 'UVC_CT_AE_MODE_CONTROL' for CAMERA
-             * terminal, as our bmControls[0] = 2 for CT. Also we
-             * support only auto exposure.
-             */
+        case UVC_CT_ZOOM_ABSOLUTE_CONTROL:
+            switch (req) {
+            printf("UVC_CT_ZOOM_ABSOLUTE_CONTROL:req=%d \n",req);
+            case UVC_SET_CUR:
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                resp->data[0] = CT_ZOOM_ABSOLUTE_CONTROL_MIN_VAL;
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                resp->data[0] = CT_ZOOM_ABSOLUTE_CONTROL_MAX_VAL;
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                resp->length = 2;
+                memcpy(&resp->data[0], &dev->zoom_val,
+                       resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                resp->data[0] = CT_ZOOM_ABSOLUTE_CONTROL_DEFAULT_VAL;
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                resp->data[0] = 1;//must be 1
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
         case UVC_CT_AE_MODE_CONTROL:
             switch (req) {
             case UVC_SET_CUR:
@@ -1787,8 +1923,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MAX:
-                resp->data[0] = PU_CONTRAST_MAX_VAL % 256;
-                resp->data[1] = PU_CONTRAST_MAX_VAL / 256;
+                resp->data[0] = PU_CONTRAST_MAX_VAL;
                 resp->length = 2;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
@@ -1834,15 +1969,13 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MIN:
-                resp->data[0] = PU_HUE_MIN_VAL % 256;
-                resp->data[1] = PU_HUE_MIN_VAL / 256;
+                resp->data[0] = PU_HUE_MIN_VAL;
                 resp->length = 2;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MAX:
-                resp->data[0] = PU_HUE_MAX_VAL % 256;
-                resp->data[1] = PU_HUE_MAX_VAL / 256;
+                resp->data[0] = PU_HUE_MAX_VAL;
                 resp->length = 2;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
@@ -2225,6 +2358,58 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 break;
             }
             break;
+        case UVC_PU_DIGITAL_MULTIPLIER_CONTROL:
+            switch (req) {
+            case UVC_SET_CUR:
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                resp->data[0] = PU_DIGITAL_MULTIPLIER_CONTROL_MIN_VAL;
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                resp->data[0] = PU_DIGITAL_MULTIPLIER_CONTROL_MAX_VAL;
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                resp->length = 2;
+                memcpy(&resp->data[0], &dev->zoom_val,
+                       resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                resp->data[0] = PU_DIGITAL_MULTIPLIER_CONTROL_DEFAULT_VAL;
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                resp->data[0] = PU_DIGITAL_MULTIPLIER_CONTROL_STEP_SIZE;
+                resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
         default:
             /*
              * We don't support this control, so STALL the control
@@ -2592,13 +2777,29 @@ uvc_events_process_control_data(struct uvc_device *dev,
     unsigned int *val = (unsigned int *)data->data;
     printf(" data = %d, length = %d  , current_cs = %d\n", *val , data->length, dev->cs);
     switch (entity_id) {
+    case 1:
+        switch (cs) {
+        case UVC_CT_ZOOM_ABSOLUTE_CONTROL:
+            if (sizeof(dev->zoom_val) >= data->length) {
+                memcpy(&dev->zoom_val, data->data, data->length);
+                printf("set zoom :%d \n",dev->zoom_val);
+                #ifdef CAMERA_CONTROL
+                camera_control_set_zoom(dev->zoom_val);
+                #endif
+            }
+            break;
+        default:
+            break;
+        }
+
+        break;
         /* Processing unit 'UVC_VC_PROCESSING_UNIT'. */
     case 2:
         switch (cs) {
         case UVC_PU_BRIGHTNESS_CONTROL:
             if (sizeof(dev->brightness_val) >= data->length) {
                 memcpy(&dev->brightness_val, data->data, data->length);
-                //video_record_set_brightness(*val);
+                //camera_pu_control_set(UVC_PU_BRIGHTNESS_CONTROL,*val);
             }
             if (!dev->run_standalone)
                 /*
@@ -2657,7 +2858,6 @@ uvc_events_process_control_data(struct uvc_device *dev,
             /* 0:auto, 1:Daylight 2:fluocrescence 3:cloudysky 4:tungsten */
             if (sizeof(dev->white_balance_temperature_val) >= data->length) {
                 memcpy(&dev->white_balance_temperature_val, data->data, data->length);
-                //api_set_white_balance(*val / 51);
             }
             break;
         case UVC_PU_GAIN_CONTROL:
@@ -2671,12 +2871,22 @@ uvc_events_process_control_data(struct uvc_device *dev,
         case UVC_PU_POWER_LINE_FREQUENCY_CONTROL:
             if (sizeof(dev->power_line_frequency_val) >= data->length) {
                 memcpy(&dev->power_line_frequency_val, data->data, data->length);
-                //video_record_set_power_line_frequency(*val);
+            }
+            break;
+        case UVC_PU_DIGITAL_MULTIPLIER_CONTROL:
+            if (sizeof(dev->zoom_val) >= data->length) {
+                memcpy(&dev->zoom_val, data->data, data->length);
+                #ifdef CAMERA_CONTROL
+                camera_control_set_zoom(dev->zoom_val);
+                #endif
             }
             break;
         default:
             break;
         }
+#ifdef CAMERA_CONTROL
+        camera_pu_control_set(cs,*val);
+#endif
 
         break;
     /* Extension unit 'UVC_VC_Extension_Unit'. */
@@ -2685,25 +2895,25 @@ uvc_events_process_control_data(struct uvc_device *dev,
         case CMD_SET_EPTZ:
             if (sizeof(dev->eptz_flag) >= data->length) {
                 memcpy(&dev->eptz_flag, data->data, data->length);
-                printf("extension ctrl 1 set cur data: %d\n", dev->eptz_flag);
+                printf("Extension: CMD_SET_EPTZ set cur data: %d\n", dev->eptz_flag);
             }
             break;
 
         case CMD_GET_CAMERA_VERSION:
             if (sizeof(dev->ex_sn_data) >= data->length) {
                 memcpy(dev->ex_sn_data, data->data, data->length);
-                printf("extension sn control: 0x%02x 0x%02x 0x%02x\n",
+                printf("Extension:CMD_GET_CAMERA_VERSION set cur data: 0x%02x 0x%02x 0x%02x\n",
                        dev->ex_sn_data[0], dev->ex_sn_data[1], dev->ex_sn_data[2]);
-                //if (dev->ex_ip_data[0] == 0xc5)
-                //    video_record_get_flt_parameter(dev->ex_ip_data[3], dev->ex_ip_data[4]);
+
             }
             break;
 
         case CMD_SET_CAMERA_IP:
             if (sizeof(dev->ex_ip_data) >= data->length) {
                 memcpy(dev->ex_ip_data, data->data, data->length);
-                printf("extension data: 0x%02x 0x%02x\n", dev->ex_ip_data[0], dev->ex_ip_data[1]);
-                //todo
+                printf("CMD_SET_CAMERA_IP : %d.%d.%d.%d \n", dev->ex_ip_data[0], dev->ex_ip_data[1],
+                                                             dev->ex_ip_data[2],dev->ex_ip_data[3]);
+                update_camera_ip(dev);
             }
             break;
 
@@ -2745,7 +2955,7 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
         break;
 
     default:
-        printf("setting unknown control, length = %d\n", data->length);
+        printf("setting process control, length = %d\n", data->length);
 
         printf("cs: %u, entity_id: %u\n", dev->cs, dev->entity_id);
         ret = uvc_events_process_control_data(dev,
@@ -3078,7 +3288,7 @@ uvc_gadget_main(int id)
     /* Frame format/resolution related params. */
     int default_format = 1;
     int default_resolution = 1;
-    int nbufs = 4;
+    int nbufs = 3;
     /* USB speed related params */
     int mult = 0;
     int burst = 0;

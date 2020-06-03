@@ -61,11 +61,16 @@
 
 #include <easymedia/flow.h>
 
+#if EPTZ_ENABLE
+#include "eptz_control.h"
+#endif
+
 struct Camera_Stream
 {
     int width;
     int height;
     int fps;
+    int format;
     int eptz;
     pthread_mutex_t record_mutex;
     pthread_cond_t record_cond;
@@ -166,12 +171,20 @@ static void camera_stop(struct Camera_Stream *stream)
 static void *uvc_camera(void *arg)
 {
     struct Camera_Stream *stream = (struct Camera_Stream *)arg;
-    printf("%s :uvc width:%d,height:%d \n", __func__,stream->width,stream->height);
     prctl(PR_SET_NAME, "uvc_camera", 0, 0, 0);
+    int needEPTZ = 0;
+    int eptz_width = 0;
+    int eptz_height = 0;
     int needRGA = 0;
     int rga_width = 0;
     int rga_height = 0;
-    if(stream->height < 480){
+    needEPTZ = stream->eptz;
+    char* enable_eptz = getenv("ENABLE_EPTZ");
+    if(enable_eptz && !needEPTZ){
+      printf("%s :uvc eptz use evn setting \n",__FUNCTION__);
+      needEPTZ = atoi(enable_eptz);
+    }
+    if(stream->height < 480 && !needEPTZ){
       printf("usb RGA for isp resolusion \n");
       rga_width = stream->width;
       rga_height = stream->height;
@@ -179,6 +192,28 @@ static void *uvc_camera(void *arg)
       stream->width = 1280;
       needRGA = 1;
     }
+    printf("%s :uvc width:%d,height:%d, needEPTZ %d, needRGA %d \n", __func__,stream->width,stream->height, needEPTZ, needRGA);
+#if EPTZ_ENABLE
+    if(needEPTZ && !needRGA){
+      eptz_width = stream->width;
+      eptz_height = stream->height;
+      if(eptz_width > 1920 || eptz_height > 1080){
+        needEPTZ = 0;
+        printf("%s :needEPTZ, not support this width(>1920) and height(>1080) \n");
+      }else if(eptz_width == 1920){
+        stream->width = 2560;
+        stream->height = 1440;
+      }else if(eptz_width <= 1280 && eptz_width >120 ){
+        stream->width = eptz_width * 1.5;
+        stream->height = eptz_height * 1.5;
+      }else {
+        needEPTZ = 0;
+        printf("%s :needEPTZ, match fail \n");
+      }
+      if(needEPTZ)
+        printf("%s :needEPTZ uvc width:%d,height:%d \n", __func__,stream->width,stream->height);
+    }
+#endif
     std::shared_ptr<easymedia::Flow> video_rga_flow=NULL;
     std::shared_ptr<easymedia::Flow> video_save_flow=NULL;
    // std::string input_path = "/dev/video0";
@@ -199,8 +234,12 @@ static void *uvc_camera(void *arg)
     // PARAM_STRING_APPEND(param, KEY_SUB_DEVICE, sub_input_path);
     PARAM_STRING_APPEND(stream_param, KEY_V4L2_CAP_TYPE, KEY_V4L2_C_TYPE(VIDEO_CAPTURE));
     PARAM_STRING_APPEND(stream_param, KEY_V4L2_MEM_TYPE, KEY_V4L2_M_TYPE(MEMORY_DMABUF));
-    PARAM_STRING_APPEND_TO(stream_param, KEY_FRAMES, 4); // if not set, default is 2
+    PARAM_STRING_APPEND_TO(stream_param, KEY_FRAMES, 3); // if not set, default is 2
     PARAM_STRING_APPEND(stream_param, KEY_OUTPUTDATATYPE, input_format);
+    if (stream->format == V4L2_PIX_FMT_H264) {
+       printf("stream->format:V4L2_PIX_FMT_H264,use V4L2_QUANTIZATION_LIM_RANGE!!");
+       PARAM_STRING_APPEND_TO(stream_param, KEY_V4L2_QUANTIZATION, V4L2_QUANTIZATION_LIM_RANGE);
+    }
     PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_WIDTH, stream->width);
     PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_HEIGHT, stream->height);
     PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_VIR_WIDTH, stream->width);
@@ -272,7 +311,32 @@ static void *uvc_camera(void *arg)
               video_rga_flow->AddDownFlow(stream->uvc_flow, 0, 0);
               stream->input->AddDownFlow(video_rga_flow, 0, 0);
         } else {
-              stream->input->AddDownFlow(stream->uvc_flow, 0, 0);
+              if(needEPTZ){
+                  #if EPTZ_ENABLE
+                  int ret = eptz_config(stream->width, stream->height, eptz_width, eptz_height);
+                  if( ret == -1){
+                    fprintf(stderr, "eptz_config failed\n");
+                    goto record_exit;
+                  }
+                  dclip->AddDownFlow(stream->uvc_flow, 0, 0);
+                  transform->AddDownFlow(dclip, 0, 0);
+                  rknn->AddDownFlow(transform, 0, 0);
+                  rga_scale300->AddDownFlow(rknn, 0, 0);
+                  stream->input->AddDownFlow(rga_scale300, 0, 0);
+                  #endif
+              }else{
+                  #if EPTZ_ENABLE
+                  int ret = zoom_config(stream->width, stream->height);
+                  if( ret == -1){
+                    fprintf(stderr, "zoom_config failed\n");
+                    goto record_exit;
+                  }
+                  zoom->AddDownFlow(stream->uvc_flow, 0, 0);
+                  stream->input->AddDownFlow(zoom, 0, 0);
+                  #else
+                  stream->input->AddDownFlow(stream->uvc_flow, 0, 0);
+                  #endif
+              }
         }
     }
 
@@ -307,9 +371,29 @@ record_exit:
             stream->input.reset();
             video_rga_flow->RemoveDownFlow(stream->uvc_flow);
             video_rga_flow.reset();
+          } else if (needEPTZ){
+            #if EPTZ_ENABLE
+            stream->input->RemoveDownFlow(rga_scale300);
+            stream->input.reset();
+            rga_scale300->RemoveDownFlow(rknn);
+            rga_scale300.reset();
+            rknn->RemoveDownFlow(transform);
+            rknn.reset();
+            transform->RemoveDownFlow(dclip);
+            transform.reset();
+            dclip->RemoveDownFlow(stream->uvc_flow);
+            dclip.reset();
+            #endif
           } else {
+            #if EPTZ_ENABLE
+            stream->input->RemoveDownFlow(zoom);
+            stream->input.reset();
+            zoom->RemoveDownFlow(stream->uvc_flow);
+            zoom.reset();
+            #else
             stream->input->RemoveDownFlow(stream->uvc_flow);
             stream->input.reset();
+            #endif
           }
         }
         stream->uvc_flow.reset();
@@ -331,7 +415,7 @@ record_exit:
     pthread_exit(NULL);
 }
 
-extern "C" int camera_control_start(int id, int width, int height, int fps, int eptz)
+extern "C" int camera_control_start(int id, int width, int height, int fps, int format, int eptz)
 {
     struct Camera_Stream *stream;
     int ret = 0;
@@ -354,6 +438,7 @@ extern "C" int camera_control_start(int id, int width, int height, int fps, int 
     stream->fps = fps;
     stream->width = width;
     stream->height = height;
+    stream->format = format;
     stream->deviceid = id;
     stream->eptz = eptz;
 
@@ -426,6 +511,13 @@ extern "C" int camera_control_stop(int deviceid)
 extern "C" void camera_control_init()
 {
     //todo
+}
+
+extern "C" void camera_control_set_zoom(int val)
+{
+    #if EPTZ_ENABLE
+    set_zoom((float)val/10);
+    #endif
 }
 
 extern "C" void camera_control_deinit()

@@ -135,6 +135,7 @@ struct uvc_device {
     unsigned int white_balance_temperature_val;
     unsigned int gain_val;
     unsigned int hue_auto_val;
+    unsigned int zoom_val;
     unsigned char power_line_frequency_val;
     unsigned char ex_sn_data[MAX_UVC_REQUEST_DATA_LENGTH];
     unsigned char ex_ip_data[MAX_UVC_REQUEST_DATA_LENGTH];//

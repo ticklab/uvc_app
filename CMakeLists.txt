@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(CMAKE_CXX_STANDARD 11)
 add_definitions(-fno-rtti)
+add_definitions(-DDBUG)
 PROJECT(uvc_app)
 
 include_directories(uvc)
@@ -30,18 +31,39 @@ set(UVC_APP_DEPENDENT_LIBS
 )
 
 option(COMPILES_CAMERA "compile:with rkmedia v4l2 flow " OFF)
+option(EPTZ_SUPPORT "uvc support eptz" OFF)
 if(COMPILES_CAMERA)
-  include_directories(process)
-  add_definitions(-DCAMERA_CONTROL)
-  set(SOURCE
-     ${SOURCE}
-     process/camera_control.cpp
-     process/camera_pu_control.cpp
-     )
-  SET(UVC_APP_DEPENDENT_LIBS
-     ${UVC_APP_DEPENDENT_LIBS}
-     easymedia
-     )
+
+
+include_directories(process)
+add_definitions(-DCAMERA_CONTROL)
+set(SOURCE
+   ${SOURCE}
+   process/camera_control.cpp
+   process/camera_pu_control.cpp
+   )
+SET(UVC_APP_DEPENDENT_LIBS
+   ${UVC_APP_DEPENDENT_LIBS}
+   easymedia
+   )
+
+if(EPTZ_SUPPORT)
+add_definitions(-DEPTZ_ENABLE=1)
+include_directories(${ROCKX_HEADER_DIR})
+set(UVC_APP_DEPENDENT_LIBS
+    ${UVC_APP_DEPENDENT_LIBS}
+    rockx
+    rga
+    ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
+set(SOURCE
+   ${SOURCE}
+   process/eptz_control.cpp
+   process/zoom_control.cpp
+   )
+set(Algorithm_LIBS ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
+install(FILES ${Algorithm_LIBS} DESTINATION lib)
+
+endif()
 endif()
 
 ADD_EXECUTABLE(uvc_app ${SOURCE})

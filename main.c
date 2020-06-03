@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
     int y, uv;
     int extra_cnt = 0;
     uint32_t flags = 0;
-
+#if (RK_MPP_ENC_TEST_NATIVE == 0)
 #ifdef CAMERA_CONTROL
     if (argc != 3)
     {
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
      return 0;
    }
 #endif
-
+#endif
     width = atoi(argv[1]);
     height = atoi(argv[2]);
     if (width == 0 || height == 0)
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     if (fd < 0)
         return -1;
 
-    size = width * height * 2;
+    size = width * height * 3 / 2;
     ret = drm_alloc(fd, size, 16, &handle, 0);
     if (ret)
         return -1;
@@ -95,7 +95,11 @@ int main(int argc, char *argv[])
     memset(buffer + y * 4 + uv * 3, 192, uv);
 
     flags = UVC_CONTROL_LOOP_ONCE;
+#if RK_MPP_ENC_TEST_NATIVE
+    uvc_encode_init(&uvc_enc, width, height, TEST_ENC_TPYE);
+#else
     uvc_control_run(flags);
+ #endif
     while (1)
     {
         extra_cnt++;

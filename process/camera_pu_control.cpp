@@ -55,7 +55,7 @@ extern "C" void camera_pu_control_init(int type,int def,int min,int max)
 extern "C" int camera_pu_control_get(int type, int def)
 {
     printf("%s!\n", __func__);
-    return 0;
+    return def;
 }
 
 extern "C" int camera_pu_control_set(int type, int value)

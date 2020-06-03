@@ -44,8 +44,9 @@ extern "C"
 
     void camera_control_init();
     void camera_control_deinit();
-    int camera_control_start(int id, int width, int height, int fps, int eptz);
+    int camera_control_start(int id, int width, int height, int fps, int format, int eptz);
     int camera_control_stop(int deviceid);
+    void camera_control_set_zoom(int val);
 
 #ifdef __cplusplus
 }

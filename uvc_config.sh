@@ -142,7 +142,16 @@ echo $UDC > /sys/kernel/config/usb_gadget/rockchip/UDC
 
 if [ "$1"x == "rndis"x  ]; then
    sleep 1
-   echo "config usb0 IP :172.16.110.6 ..."
-   ifconfig usb0 172.16.110.6 
+   IP_FILE=/data/uvc_xu_ip_save
+   echo "config usb0 IP..."
+   if [ -f $IP_FILE ]; then
+      for line in `cat $IP_FILE`
+      do
+        echo "save ip is: $line"
+        ifconfig usb0 $line
+      done
+   else
+    ifconfig usb0 172.16.110.6
+   fi
    ifconfig usb0 up
 fi
