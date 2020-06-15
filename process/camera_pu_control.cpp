@@ -46,7 +46,149 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include "json-c/json.h"
+#include <pthread.h>
 #include "uvc_log.h"
+
+#if DBSERVER_SUPPORT
+#include "dbserver.h"
+
+
+extern "C" int video_record_set_brightness(int brightness) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iBrightness", json_object_new_int(brightness));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_contrast(int contrast) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iContrast", json_object_new_int(contrast));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_hue(int hue) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iHue", json_object_new_int(hue));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_staturation(int staturation) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iSaturation", json_object_new_int(staturation));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_sharpness(int sharpness) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iSharpness", json_object_new_int(sharpness));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_gamma(int gamma) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iGamma", json_object_new_int(gamma));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_white_balance_temperature(int balance) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iWhiteBalanceTemperature", json_object_new_int(balance));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_gain(int gain) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iGain", json_object_new_int(gain));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_hue_auto(int hue_auto) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iHueAuto", json_object_new_int(hue_auto));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+#endif
 
 extern "C" void camera_pu_control_init(int type,int def,int min,int max)
 {
@@ -61,7 +203,42 @@ extern "C" int camera_pu_control_get(int type, int def)
 
 extern "C" int camera_pu_control_set(int type, int value)
 {
-    LOG_DEBUG("%s!\n", __func__);
+    LOG_DEBUG("%s! type is %d,value is %d\n", __func__,type,value);
+    switch (type) {
+#if DBSERVER_SUPPORT
+        case UVC_PU_BRIGHTNESS_CONTROL:
+            video_record_set_brightness(value);
+            break;
+        case UVC_PU_CONTRAST_CONTROL:
+            video_record_set_contrast(value);
+            break;
+        case UVC_PU_HUE_CONTROL:
+            video_record_set_hue(value);
+            break;
+        case UVC_PU_SATURATION_CONTROL:
+            video_record_set_staturation(value);
+            break;
+        case UVC_PU_SHARPNESS_CONTROL:
+            video_record_set_sharpness(value);
+            break;
+        case UVC_PU_GAMMA_CONTROL:
+            video_record_set_gamma(value);
+            break;
+        case UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL:
+            video_record_set_white_balance_temperature(value);
+            break;
+        case UVC_PU_GAIN_CONTROL:
+            video_record_set_gain(value);
+            break;
+        case UVC_PU_HUE_AUTO_CONTROL:
+            video_record_set_hue_auto(value);
+            break;
+#endif
+      default:
+         LOG_DEBUG("====unknow pu cmd.\n");
+         break;
+
+    }
     return 0;
 }
 

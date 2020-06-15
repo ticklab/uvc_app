@@ -3,6 +3,8 @@ set(CMAKE_CXX_STANDARD 11)
 add_definitions(-fno-rtti)
 add_definitions(-DDBUG)
 PROJECT(uvc_app)
+include(FindPkgConfig)
+pkg_check_modules (JSON-C REQUIRED IMPORTED_TARGET json-c)
 
 include_directories(uvc)
 
@@ -29,6 +31,12 @@ set(UVC_APP_DEPENDENT_LIBS
     drm
     rockchip_mpp
 )
+
+option(DBSERVER_SUPPORT  "enbale dbserver" OFF)
+if (${DBSERVER_SUPPORT})
+    add_definitions(-DDBSERVER_SUPPORT)
+    set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} IPCProtocol)
+endif()
 
 option(ENABLE_MINILOGGER  "enbale minilogger" ON)
 if (${ENABLE_MINILOGGER})
@@ -74,7 +82,7 @@ endif()
 endif()
 
 ADD_EXECUTABLE(uvc_app ${SOURCE})
-target_link_libraries(uvc_app ${UVC_APP_DEPENDENT_LIBS})
+target_link_libraries(uvc_app ${UVC_APP_DEPENDENT_LIBS} PkgConfig::JSON-C)
 
 install(TARGETS rkuvc DESTINATION lib)
 install(DIRECTORY ./uvc DESTINATION include
