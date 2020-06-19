@@ -47,8 +47,11 @@ extern "C" {
 #define RK_MPP_H264_FORCE_IDR_PERIOD 5 //must >=1
 #define RK_MPP_ENC_TEST_NATIVE 0
 #define RK_MPP_DYNAMIC_DEBUG_ON 1 //release version can set to 0
+#define RK_MPP_RANGE_DEBUG_ON 1 //release version can set to 0
+
 #define RK_MPP_DYNAMIC_DEBUG_OUT_CHECK "/tmp/uvc_enc_out"
 #define RK_MPP_DYNAMIC_DEBUG_IN_CHECK "/tmp/uvc_enc_in" //open it will lower the fps
+#define RK_MPP_RANGE_DEBUG_IN_CHECK "/tmp/uvc_range_in"
 
 #define RK_MPP_DEBUG_OUT_FILE "/data/uvc_enc_out.bin"
 #define RK_MPP_DEBUG_IN_FILE "/data/uvc_enc_in.bin"
@@ -77,7 +80,13 @@ typedef struct {
     RK_U32 pkt_eos;
     RK_S32 frame_count;
     RK_U64 stream_size;
+#if RK_MPP_RANGE_DEBUG_ON
+#define RANGE_PATH_MAX_LEN 128
+    FILE *fp_range_path;
+    FILE *fp_range_file;
+    char *range_path;
 
+#endif
     // src and dst
     FILE *fp_input;
     FILE *fp_output;

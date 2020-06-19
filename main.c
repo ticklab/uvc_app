@@ -55,12 +55,18 @@ int main(int argc, char *argv[])
    }
 #endif
 #endif
+
+    if (argc < 3) {
+        printf("Usage: uvc_app width height [test_file.nv12]\n");
+        printf("e.g. uvc_app 640 480 [test_file.nv12]\n");
+        return -1;
+    }
     width = atoi(argv[1]);
     height = atoi(argv[2]);
-    if (width == 0 || height == 0)
-    {
-        printf("Usage: uvc_app width height\n");
-        printf("e.g. uvc_app 640 480\n");
+    FILE *test_file = NULL;
+    if (width == 0 || height == 0) {
+        printf("Usage: uvc_app width height [test_file.nv12]\n");
+        printf("e.g. uvc_app 640 480 [test_file.nv12]\n");
         return -1;
     }
 
@@ -83,16 +89,25 @@ int main(int argc, char *argv[])
         printf("drm map buffer fail.\n");
         return -1;
     }
-    y = width * height / 4;
-    memset(buffer, 128, y);
-    memset(buffer + y, 64, y);
-    memset(buffer + y * 2, 128, y);
-    memset(buffer + y * 3, 192, y);
-    uv = width * height / 8;
-    memset(buffer + y * 4, 0, uv);
-    memset(buffer + y * 4 + uv, 64, uv);
-    memset(buffer + y * 4 + uv * 2, 128, uv);
-    memset(buffer + y * 4 + uv * 3, 192, uv);
+
+    if (argc == 4) {
+        test_file = fopen(argv[3], "r+b");
+        if (!test_file) {
+            printf("open %s fail.\n", argv[3]);
+            return -1;
+        }
+    } else {
+        y = width * height / 4;
+        memset(buffer, 128, y);
+        memset(buffer + y, 64, y);
+        memset(buffer + y * 2, 128, y);
+        memset(buffer + y * 3, 192, y);
+        uv = width * height / 8;
+        memset(buffer + y * 4, 0, uv);
+        memset(buffer + y * 4 + uv, 64, uv);
+        memset(buffer + y * 4 + uv * 2, 128, uv);
+        memset(buffer + y * 4 + uv * 3, 192, uv);
+    }
 
     flags = UVC_CONTROL_LOOP_ONCE;
 #if RK_MPP_ENC_TEST_NATIVE
@@ -102,10 +117,19 @@ int main(int argc, char *argv[])
  #endif
     while (1)
     {
+        if (test_file) {
+            if(feof(test_file)) {
+                rewind(test_file);
+            }
+            size = fread(buffer, 1, width * height * 3 / 2, test_file);
+        }
+
         extra_cnt++;
         uvc_read_camera_buffer(buffer, handle_fd, size, &extra_cnt, sizeof(extra_cnt));
         usleep(30000);
     }
+    if (test_file)
+         fclose(test_file);
 
     uvc_control_join(flags);
 

@@ -34,6 +34,45 @@
 #include "uvc_video.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
+
+#if RK_MPP_RANGE_DEBUG_ON
+static char *strtrimr(char *pstr)
+{
+    int i;
+    i = strlen(pstr) - 1;
+    while (isspace(pstr[i]) && (i >= 0))
+        pstr[i--] = '\0';
+    return pstr;
+}
+
+static char *strtriml(char *pstr)
+{
+    int i = 0,j;
+    j = strlen(pstr) - 1;
+    while (isspace(pstr[i]) && (i <= j))
+        i++;
+    if (0<i)
+        strcpy(pstr, &pstr[i]);
+    return pstr;
+}
+
+static char *strtrim(char *pstr)
+{
+    char *p;
+    p = strtrimr(pstr);
+    return strtriml(p);
+}
+
+static char *strrmlb(char *pstr)
+{
+    int i;
+    i = strlen(pstr) - 1;
+    while ((pstr[i] == '\n') && (i >= 0))
+        pstr[i--] = '\0';
+    return pstr;
+}
+#endif
 
 int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc)
 {
@@ -80,6 +119,54 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
 
     uvc_get_user_resolution(&width, &height, e->video_id);
     fcc = uvc_get_user_fcc(e->video_id);
+#endif
+
+#if RK_MPP_RANGE_DEBUG_ON
+    if (!access(RK_MPP_RANGE_DEBUG_IN_CHECK, 0)) {
+        if (!e->mpi_data->fp_range_file) {
+            e->mpi_data->fp_range_path = fopen(RK_MPP_RANGE_DEBUG_IN_CHECK, "r+b");
+            e->mpi_data->range_path = (char *)calloc(1, RANGE_PATH_MAX_LEN);
+            fgets(e->mpi_data->range_path, RANGE_PATH_MAX_LEN, e->mpi_data->fp_range_path);
+            e->mpi_data->range_path = strtrim(e->mpi_data->range_path);
+            e->mpi_data->range_path = strrmlb(e->mpi_data->range_path);
+            e->mpi_data->fp_range_file = fopen(e->mpi_data->range_path, "r+b");
+            fclose(e->mpi_data->fp_range_path);
+            e->mpi_data->fp_range_path = NULL;
+            if (!e->mpi_data->fp_range_file) {
+                printf("error:no such fp_range file:%s exit\n", e->mpi_data->range_path);
+            } else {
+                printf("open fp_range file:%s ok, size=%d\n", e->mpi_data->range_path, size);
+                while (ret != size) {
+                    ret += fread(virt, 1, size - ret, e->mpi_data->fp_range_file);
+                    if(feof(e->mpi_data->fp_range_file))
+                        rewind(e->mpi_data->fp_range_file);
+                }
+                if (strstr(e->mpi_data->range_path, "full")) {
+                    ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
+                    printf("change to full range\n");
+                } else {
+                    ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
+                    printf("change to limit range\n");
+                }
+                if (ret)
+                    printf("mpi control enc set prep:range failed ret %d\n", ret);
+                ret = e->mpi_data->mpi->control(e->mpi_data->ctx, MPP_ENC_SET_CFG, e->mpi_data->cfg);
+                if (ret)
+                    printf("mpi control enc set cfg failed ret %d\n", ret);
+            }
+            free(e->mpi_data->range_path);
+        } else {
+            while (ret != size) {
+                ret += fread(virt, 1, size - ret, e->mpi_data->fp_range_file);
+                if(feof(e->mpi_data->fp_range_file))
+                    rewind(e->mpi_data->fp_range_file);
+            }
+        }
+    } else if (e->mpi_data->fp_range_file) {
+        fclose(e->mpi_data->fp_range_file);
+        e->mpi_data->fp_range_file = NULL;
+        printf("debug fp_range file close\n");
+    }
 #endif
 
     if (e->mpi_data->fp_input) {
