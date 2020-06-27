@@ -203,7 +203,7 @@ RockxFlow::RockxFlow() {
   std::vector<rockx_module_t> models;
   void *config = nullptr;
   size_t config_size = 0;
-  models.push_back(ROCKX_MODULE_FACE_DETECTION);
+  models.push_back(ROCKX_MODULE_FACE_DETECTION_V3);
   models.push_back(ROCKX_MODULE_OBJECT_TRACK);
 
   for (size_t i = 0; i < models.size(); i++) {
