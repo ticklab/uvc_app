@@ -40,6 +40,7 @@
 #include "uvc_encode.h"
 #include "uvc_video.h"
 #include "uevent.h"
+#include "uvc_log.h"
 //#include "camera_control.h"
 
 #define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/bInterfaceNumber"
@@ -97,12 +98,12 @@ static void query_uvc_streaming_intf(void)
         char intf[32] = {0};
         read(fd, intf, sizeof(intf) - 1);
         uvc_streaming_intf = atoi(intf);
-        printf("uvc_streaming_intf = %d\n", uvc_streaming_intf);
+        LOG_INFO("uvc_streaming_intf = %d\n", uvc_streaming_intf);
         close(fd);
     }
     else
     {
-        printf("open %s failed!\n", UVC_STREAMING_INTF_PATH);
+        LOG_ERROR("open %s failed!\n", UVC_STREAMING_INTF_PATH);
     }
 }
 
@@ -149,7 +150,7 @@ int check_uvc_video_id(void)
                         uvc_ctrl[1].id = i;
                     else if (uvc_ctrl[2].id < 0)
                         uvc_ctrl[2].id = i;
-                    printf("found uvc video port.\n");
+                    LOG_INFO("found uvc video port.\n");
                 }
             }
             pclose(fp);
@@ -158,7 +159,7 @@ int check_uvc_video_id(void)
 
     if (uvc_ctrl[0].id < 0 && uvc_ctrl[1].id < 0)
     {
-        printf("Please configure uvc...\n");
+        LOG_INFO("Please configure uvc...\n");
         return -1;
     }
     query_uvc_streaming_intf();
@@ -179,7 +180,7 @@ void uvc_control_init(int width, int height, int fcc)
     memset(&uvc_enc, 0, sizeof(uvc_enc));
     if (uvc_encode_init(&uvc_enc, width, height, fcc))
     {
-        printf("%s fail!\n", __func__);
+        LOG_ERROR("%s fail!\n", __func__);
         abort();
     }
     pthread_mutex_unlock(&lock);
@@ -206,7 +207,7 @@ void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
     }
     else if (uvc_enc.width > 0 && uvc_enc.height > 0)
     {
-        printf("%s: cam_size = %u, uvc_enc.width = %d, uvc_enc.height = %d\n",
+        LOG_ERROR("%s: cam_size = %u, uvc_enc.width = %d, uvc_enc.height = %d\n",
                __func__, cam_size, uvc_enc.width, uvc_enc.height);
     }
     pthread_mutex_unlock(&lock);
@@ -285,11 +286,11 @@ void uvc_control_loop(void)
 
     if (uvc_ctrl[2].start)
     {
-        printf("%s: video_id:%d, width:%d,height:%d,fps:%d,format:%d,eptz:%d !\n", __func__,
+        LOG_INFO("%s: video_id:%d, width:%d,height:%d,fps:%d,format:%d,eptz:%d !\n", __func__,
                uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].format,uvc_ctrl[2].eptz);
         if (camera_start_callback)
         {
-            printf("%s  camera_start_callback start!\n", __func__);
+            LOG_INFO("%s  camera_start_callback start!\n", __func__);
             camera_start_callback(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps,uvc_ctrl[2].format, uvc_ctrl[2].eptz);
         }
         //camera_control_start(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
@@ -312,7 +313,7 @@ int uvc_control_run(uint32_t flags)
         uevent_monitor_run(flags);
         if (pthread_create(&run_id, NULL, uvc_control_thread, &flags))
         {
-            printf("%s: pthread_create failed!\n", __func__);
+            LOG_ERROR("%s: pthread_create failed!\n", __func__);
             return -1;
         }
         uvc_added_wait();
@@ -343,10 +344,10 @@ void uvc_control_join(uint32_t flags)
 
 void set_uvc_control_start(int video_id, int width, int height, int fps,int format, int eptz)
 {
-    printf("%s!\n", __func__);
+    LOG_INFO("%s!\n", __func__);
     if (uvc_video_id_get(0) == video_id)
     {
-        printf("%s: video_id:%d, width:%d,height:%d,fps:%d,eptz:%d!\n", __func__, video_id, width, height, fps, eptz);
+        LOG_INFO("%s: video_id:%d, width:%d,height:%d,fps:%d,eptz:%d!\n", __func__, video_id, width, height, fps, eptz);
         uvc_ctrl[2].id = video_id;
         uvc_ctrl[2].width = width;
         uvc_ctrl[2].height = height;
@@ -356,12 +357,12 @@ void set_uvc_control_start(int video_id, int width, int height, int fps,int form
         uvc_ctrl[2].eptz = eptz;
     }
     else
-        printf("unexpect uvc!\n");
+        LOG_ERROR("unexpect uvc!\n");
 }
 
 void set_uvc_control_stop(void)
 {
-    printf("%s!\n", __func__);
+    LOG_INFO("%s!\n", __func__);
     uvc_ctrl[2].stop = true;
 }
 
@@ -369,7 +370,7 @@ void set_uvc_control_restart(void)
 {
     if (uvc_flags & UVC_CONTROL_CAMERA)
     {
-        printf("%s!\n", __func__);
+        LOG_INFO("%s!\n", __func__);
         uvc_restart = true;
     }
 }

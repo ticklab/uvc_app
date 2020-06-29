@@ -16,6 +16,7 @@
 
 #include "mpi_enc.h"
 #include "uvc_video.h"
+#include "uvc_log.h"
 
 #if 0
 static OptionInfo mpi_enc_cmd[] = {
@@ -53,13 +54,13 @@ static MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
     MPP_RET ret = MPP_OK;
 
     if (!data || !cmd) {
-        printf("invalid input data %p cmd %p\n", data, cmd);
+        LOG_ERROR("invalid input data %p cmd %p\n", data, cmd);
         return MPP_ERR_NULL_PTR;
     }
 
     p = calloc(sizeof(MpiEncTestData), 1);
     if (!p) {
-        printf("create MpiEncTestData failed\n");
+        LOG_ERROR("create MpiEncTestData failed\n");
         ret = MPP_ERR_MALLOC;
         goto RET;
     }
@@ -80,19 +81,19 @@ static MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
     if (cmd->have_output || !access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0)) {
         p->fp_output = fopen(RK_MPP_DEBUG_OUT_FILE, "w+b");
         if (NULL == p->fp_output) {
-            printf("failed to open output file %s\n", RK_MPP_DEBUG_OUT_FILE);
+            LOG_ERROR("failed to open output file %s\n", RK_MPP_DEBUG_OUT_FILE);
             ret = MPP_ERR_OPEN_FILE;
         }
-        printf("debug out file open\n");
+        LOG_INFO("debug out file open\n");
     }
 
     if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
         p->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
         if (NULL == p->fp_input) {
-            printf("failed to open in file %s\n", RK_MPP_DEBUG_IN_FILE);
+            LOG_ERROR("failed to open in file %s\n", RK_MPP_DEBUG_IN_FILE);
             ret = MPP_ERR_OPEN_FILE;
         }
-        printf("warnning:debug in file open, open it will lower the fps\n");
+        LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
     }
 
     // update resource parameter
@@ -116,7 +117,7 @@ static MPP_RET test_ctx_deinit(MpiEncTestData **data)
     MpiEncTestData *p = NULL;
 
     if (!data) {
-        printf("invalid input data %p\n", data);
+        LOG_ERROR("invalid input data %p\n", data);
         return MPP_ERR_NULL_PTR;
     }
 
@@ -149,7 +150,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
         return MPP_ERR_NULL_PTR;
 
     mpi_get_env_u32("enc_version", &p->enc_version, RK_MPP_VERSION_DEFAULT);
-    printf("enc_version:%d,RK_MPP_USE_FULL_RANGE:%d\n",
+    LOG_INFO("enc_version:%d,RK_MPP_USE_FULL_RANGE:%d\n",
            p->enc_version, RK_MPP_USE_FULL_RANGE);
 
     mpi = p->mpi;
@@ -192,7 +193,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
         mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->bps * 1 / 16);
     } break;
     default : {
-        printf("unsupport encoder rc mode %d\n", rc_mode);
+        LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
     } break;
     }
 
@@ -242,7 +243,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
         mpp_enc_cfg_set_s32(cfg, "h265:qp_min_i", 24);
     } break;
     default : {
-        printf("unsupport encoder coding type %d\n", p->type);
+        LOG_ERROR("unsupport encoder coding type %d\n", p->type);
     } break;
     }
 
@@ -250,7 +251,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
     p->split_arg = 0;
 
     if (p->split_mode) {
-        printf("split_mode %d split_arg %d\n", p->split_mode, p->split_arg);
+        LOG_INFO("split_mode %d split_arg %d\n", p->split_mode, p->split_arg);
         mpp_enc_cfg_set_s32(cfg, "split:mode", p->split_mode);
         mpp_enc_cfg_set_s32(cfg, "split:arg", p->split_arg);
     }
@@ -261,13 +262,13 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
     ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
 #endif
     if (ret) {
-        printf("mpi control enc set prep:range failed ret %d\n", ret);
+        LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
         goto RET;
     }
 
     ret = mpi->control(ctx, MPP_ENC_SET_CFG, cfg);
     if (ret) {
-        printf("mpi control enc set cfg failed ret %d\n", ret);
+        LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
         goto RET;
     }
 
@@ -275,7 +276,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
      p->sei_mode = MPP_ENC_SEI_MODE_DISABLE;
      ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->sei_mode);
      if (ret) {
-         printf("mpi control enc set sei cfg failed ret %d\n", ret);
+         LOG_ERROR("mpi control enc set sei cfg failed ret %d\n", ret);
          goto RET;
      }
 
@@ -285,7 +286,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
         int header_mode = MPP_ENC_HEADER_MODE_EACH_IDR;
         ret = mpi->control(ctx, MPP_ENC_SET_HEADER_MODE, &header_mode);
         if (ret) {
-            printf("mpi control enc set codec cfg failed ret %d\n", ret);
+            LOG_ERROR("mpi control enc set codec cfg failed ret %d\n", ret);
             goto RET;
         }
     }
@@ -314,10 +315,10 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
                 if ((p->h264_frm_count % RK_MPP_H264_FORCE_IDR_PERIOD) == 0) {
                    ret = mpi->control(ctx, MPP_ENC_SET_IDR_FRAME, NULL);
                    if (ret) {
-                       printf("mpi force idr frame control failed\n");
+                       LOG_ERROR("mpi force idr frame control failed\n");
                        goto RET;
                    } else {
-                       printf("mpi force idr frame control ok, h264_frm_count:%d\n",p->h264_frm_count);
+                       LOG_INFO("mpi force idr frame control ok, h264_frm_count:%d\n",p->h264_frm_count);
                    }
                 }
                 p->h264_frm_count++;
@@ -329,7 +330,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 
             ret = mpi->control(ctx, MPP_ENC_GET_EXTRA_INFO, &packet);
             if (ret) {
-                printf("mpi control enc get extra info failed\n");
+                LOG_ERROR("mpi control enc get extra info failed\n");
                 goto RET;
             }
 
@@ -355,7 +356,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 
         ret = mpp_frame_init(&frame);
         if (ret) {
-            printf("mpp_frame_init failed\n");
+            LOG_ERROR("mpp_frame_init failed\n");
             goto RET;
         }
 
@@ -374,7 +375,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
         inputCommit.fd = fd;
         ret = mpp_buffer_import(&buf, &inputCommit);
         if (ret) {
-            printf("import input picture buffer failed\n");
+            LOG_ERROR("import input picture buffer failed\n");
             goto RET;
         }
         mpp_frame_set_buffer(frame, buf);
@@ -383,7 +384,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 
         ret = mpi->encode_put_frame(ctx, frame);
         if (ret) {
-            printf("mpp encode put frame failed\n");
+            LOG_ERROR("mpp encode put frame failed\n");
             mpp_frame_deinit(&frame);
             goto RET;
         }
@@ -391,7 +392,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 
         ret = mpi->encode_get_packet(ctx, &p->packet);
         if (ret) {
-            printf("mpp encode get packet failed\n");
+            LOG_ERROR("mpp encode get packet failed\n");
             goto RET;
         }
 
@@ -408,13 +409,13 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
                 if (access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0)) {
                     fclose(p->fp_output);
                     p->fp_output = NULL;
-                    printf("debug out file close\n");
+                    LOG_INFO("debug out file close\n");
                 }
             } else if (!access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0)) {
                 p->fp_output = fopen(RK_MPP_DEBUG_OUT_FILE, "w+b");
                 if (p->fp_output) {
                     fwrite(ptr, 1, len, p->fp_output);
-                    printf("debug out file open\n");
+                    LOG_INFO("debug out file open\n");
                 }
 #endif
             }
@@ -438,11 +439,11 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     MPP_RET ret = MPP_OK;
     MpiEncTestData *p = NULL;
 
-    printf("mpi_enc_test start\n");
+    LOG_INFO("mpi_enc_test start\n");
 
     ret = test_ctx_init(&p, cmd);
     if (ret) {
-        printf("test data init failed ret %d\n", ret);
+        LOG_ERROR("test data init failed ret %d\n", ret);
         return ret;
     }
     *data = p;
@@ -450,35 +451,35 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
 #if 0
     ret = mpp_buffer_get(NULL, &p->frm_buf, p->frame_size);
     if (ret) {
-        printf("failed to get buffer for input frame ret %d\n", ret);
+        LOG_INFO("failed to get buffer for input frame ret %d\n", ret);
         return ret;
     }
 #endif
 
-    printf("mpi_enc_test encoder test start w %d h %d type %d\n",
+    LOG_INFO("mpi_enc_test encoder test start w %d h %d type %d\n",
             p->width, p->height, p->type);
 
     // encoder demo
     ret = mpp_create(&p->ctx, &p->mpi);
     if (ret) {
-        printf("mpp_create failed ret %d\n", ret);
+        LOG_ERROR("mpp_create failed ret %d\n", ret);
         return ret;
     }
 
     ret = mpp_init(p->ctx, MPP_CTX_ENC, p->type);
     if (ret) {
-        printf("mpp_init failed ret %d\n", ret);
+        LOG_ERROR("mpp_init failed ret %d\n", ret);
         return ret;
     }
     ret = mpp_enc_cfg_init(&p->cfg);
     if (ret) {
-        printf("mpp_enc_cfg_init failed ret %d\n", ret);
+        LOG_ERROR("mpp_enc_cfg_init failed ret %d\n", ret);
         return ret;
     }
 
     ret = test_mpp_setup(p);
     if (ret) {
-        printf("test mpp setup failed ret %d\n", ret);
+        LOG_ERROR("test mpp setup failed ret %d\n", ret);
         return ret;
     }
 }
@@ -490,7 +491,7 @@ MPP_RET mpi_enc_test_run(MpiEncTestData **data, int fd, size_t size)
 
     ret = test_mpp_run(p, fd, size);
     if (ret)
-        printf("test mpp run failed ret %d\n", ret);
+        LOG_ERROR("test mpp run failed ret %d\n", ret);
     return ret;
 }
 
@@ -502,7 +503,7 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         mpp_packet_deinit(&p->packet);
     ret = p->mpi->reset(p->ctx);
     if (ret) {
-        printf("mpi->reset failed\n");
+        LOG_ERROR("mpi->reset failed\n");
     }
     if (p->ctx) {
         mpp_destroy(p->ctx);
@@ -517,11 +518,11 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
 #endif
 
     if (MPP_OK == ret){
-        printf("mpi_enc_test success \n");
-        //printf("mpi_enc_test success total frame %d bps %lld\n",
+        LOG_INFO("mpi_enc_test success \n");
+        //LOG_INFO("mpi_enc_test success total frame %d bps %lld\n",
         //        p->frame_count, (RK_U64)((p->stream_size * 8 * p->fps) / p->frame_count));
     } else {
-        printf("mpi_enc_test failed ret %d\n", ret);
+        LOG_ERROR("mpi_enc_test failed ret %d\n", ret);
     }
     test_ctx_deinit(&p);
 
@@ -536,7 +537,7 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height,int fcc)
     cmd->format = g_format;
     switch (fcc) {
     case V4L2_PIX_FMT_YUYV:
-        printf("%s: yuyv not need mpp encodec: %d\n", __func__, fcc);
+        LOG_INFO("%s: yuyv not need mpp encodec: %d\n", __func__, fcc);
         break;
     case V4L2_PIX_FMT_MJPEG:
         cmd->type = MPP_VIDEO_CodingMJPEG;
@@ -545,7 +546,7 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height,int fcc)
         cmd->type = MPP_VIDEO_CodingAVC;
         break;
     default:
-        printf("%s: not support fcc: %d\n", __func__, fcc);
+        LOG_INFO("%s: not support fcc: %d\n", __func__, fcc);
         break;
     }
 
@@ -586,19 +587,19 @@ int mpi_enc_get_h264_extra(MpiEncTestData *p, void *buffer, size_t *size)
     MppPacket packet = NULL;
     ret = mpi->control(ctx, MPP_ENC_GET_EXTRA_INFO, &packet);
     if (ret) {
-        printf("mpi control enc get extra info failed\n");
+        LOG_ERROR("mpi control enc get extra info failed\n");
         *size = 0;
         return -1;
     }
     if (packet) {
         void *ptr   = mpp_packet_get_pos(packet);
         size_t len  = mpp_packet_get_length(packet);
-        printf("%s: len = %d\n", __func__, len);
+        LOG_INFO("%s: len = %d\n", __func__, len);
         if (*size >= len) {
             memcpy(buffer, ptr, len);
             *size = len;
         } else {
-            printf("%s: input buffer size = %d\n", __func__, *size);
+            LOG_INFO("%s: input buffer size = %d\n", __func__, *size);
             *size = 0;
         }
         packet = NULL;

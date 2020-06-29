@@ -1,4 +1,5 @@
 #include "eptz_control.h"
+#include "uvc_log.h"
 
 static RockchipRga gRkRga;
 struct eptz_frame_info eptz_info;
@@ -44,7 +45,7 @@ static int rga_blit(std::shared_ptr<easymedia::ImageBuffer> src,
                  src_rect->h, src->GetVirWidth(), src->GetVirHeight(),
                  get_rga_format(src->GetPixelFormat()));
   } else {
-    printf("%s %d src_rect error \n", __FUNCTION__, __LINE__);
+    LOG_ERROR("%s %d src_rect error \n", __FUNCTION__, __LINE__);
   }
   memset(&dst_info, 0, sizeof(dst_info));
   dst_info.fd = dst->GetFD();
@@ -56,7 +57,7 @@ static int rga_blit(std::shared_ptr<easymedia::ImageBuffer> src,
                  dst_rect->h, dst->GetVirWidth(), dst->GetVirHeight(),
                  get_rga_format(dst->GetPixelFormat()));
   } else {
-    printf("%s %d dst_rect error\n", __FUNCTION__, __LINE__);
+    LOG_ERROR("%s %d dst_rect error\n", __FUNCTION__, __LINE__);
   }
 
   int ret = gRkRga.RkRgaBlit(&src_info, &dst_info, NULL);
@@ -112,7 +113,7 @@ TransformFlow::TransformFlow() {
   sm.output_slots.push_back(0);
   sm.process = do_transform;
   if (!InstallSlotMap(sm, "transform", -1)) {
-    fprintf(stderr, "Fail to InstallSlotMap, %s\n", "transform");
+    LOG_ERROR( "Fail to InstallSlotMap, %s\n", "transform");
     SetError(-EINVAL);
     return;
   }
@@ -152,7 +153,7 @@ bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector) {
   rockx_ret_t ret =
       rockx_face_detect(face_det_handle, &input_image, &face_array, nullptr);
   if (ret != ROCKX_RET_SUCCESS) {
-    fprintf(stderr, "rockx_face_detect error %d\n", ret);
+    LOG_ERROR( "rockx_face_detect error %d\n", ret);
     return false;
   }
   if (face_array.count <= 0)
@@ -161,7 +162,7 @@ bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector) {
       rockx_object_track(object_track_handle, input_image.width,
                          input_image.height, 4, &face_array, &face_array_track);
   if (ret != ROCKX_RET_SUCCESS) {
-    fprintf(stderr, "rockx_face_detect error %d\n", ret);
+    LOG_ERROR( "rockx_face_detect error %d\n", ret);
     return false;
   }
   size_t ret_buf_size =
@@ -196,7 +197,7 @@ RockxFlow::RockxFlow() {
   sm.hold_input.push_back(easymedia::HoldInputMode::INHERIT_FORM_INPUT);
   sm.process = do_rockx;
   if (!InstallSlotMap(sm, "rockx", -1)) {
-    fprintf(stderr, "Fail to InstallSlotMap, %s\n", "rockx");
+    LOG_ERROR( "Fail to InstallSlotMap, %s\n", "rockx");
     SetError(-EINVAL);
     return;
   }
@@ -211,7 +212,7 @@ RockxFlow::RockxFlow() {
     rockx_module_t &model = models[i];
     rockx_ret_t ret = rockx_create(&npu_handle, model, config, config_size);
     if (ret != ROCKX_RET_SUCCESS) {
-      fprintf(stderr, "init rockx module %d error=%d\n", model, ret);
+      LOG_ERROR( "init rockx module %d error=%d\n", model, ret);
       SetError(-EINVAL);
       return;
     }
@@ -269,7 +270,7 @@ DynamicClipFlow::DynamicClipFlow(uint32_t dst_w, uint32_t dst_h)
   sm.output_slots.push_back(0);
   sm.process = do_dynamic_clip;
   if (!InstallSlotMap(sm, "dynamic_clip", -1)) {
-    fprintf(stderr, "Fail to InstallSlotMap, %s\n", "dynamic_clip");
+    LOG_ERROR( "Fail to InstallSlotMap, %s\n", "dynamic_clip");
     SetError(-EINVAL);
     return;
   }
@@ -282,7 +283,7 @@ std::shared_ptr<TransformFlow> transform = nullptr;
 
 int eptz_config(int stream_width, int stream_height, int eptz_width,
                 int eptz_height) {
-  printf("%s: enter \n", __FUNCTION__);
+  LOG_INFO("%s: enter \n", __FUNCTION__);
   eptz_info.src_width = stream_width;
   eptz_info.src_height = stream_height;
   eptz_info.dst_width = eptz_width;
@@ -299,7 +300,7 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
     eptz_info.iterate_x = 2;
     eptz_info.iterate_y = 2;
   }
-  printf("%s: eptz_info src_wh [%d %d] dst_wh[%d %d], threshold_xy[%d %d] "
+  LOG_INFO("%s: eptz_info src_wh [%d %d] dst_wh[%d %d], threshold_xy[%d %d] "
          "iterate_xy[%d %d]\n",
          __func__, eptz_info.src_width, eptz_info.src_height,
          eptz_info.dst_width, eptz_info.dst_height, eptz_info.threshold_x,
@@ -359,7 +360,7 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
 
   rknn = std::make_shared<RockxFlow>();
   if (!rknn || rknn->GetError()) {
-    fprintf(stderr, "Fail to create rockx flow\n");
+    LOG_ERROR( "Fail to create rockx flow\n");
     return -1;
   }
 
@@ -367,7 +368,7 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
 
   transform = std::make_shared<TransformFlow>();
   if (!transform || transform->GetError()) {
-    fprintf(stderr, "Fail to create transform flow\n");
+    LOG_ERROR( "Fail to create transform flow\n");
     return -1;
   }
 
@@ -375,7 +376,7 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
   dclip = std::make_shared<DynamicClipFlow>(eptz_info.dst_width,
                                             eptz_info.dst_height);
   if (!dclip || dclip->GetError()) {
-    fprintf(stderr, "Fail to create dynamic_clip flow\n");
+    LOG_ERROR( "Fail to create dynamic_clip flow\n");
     return -1;
   }
   return 0;
@@ -388,6 +389,6 @@ std::shared_ptr<easymedia::Flow> create_flow(const std::string &flow_name,
   auto ret = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
       flow_name.c_str(), param.c_str());
   if (!ret)
-    fprintf(stderr, "Create flow %s failed\n", flow_name.c_str());
+    LOG_ERROR( "Create flow %s failed\n", flow_name.c_str());
   return ret;
 }

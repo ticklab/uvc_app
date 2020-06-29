@@ -33,6 +33,7 @@
 #include "uvc_video.h"
 #include "uvc-gadget.h"
 #include "yuv.h"
+#include "uvc_log.h"
 
 #include <pthread.h>
 #include <stdio.h>
@@ -163,7 +164,7 @@ int uvc_gadget_pthread_create(int *id)
     uvc_memset_uvc_user(*id);
     if ((pid = uvc_video_get_uvc_pid(*id))) {
         if (pthread_create(pid, NULL, uvc_gadget_pthread, id)) {
-            printf("create uvc_gadget_pthread fail!\n");
+            LOG_ERROR("create uvc_gadget_pthread fail!\n");
             return -1;
         }
     }
@@ -202,7 +203,7 @@ int uvc_video_id_add(int id)
 {
     int ret = 0;
 
-    printf("add uvc video id: %d\n", id);
+    LOG_INFO("add uvc video id: %d\n", id);
 
     pthread_mutex_lock(&mtx_v);
     if (!_uvc_video_id_check(id)) {
@@ -217,11 +218,11 @@ int uvc_video_id_add(int id)
             pthread_mutex_init(&v->user_mutex, NULL);
             ret = 0;
         } else {
-            printf("%s: %d: memory alloc fail.\n", __func__, __LINE__);
+            LOG_ERROR("%s: %d: memory alloc fail.\n", __func__, __LINE__);
             ret = -1;
         }
     } else {
-        printf("%s: %d: %d already exist.\n", __func__, __LINE__, id);
+        LOG_INFO("%s: %d: %d already exist.\n", __func__, __LINE__, id);
         ret = -1;
     }
     pthread_mutex_unlock(&mtx_v);
@@ -419,7 +420,7 @@ static int _uvc_buffer_init(struct uvc_video *v)
     pthread_mutex_init(&v->uvc->read.mutex, NULL);
     uvc_buffer_clear(&v->uvc->write);
     uvc_buffer_clear(&v->uvc->read);
-    printf("UVC_BUFFER_NUM = %d\n", UVC_BUFFER_NUM);
+    LOG_INFO("UVC_BUFFER_NUM = %d\n", UVC_BUFFER_NUM);
     for (i = 0; i < UVC_BUFFER_NUM; i++) {
         buffer = uvc_buffer_create(width, height, v->id);
         if (!buffer) {
@@ -630,7 +631,7 @@ static void _uvc_set_user_resolution(struct uvc_video *v, int width, int height)
     pthread_mutex_lock(&v->user_mutex);
     v->uvc_user.width = width;
     v->uvc_user.height = height;
-    printf("uvc_user.width = %u, uvc_user.height = %u\n", v->uvc_user.width,
+    LOG_INFO("uvc_user.width = %u, uvc_user.height = %u\n", v->uvc_user.width,
            v->uvc_user.height);
     pthread_mutex_unlock(&v->user_mutex);
 }

@@ -46,6 +46,7 @@
 
 #include "uevent.h"
 #include "uvc_control.h"
+#include "uvc_log.h"
 
 static bool find_video;
 
@@ -67,17 +68,17 @@ static void video_uevent(const struct _uevent *event)
         tmp = strchr(tmp, '=') + 1;
 
         if (sscanf((char *)&tmp[strlen("video")], "%d", &id) < 1) {
-            printf("failed to parse video id\n");
+            LOG_ERROR("failed to parse video id\n");
             return;
         }
 
         if (!strcmp(act, "add")) {
-            printf("add video...\n");
+            LOG_INFO("add video...\n");
             uvc_control_signal();
             find_video = true;
             //video_record_addvideo(id, 1920, 1080, 30);
         } else {
-            printf("delete video...\n");
+            LOG_INFO("delete video...\n");
             find_video = false;
             //video_record_deletevideo(id);
         }
@@ -103,7 +104,7 @@ int read_sysfs_string(const char *filename, char *str)
 
 		goto error_free;
 	}
-printf("read_sysfs_string:file:%s,str:%s\n",filename,str);
+    LOG_INFO("read_sysfs_string:file:%s,str:%s\n",filename,str);
 	if (fclose(sysfsfp))
 		ret = -errno;
 
@@ -136,7 +137,7 @@ static void parse_event(const struct _uevent *event)
     } else if (!strcmp(sysfs, "udc")) {
         ret = read_sysfs_string(udc_path, tmp);
         if (ret < 0) {
-            fprintf(stderr, "[ERR] failed to get sysfs\n");
+            LOG_ERROR("[ERR] failed to get sysfs\n");
         }
         if (memcmp(tmp, "CONFIGURED", sizeof("CONFIGURED")))
             uvc_control_signal();
@@ -170,12 +171,12 @@ static void *event_monitor_thread(void *arg)
 
     sockfd = socket(AF_NETLINK, SOCK_RAW, NETLINK_KOBJECT_UEVENT);
     if (sockfd == -1) {
-        printf("socket creating failed:%s\n", strerror(errno));
+        LOG_ERROR("socket creating failed:%s\n", strerror(errno));
         goto err_event_monitor;
     }
 
     if (bind(sockfd, (struct sockaddr *)&sa, sizeof(sa)) == -1) {
-        printf("bind error:%s\n", strerror(errno));
+        LOG_ERROR("bind error:%s\n", strerror(errno));
         goto err_event_monitor;
     }
 
@@ -184,9 +185,9 @@ static void *event_monitor_thread(void *arg)
         event.size = 0;
         len = recvmsg(sockfd, &msg, 0);
         if (len < 0) {
-            printf("receive error\n");
+            LOG_ERROR("receive error\n");
         } else if (len < 32 || len > sizeof(buf)) {
-            printf("invalid message");
+            LOG_INFO("invalid message");
         } else {
             for (i = 0, j = 0; i < len; i++) {
                 if (*(buf + i) == '\0' && (i + 1) != len) {

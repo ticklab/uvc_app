@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include "uvc_log.h"
 
 #if RK_MPP_RANGE_DEBUG_ON
 static char *strtrimr(char *pstr)
@@ -76,7 +77,7 @@ static char *strrmlb(char *pstr)
 
 int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc)
 {
-    printf("%s: width = %d, height = %d, fcc = %d\n", __func__, width, height,fcc);
+    LOG_INFO("%s: width = %d, height = %d, fcc = %d\n", __func__, width, height,fcc);
     memset(e, 0, sizeof(*e));
     e->video_id = -1;
     e->width = -1;
@@ -133,9 +134,9 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
             fclose(e->mpi_data->fp_range_path);
             e->mpi_data->fp_range_path = NULL;
             if (!e->mpi_data->fp_range_file) {
-                printf("error:no such fp_range file:%s exit\n", e->mpi_data->range_path);
+                LOG_ERROR("error:no such fp_range file:%s exit\n", e->mpi_data->range_path);
             } else {
-                printf("open fp_range file:%s ok, size=%d\n", e->mpi_data->range_path, size);
+                LOG_INFO("open fp_range file:%s ok, size=%d\n", e->mpi_data->range_path, size);
                 while (ret != size) {
                     ret += fread(virt, 1, size - ret, e->mpi_data->fp_range_file);
                     if(feof(e->mpi_data->fp_range_file))
@@ -143,16 +144,16 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
                 }
                 if (strstr(e->mpi_data->range_path, "full")) {
                     ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
-                    printf("change to full range\n");
+                    LOG_INFO("change to full range\n");
                 } else {
                     ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
-                    printf("change to limit range\n");
+                    LOG_INFO("change to limit range\n");
                 }
                 if (ret)
-                    printf("mpi control enc set prep:range failed ret %d\n", ret);
+                    LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
                 ret = e->mpi_data->mpi->control(e->mpi_data->ctx, MPP_ENC_SET_CFG, e->mpi_data->cfg);
                 if (ret)
-                    printf("mpi control enc set cfg failed ret %d\n", ret);
+                    LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
             }
             free(e->mpi_data->range_path);
         } else {
@@ -165,7 +166,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
     } else if (e->mpi_data->fp_range_file) {
         fclose(e->mpi_data->fp_range_file);
         e->mpi_data->fp_range_file = NULL;
-        printf("debug fp_range file close\n");
+        LOG_INFO("debug fp_range file close\n");
     }
 #endif
 
@@ -175,13 +176,13 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
         if (access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
             fclose(e->mpi_data->fp_input);
             e->mpi_data->fp_input = NULL;
-            printf("debug in file close\n");
+            LOG_INFO("debug in file close\n");
         }
     } else if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
         e->mpi_data->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
         if (e->mpi_data->fp_input) {
             fwrite(virt, 1, size, e->mpi_data->fp_input);
-            printf("warnning:debug in file open, open it will lower the fps\n");
+            LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
         }
 #endif
     }
@@ -199,7 +200,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
         }
         break;
     default:
-        printf("%s: not support fcc: %u\n", __func__, fcc);
+        LOG_ERROR("%s: not support fcc: %u\n", __func__, fcc);
         break;
     }
 

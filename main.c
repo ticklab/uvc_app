@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include "uvc_control.h"
 #include "uvc_video.h"
+#include "uvc_log.h"
 
 #ifdef CAMERA_CONTROL
 #include "camera_control.h"
@@ -10,6 +11,17 @@
 #include "mpi_enc.h"
 #include "uevent.h"
 #include "drm.h"
+
+enum {
+  LOG_ERROR,
+  LOG_WARN,
+  LOG_INFO,
+  LOG_DEBUG
+};
+
+int enable_minilog = 0;
+#define LOG_TAG "uvc_app"
+int uvc_app_log_level = LOG_INFO;
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
@@ -26,11 +38,15 @@ int main(int argc, char *argv[])
     int y, uv;
     int extra_cnt = 0;
     uint32_t flags = 0;
+#ifdef ENABLE_MINILOGGER
+    enable_minilog = 1;
+    __minilog_log_init(argv[0], NULL, false, true, argv[0],"1.0.0");
+#endif
 #if (RK_MPP_ENC_TEST_NATIVE == 0)
 #ifdef CAMERA_CONTROL
     if (argc != 3)
     {
-        printf("uvc_app loop from v4l2.\n");
+        LOG_INFO("uvc_app loop from v4l2.\n");
         camera_control_init();
         uvc_control_start_setcallback(camera_control_start);
         uvc_control_stop_setcallback(camera_control_deinit);
@@ -44,29 +60,29 @@ int main(int argc, char *argv[])
         }
         uvc_video_id_exit_all();
         camera_control_deinit();
-        printf("uvc_app exit.\n");
+        LOG_INFO("uvc_app exit.\n");
         StopAllThread();
         return 0;
     }
 #else
    if (argc != 3) {
-     printf("please select true control mode!!\n");
+     LOG_INFO("please select true control mode!!\n");
      return 0;
    }
 #endif
 #endif
 
     if (argc < 3) {
-        printf("Usage: uvc_app width height [test_file.nv12]\n");
-        printf("e.g. uvc_app 640 480 [test_file.nv12]\n");
+        LOG_INFO("Usage: uvc_app width height [test_file.nv12]\n");
+        LOG_INFO("e.g. uvc_app 640 480 [test_file.nv12]\n");
         return -1;
     }
     width = atoi(argv[1]);
     height = atoi(argv[2]);
     FILE *test_file = NULL;
     if (width == 0 || height == 0) {
-        printf("Usage: uvc_app width height [test_file.nv12]\n");
-        printf("e.g. uvc_app 640 480 [test_file.nv12]\n");
+        LOG_INFO("Usage: uvc_app width height [test_file.nv12]\n");
+        LOG_INFO("e.g. uvc_app 640 480 [test_file.nv12]\n");
         return -1;
     }
 
@@ -78,7 +94,7 @@ int main(int argc, char *argv[])
     ret = drm_alloc(fd, size, 16, &handle, 0);
     if (ret)
         return -1;
-    printf("size:%d", size);
+    LOG_INFO("size:%d", size);
     ret = drm_handle_to_fd(fd, handle, &handle_fd, 0);
     if (ret)
         return -1;
@@ -86,14 +102,14 @@ int main(int argc, char *argv[])
     buffer = (char *)drm_map_buffer(fd, handle, size);
     if (!buffer)
     {
-        printf("drm map buffer fail.\n");
+        LOG_INFO("drm map buffer fail.\n");
         return -1;
     }
 
     if (argc == 4) {
         test_file = fopen(argv[3], "r+b");
         if (!test_file) {
-            printf("open %s fail.\n", argv[3]);
+            LOG_INFO("open %s fail.\n", argv[3]);
             return -1;
         }
     } else {

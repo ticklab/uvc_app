@@ -60,6 +60,7 @@
 #include <easymedia/utils.h>
 
 #include <easymedia/flow.h>
+#include "uvc_log.h"
 
 #if EPTZ_ENABLE
 #include "eptz_control.h"
@@ -118,7 +119,7 @@ UVCJoinFlow::UVCJoinFlow(uint32_t id)
     sm.process = do_uvc;
     if (!InstallSlotMap(sm, "uvc_extract", -1))
     {
-        fprintf(stderr, "Fail to InstallSlotMap, %s\n", "uvc_join");
+        LOG_ERROR( "Fail to InstallSlotMap, %s\n", "uvc_join");
         SetError(-EINVAL);
         return;
     }
@@ -165,7 +166,7 @@ static struct Camera_Stream *getfastvideo(void)
 
 static void camera_stop(struct Camera_Stream *stream)
 {
-    printf("%s \n", __func__);
+    LOG_INFO("%s \n", __func__);
 }
 
 static void *uvc_camera(void *arg)
@@ -181,25 +182,25 @@ static void *uvc_camera(void *arg)
     needEPTZ = stream->eptz;
     char* enable_eptz = getenv("ENABLE_EPTZ");
     if(enable_eptz && !needEPTZ){
-      printf("%s :uvc eptz use evn setting \n",__FUNCTION__);
+      LOG_INFO("%s :uvc eptz use evn setting \n");
       needEPTZ = atoi(enable_eptz);
     }
     if(stream->height < 480 && !needEPTZ){
-      printf("usb RGA for isp resolusion \n");
+      LOG_INFO("usb RGA for isp resolusion \n");
       rga_width = stream->width;
       rga_height = stream->height;
       stream->height = 720;
       stream->width = 1280;
       needRGA = 1;
     }
-    printf("%s :uvc width:%d,height:%d, needEPTZ %d, needRGA %d \n", __func__,stream->width,stream->height, needEPTZ, needRGA);
+    LOG_INFO("%s :uvc width:%d,height:%d, needEPTZ %d, needRGA %d \n", __func__,stream->width,stream->height, needEPTZ, needRGA);
 #if EPTZ_ENABLE
     if(needEPTZ && !needRGA){
       eptz_width = stream->width;
       eptz_height = stream->height;
       if(eptz_width > 1920 || eptz_height > 1080){
         needEPTZ = 0;
-        printf("%s :needEPTZ, not support this width(>1920) and height(>1080) \n");
+        LOG_ERROR("%s :needEPTZ, not support this width(>1920) and height(>1080) \n");
       }else if(eptz_width == 1920){
         stream->width = 2560;
         stream->height = 1440;
@@ -208,10 +209,10 @@ static void *uvc_camera(void *arg)
         stream->height = eptz_height * 1.5;
       }else {
         needEPTZ = 0;
-        printf("%s :needEPTZ, match fail \n");
+        LOG_ERROR("%s :needEPTZ, match fail \n");
       }
       if(needEPTZ)
-        printf("%s :needEPTZ uvc width:%d,height:%d \n", __func__,stream->width,stream->height);
+        LOG_INFO("%s :needEPTZ uvc width:%d,height:%d \n",stream->width,stream->height);
     }
 #endif
     std::shared_ptr<easymedia::Flow> video_rga_flow=NULL;
@@ -237,7 +238,7 @@ static void *uvc_camera(void *arg)
     PARAM_STRING_APPEND_TO(stream_param, KEY_FRAMES, 3); // if not set, default is 2
     PARAM_STRING_APPEND(stream_param, KEY_OUTPUTDATATYPE, input_format);
     if (stream->format == V4L2_PIX_FMT_H264) {
-       printf("stream->format:V4L2_PIX_FMT_H264,use V4L2_QUANTIZATION_LIM_RANGE!!");
+       LOG_INFO("stream->format:V4L2_PIX_FMT_H264,use V4L2_QUANTIZATION_LIM_RANGE!!");
        PARAM_STRING_APPEND_TO(stream_param, KEY_V4L2_QUANTIZATION, V4L2_QUANTIZATION_LIM_RANGE);
     }
     PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_WIDTH, stream->width);
@@ -246,12 +247,12 @@ static void *uvc_camera(void *arg)
     PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_VIR_HEIGHT, stream->height);
 
     flow_param = easymedia::JoinFlowParam(flow_param, 1, stream_param);
-    printf("\n#VideoCapture flow param:\n%s\n", flow_param.c_str());
+    LOG_INFO("\n#VideoCapture flow param:\n%s\n", flow_param.c_str());
     stream->input = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
         flow_name.c_str(), flow_param.c_str());
     if (!stream->input)
     {
-        fprintf(stderr, "Create flow %s failed\n", flow_name.c_str());
+        LOG_ERROR( "Create flow %s failed\n", flow_name.c_str());
         goto record_exit;
     }
 
@@ -263,12 +264,12 @@ static void *uvc_camera(void *arg)
         flow_param = "";
         PARAM_STRING_APPEND(flow_param, KEY_PATH, output_path.c_str());
         PARAM_STRING_APPEND(flow_param, KEY_OPEN_MODE, "w+"); // read and close-on-exec
-        printf("\n#FileWrite:\n%s\n", flow_param.c_str());
+        LOG_INFO("\n#FileWrite:\n%s\n", flow_param.c_str());
         video_save_flow = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
             flow_name.c_str(), flow_param.c_str());
         if (!video_save_flow)
         {
-            fprintf(stderr, "Create flow video_save_flow failed\n");
+            LOG_ERROR( "Create flow video_save_flow failed\n");
             goto record_exit;
         }
         stream->input->AddDownFlow(video_save_flow, 0, 0);
@@ -276,7 +277,7 @@ static void *uvc_camera(void *arg)
         stream->uvc_flow = std::make_shared<UVCJoinFlow>(stream->deviceid);
         if (!stream->uvc_flow)
         {
-            fprintf(stderr, "Create flow UVCJoinFlow failed\n");
+            LOG_ERROR( "Create flow UVCJoinFlow failed\n");
             goto record_exit;
         }
         if(needRGA) {
@@ -301,11 +302,11 @@ static void *uvc_camera(void *arg)
              easymedia::TwoImageRectToString(rect_vect).c_str());
              PARAM_STRING_APPEND_TO(filter_param, KEY_BUFFER_ROTATE, 0);
              flow_param = easymedia::JoinFlowParam(flow_param, 1, filter_param);
-             printf("\n#Rkrga Filter flow param:\n%s\n", flow_param.c_str());
+             LOG_INFO("\n#Rkrga Filter flow param:\n%s\n", flow_param.c_str());
              video_rga_flow = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
              flow_name.c_str(), flow_param.c_str());
              if (!video_rga_flow) {
-                 fprintf(stderr, "Create flow %s failed\n", flow_name.c_str());
+                 LOG_ERROR( "Create flow %s failed\n", flow_name.c_str());
                  goto record_exit;
               }
               video_rga_flow->AddDownFlow(stream->uvc_flow, 0, 0);
@@ -315,7 +316,7 @@ static void *uvc_camera(void *arg)
                   #if EPTZ_ENABLE
                   int ret = eptz_config(stream->width, stream->height, eptz_width, eptz_height);
                   if( ret == -1){
-                    fprintf(stderr, "eptz_config failed\n");
+                    LOG_ERROR( "eptz_config failed\n");
                     goto record_exit;
                   }
                   dclip->AddDownFlow(stream->uvc_flow, 0, 0);
@@ -328,7 +329,7 @@ static void *uvc_camera(void *arg)
                   #if EPTZ_ENABLE
                   int ret = zoom_config(stream->width, stream->height);
                   if( ret == -1){
-                    fprintf(stderr, "zoom_config failed\n");
+                    LOG_ERROR( "zoom_config failed\n");
                     goto record_exit;
                   }
                   zoom->AddDownFlow(stream->uvc_flow, 0, 0);
@@ -340,7 +341,7 @@ static void *uvc_camera(void *arg)
         }
     }
 
-    printf("%s start,uvc_flow_output=%d\n", __func__, stream->uvc_flow_output);
+    LOG_INFO("%s start,uvc_flow_output=%d\n", __func__, stream->uvc_flow_output);
     //system("mediaserver -d -c /oem/usr/share/mediaserver/camera_nv12_rga_nn_link.conf &");
 
     while (stream->pthread_run)
@@ -350,7 +351,7 @@ static void *uvc_camera(void *arg)
     goto record_exit;
 
 record_exit:
-    printf("%s exit\n", __func__);
+    LOG_INFO("%s exit\n", __func__);
     pthread_rwlock_wrlock(&notelock);
     //system("killall -9 mediaserver");
     //usleep(500000);//rkisp requst the stream without init aiq close first!
@@ -421,13 +422,13 @@ extern "C" int camera_control_start(int id, int width, int height, int fps, int 
     int ret = 0;
     if (id < 0)
         return -1;
-    printf("%s!\n", __func__);
+    LOG_INFO("%s!\n", __func__);
     pthread_rwlock_wrlock(&notelock);
 
     stream = (struct Camera_Stream *)calloc(1, sizeof(struct Camera_Stream));
     if (!stream)
     {
-        printf("no memory!\n");
+        LOG_ERROR("no memory!\n");
         goto addvideo_exit;
     }
     pthread_mutex_init(&stream->record_mutex, NULL);
@@ -442,15 +443,15 @@ extern "C" int camera_control_start(int id, int width, int height, int fps, int 
     stream->deviceid = id;
     stream->eptz = eptz;
 
-    printf("stream%d is uvc video device\n", stream->deviceid);
+    LOG_INFO("stream%d is uvc video device\n", stream->deviceid);
     while (stream_list) {
-        printf("%s wait for release stream_list!\n", __func__);
+        LOG_INFO("%s wait for release stream_list!\n", __func__);
         usleep(100000);//wait for next
     }
     stream_list = stream;
     if (pthread_create(&stream->record_id, NULL, uvc_camera, stream))
     {
-        printf("%s pthread create err!\n", __func__);
+        LOG_INFO("%s pthread create err!\n", __func__);
         goto addvideo_exit;
     }
     record_id_list.push_back(stream->record_id);
@@ -478,11 +479,11 @@ addvideo_exit:
         stream = NULL;
     }
 
-    printf("stream%d exit!\n", id);
+    LOG_INFO("stream%d exit!\n", id);
     ret = -1;
 
 addvideo_ret:
-    printf("%s!end\n", __func__);
+    LOG_INFO("%s!end\n", __func__);
     pthread_rwlock_unlock(&notelock);
     return ret;
 }
@@ -522,7 +523,7 @@ extern "C" void camera_control_set_zoom(int val)
 
 extern "C" void camera_control_deinit()
 {
-    printf("%s!start\n", __func__);
+    LOG_INFO("%s!start\n", __func__);
     struct Camera_Stream *stream;
     std::list<pthread_t> save_list;
 
@@ -542,9 +543,9 @@ extern "C" void camera_control_deinit()
     for (std::list<pthread_t>::iterator it = save_list.begin();
          it != save_list.end(); ++it)
     {
-        printf("pthread_join record id: %lu\n", *it);
+        LOG_INFO("pthread_join record id: %lu\n", *it);
         pthread_join(*it, NULL);
     }
     save_list.clear();
-    printf("%s!end\n", __func__);
+    LOG_INFO("%s!end\n", __func__);
 }

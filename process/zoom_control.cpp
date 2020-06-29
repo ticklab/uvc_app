@@ -2,6 +2,7 @@
 #include "camera_control.h"
 #include <pthread.h>
 #include <pwd.h>
+#include "uvc_log.h"
 
 static RockchipRga gRkRga_zoom;
 
@@ -46,7 +47,7 @@ static int rga_blit_zoom(std::shared_ptr<easymedia::ImageBuffer> src,
                  src_rect->h, src->GetVirWidth(), src->GetVirHeight(),
                  get_rga_format_zoom(src->GetPixelFormat()));
   } else {
-    printf("%s %d src_rect error \n", __FUNCTION__, __LINE__);
+    LOG_INFO("%s %d src_rect error \n", __FUNCTION__, __LINE__);
   }
   memset(&dst_info, 0, sizeof(dst_info));
   dst_info.fd = dst->GetFD();
@@ -58,7 +59,7 @@ static int rga_blit_zoom(std::shared_ptr<easymedia::ImageBuffer> src,
                  dst_rect->h, dst->GetVirWidth(), dst->GetVirHeight(),
                  get_rga_format_zoom(dst->GetPixelFormat()));
   } else {
-    printf("%s %d dst_rect error\n", __FUNCTION__, __LINE__);
+    LOG_INFO("%s %d dst_rect error\n", __FUNCTION__, __LINE__);
   }
 
   int ret = gRkRga_zoom.RkRgaBlit(&src_info, &dst_info, NULL);
@@ -107,7 +108,7 @@ bool do_zoom(easymedia::Flow *f,
   ImageRect *dst_rect = (ImageRect *)malloc(sizeof(ImageRect));
 
   if (!src_rect || !dst_rect) {
-    fprintf(stderr, "%s %d error \n", __FUNCTION__, __LINE__);
+    LOG_INFO( "%s %d error \n");
     return false;
   } else {
     pthread_rwlock_wrlock(&zoomlock);
@@ -150,7 +151,7 @@ ZoomFlow::ZoomFlow(uint32_t dst_w, uint32_t dst_h)
   sm.output_slots.push_back(0);
   sm.process = do_zoom;
   if (!InstallSlotMap(sm, "zoom", -1)) {
-    fprintf(stderr, "Fail to InstallSlotMap, %s\n", "zoom");
+    LOG_INFO( "Fail to InstallSlotMap, %s\n", "zoom");
     SetError(-EINVAL);
     return;
   }
@@ -160,18 +161,18 @@ ZoomFlow::ZoomFlow(uint32_t dst_w, uint32_t dst_h)
 std::shared_ptr<ZoomFlow> zoom = nullptr;
 
 int zoom_config( int stream_width, int stream_height) {
-  printf("%s: enter \n", __FUNCTION__);
+  LOG_INFO("%s: enter \n", __FUNCTION__);
   // zoom
   zoom = std::make_shared<ZoomFlow>(stream_width,stream_height);
   if (!zoom || zoom->GetError()) {
-    fprintf(stderr, "Fail to create zoom flow\n");
+    LOG_INFO( "Fail to create zoom flow\n");
     return -1;
   }
   return 0;
 }
 
 int set_zoom(float val) {
-  printf("zoom_control.cpp: set zoom:%2f \n",val);
+  LOG_INFO("zoom_control.cpp: set zoom:%2f \n",val);
   dynamic_zoom = val;
   return 0;
 }

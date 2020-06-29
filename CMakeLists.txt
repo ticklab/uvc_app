@@ -30,6 +30,13 @@ set(UVC_APP_DEPENDENT_LIBS
     rockchip_mpp
 )
 
+option(ENABLE_MINILOGGER  "enbale minilogger" ON)
+if (${ENABLE_MINILOGGER})
+    find_package(MiniLogger REQUIRED)
+    add_definitions(-DENABLE_MINILOGGER)
+    set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} MiniLogger::MiniLogger)
+endif()
+
 option(COMPILES_CAMERA "compile:with rkmedia v4l2 flow " OFF)
 option(EPTZ_SUPPORT "uvc support eptz" OFF)
 if(COMPILES_CAMERA)

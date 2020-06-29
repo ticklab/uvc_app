@@ -46,26 +46,27 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include "uvc_log.h"
 
 extern "C" void camera_pu_control_init(int type,int def,int min,int max)
 {
-    printf("%s!\n", __func__);
+    LOG_DEBUG("%s!\n", __func__);
 }
 
 extern "C" int camera_pu_control_get(int type, int def)
 {
-    printf("%s!\n", __func__);
+    LOG_DEBUG("%s!\n", __func__);
     return def;
 }
 
 extern "C" int camera_pu_control_set(int type, int value)
 {
-    printf("%s!\n", __func__);
+    LOG_DEBUG("%s!\n", __func__);
     return 0;
 }
 
 extern "C" int camera_pu_control_check(int deviceid)
 {
-    printf("%s!\n", __func__);
+    LOG_DEBUG("%s!\n", __func__);
     return 0;
 }
