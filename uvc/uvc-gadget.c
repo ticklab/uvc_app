@@ -2560,31 +2560,31 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             case UVC_GET_LEN:
                 memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = sizeof(resp->data);
-                resp->length = len;
+                resp->length = 4;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_SET_CUR:
                 memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 0x0;
-                resp->length = len;
+                resp->length = 4;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MIN:
                 memset(resp->data, 0, sizeof(resp->data));
-                resp->length = len;
+                resp->length = 4;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MAX:
                 memset(resp->data, 0xFF, sizeof(resp->data));
-                resp->length = len;
+                resp->length = 4;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_CUR:
-                resp->length = 1;
+                resp->length = len < sizeof(dev->eptz_flag) ? len : sizeof(dev->eptz_flag);
                 memcpy(&resp->data[0], &dev->eptz_flag,
                        resp->length);
                 dev->request_error_code.data[0] = 0x00;
@@ -2599,7 +2599,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             case UVC_GET_DEF:
                 memset(resp->data, 0, sizeof(resp->data));
                 resp->data[0] = 0;
-                resp->length = len;
+                resp->length = 4;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
