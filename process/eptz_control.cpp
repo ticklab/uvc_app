@@ -63,7 +63,7 @@ static int rga_blit(std::shared_ptr<easymedia::ImageBuffer> src,
   int ret = gRkRga.RkRgaBlit(&src_info, &dst_info, NULL);
   if (ret) {
     dst->SetValidSize(0);
-    LOG("Fail to RkRgaBlit, ret=%d\n", ret);
+    LOG_ERROR("Fail to RkRgaBlit, ret=%d\n", ret);
   } else {
     size_t valid_size = CalPixFmtSize(dst->GetPixelFormat(), dst->GetVirWidth(),
                                       dst->GetVirHeight(), 16);

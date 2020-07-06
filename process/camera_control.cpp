@@ -182,7 +182,7 @@ static void *uvc_camera(void *arg)
     needEPTZ = stream->eptz;
     char* enable_eptz = getenv("ENABLE_EPTZ");
     if(enable_eptz && !needEPTZ){
-      LOG_INFO("%s :uvc eptz use evn setting \n");
+      LOG_INFO("%s :uvc eptz use env setting \n",enable_eptz);
       needEPTZ = atoi(enable_eptz);
     }
     if(stream->height < 480 && !needEPTZ){
@@ -193,14 +193,14 @@ static void *uvc_camera(void *arg)
       stream->width = 1280;
       needRGA = 1;
     }
-    LOG_INFO("%s :uvc width:%d,height:%d, needEPTZ %d, needRGA %d \n", __func__,stream->width,stream->height, needEPTZ, needRGA);
+    LOG_INFO("uvc width:%d,height:%d, needEPTZ %d, needRGA %d \n",stream->width,stream->height, needEPTZ, needRGA);
 #if EPTZ_ENABLE
     if(needEPTZ && !needRGA){
       eptz_width = stream->width;
       eptz_height = stream->height;
       if(eptz_width > 1920 || eptz_height > 1080){
         needEPTZ = 0;
-        LOG_ERROR("%s :needEPTZ, not support this width(>1920) and height(>1080) \n");
+        LOG_ERROR("needEPTZ, not support this width(>1920) and height(>1080) \n");
       }else if(eptz_width == 1920){
         stream->width = 2560;
         stream->height = 1440;
@@ -209,10 +209,10 @@ static void *uvc_camera(void *arg)
         stream->height = eptz_height * 1.5;
       }else {
         needEPTZ = 0;
-        LOG_ERROR("%s :needEPTZ, match fail \n");
+        LOG_ERROR("needEPTZ, match fail \n");
       }
       if(needEPTZ)
-        LOG_INFO("%s :needEPTZ uvc width:%d,height:%d \n",stream->width,stream->height);
+        LOG_INFO("needEPTZ uvc width:%d,height:%d \n",stream->width,stream->height);
     }
 #endif
     std::shared_ptr<easymedia::Flow> video_rga_flow=NULL;
@@ -341,7 +341,7 @@ static void *uvc_camera(void *arg)
         }
     }
 
-    LOG_INFO("%s start,uvc_flow_output=%d\n", __func__, stream->uvc_flow_output);
+    LOG_INFO("start,uvc_flow_output=%d\n", stream->uvc_flow_output);
     //system("mediaserver -d -c /oem/usr/share/mediaserver/camera_nv12_rga_nn_link.conf &");
 
     while (stream->pthread_run)
