@@ -45,6 +45,9 @@
 #define UVC_EVENT_SETUP         (V4L2_EVENT_PRIVATE_START + 4)
 #define UVC_EVENT_DATA          (V4L2_EVENT_PRIVATE_START + 5)
 #define UVC_EVENT_LAST          (V4L2_EVENT_PRIVATE_START + 5)
+#define UVC_EVENT_SUSPEND       (V4L2_EVENT_PRIVATE_START + 6)
+#define UVC_EVENT_RESUME        (V4L2_EVENT_PRIVATE_START + 7)
+#define UVC_EVENT_LAST          (V4L2_EVENT_PRIVATE_START + 7)
 
 #define MAX_UVC_REQUEST_DATA_LENGTH	60
 
@@ -120,7 +123,7 @@ struct uvc_device {
     int is_streaming;
     int run_standalone;
     char *uvc_devname;
-
+    int suspend;
     /* uvc control request specific */
     struct uvc_streaming_control probe;
     struct uvc_streaming_control commit;

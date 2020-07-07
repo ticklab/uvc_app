@@ -249,6 +249,7 @@ static void *uvc_control_thread(void *arg)
 
     while (run_flag)
     {
+        uvc_clear_suspend();
         if (!check_uvc_video_id())
         {
             add_uvc_video();
