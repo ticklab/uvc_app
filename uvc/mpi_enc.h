@@ -27,6 +27,7 @@ extern "C" {
 #define MODULE_TAG "mpi_enc"
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,11 +40,12 @@ extern "C" {
 #include "mpp_common.h"
 
 //#include "utils.h"
+#define BIT(n)  (1<<(n))
 
 #define MAX_FILE_NAME_LENGTH        256
 #define RK_MPP_VERSION_DEFAULT 1
 #define RK_MPP_USE_FULL_RANGE 0
-#define RK_MPP_H264_FORCE_IDR_COUNT 20
+#define RK_MPP_H264_FORCE_IDR_COUNT 5
 #define RK_MPP_H264_FORCE_IDR_PERIOD 5 //must >=1
 #define RK_MPP_ENC_TEST_NATIVE 0
 #define RK_MPP_DYNAMIC_DEBUG_ON 1 //release version can set to 0
@@ -56,14 +58,24 @@ extern "C" {
 #define RK_MPP_DEBUG_OUT_FILE "/data/uvc_enc_out.bin"
 #define RK_MPP_DEBUG_IN_FILE "/data/uvc_enc_in.bin"
 
+#define RK_MPP_ENC_CFG_ORIGINAL_PATH "/etc/mpp_enc_cfg.conf"
+#define RK_MPP_ENC_CFG_MODIFY_PATH "/data/mpp_enc_cfg.conf"
 //#define DEBUG_OUTPUT 1
 #if RK_MPP_ENC_TEST_NATIVE
 extern struct uvc_encode uvc_enc;
-extern int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc);
+extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc);
 #define TEST_ENC_TPYE V4L2_PIX_FMT_H264 //V4L2_PIX_FMT_MJPEG
 #endif
+#define MPP_ENC_CFG_MIN_FPS 1
+#define MPP_ENC_CFG_MAX_FPS 60
 
-typedef struct {
+#define MPP_ENC_CFG_MIN_BPS 2 * 1000
+#define MPP_ENC_CFG_MAX_BPS 98 * 1000 * 1000
+#define MPP_ENC_CFG_H264_DEFAULT_PROFILE 100
+#define MPP_ENC_CFG_H264_DEFAULT_LEVEL 40
+
+typedef struct
+{
     MppCodingType   type;
     RK_U32          width;
     RK_U32          height;
@@ -73,8 +85,71 @@ typedef struct {
 
     RK_U32          have_output;
 } MpiEncTestCmd;
+typedef struct
+{
+    RK_U32 init;
+    RK_U32 max;
+    RK_U32 min;
+    RK_U32 step;
+    RK_U32 max_i_qp;
+    RK_U32 min_i_qp;
 
-typedef struct {
+} MpiEncQqCfg;
+/********************do not change the order below*******************/
+#define MPP_ENC_CFG_CHANGE_BIT(x) (1 << x)
+typedef struct
+{
+    RK_U32 change;
+    RK_U32 fbc;
+    RK_U32 split_mode;
+    RK_U32 split_arg;
+    RK_U32 force_idr_count;
+    RK_U32 force_idr_period;
+} MpiEncCommonCfg;
+
+typedef struct
+{
+    RK_U32 change;
+    RK_U32 quant; // 1- 10 default:7
+    MppFrameColorRange range; // full:MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
+
+} MpiEncMjpegCfg;
+
+typedef struct
+{
+    RK_U32 change;
+    RK_U32 gop; //0
+    MppEncRcMode rc_mode;
+    RK_U32 framerate; ////simple to set.
+    MppFrameColorRange range; // full: MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
+    MppEncHeaderMode head_each_idr;
+    MppEncSeiMode sei;//5
+    MpiEncQqCfg qp;//6-9
+    RK_U32 profile;//10
+    RK_U32 cabac_en;
+    RK_U32 cabac_idc;
+    RK_U32 trans_8x8;//
+    RK_U32 level;
+    RK_U32 bps;//15
+} MpiEncH264Cfg;
+
+typedef struct
+{
+    RK_U32 change;
+    RK_U32 gop; //0
+    MppEncRcMode rc_mode;
+    RK_U32 framerate;
+    MppFrameColorRange range; //full: MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
+    MppEncHeaderMode head_each_idr;
+    bool sei;//5
+    MpiEncQqCfg qp;//6-11
+    RK_U32 bps;//12
+} MpiEncH265Cfg;
+
+/***************************o not change the order above**************************************/
+
+typedef struct
+{
     // global flow control flag
     RK_U32 frm_eos;
     RK_U32 pkt_eos;
@@ -101,10 +176,10 @@ typedef struct {
     MppEncCodecCfg codec_cfg;
     MppEncSliceSplit split_cfg;
     MppEncOSDPltCfg osd_plt_cfg;
-    MppEncOSDPlt 	 osd_plt;
-    MppEncOSDData	 osd_data;
+    MppEncOSDPlt     osd_plt;
+    MppEncOSDData    osd_data;
     MppEncROIRegion roi_region[3];
-    MppEncROICfg 	 roi_cfg;
+    MppEncROICfg     roi_cfg;
 
     // input / output
     MppBuffer frm_buf;
@@ -157,13 +232,21 @@ typedef struct {
     void *enc_data;
     size_t enc_len;
     RK_U32 enc_version;
-    RK_U32 h264_frm_count;
+    RK_U32 h2645_frm_count;
+    MpiEncCommonCfg common_cfg;
+    MpiEncMjpegCfg mjpeg_cfg;
+    MpiEncH264Cfg h264_cfg;
+    MpiEncH265Cfg h265_cfg;
+    pthread_t check_cfg_change_hd;
+
+    int cfg_notify_fd;
+    int cfg_notify_wd;
 } MpiEncTestData;
 
 MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data);
 MPP_RET mpi_enc_test_run(MpiEncTestData **data, int fd, size_t size);
 MPP_RET mpi_enc_test_deinit(MpiEncTestData **data);
-void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height,int fcc);
+void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc);
 void mpi_enc_cmd_config_mjpg(MpiEncTestCmd *cmd, int width, int height);
 void mpi_enc_cmd_config_h264(MpiEncTestCmd *cmd, int width, int height);
 void mpi_enc_set_format(MppFrameFormat format);

@@ -23,6 +23,7 @@ target_link_libraries(rkuvc pthread drm rockchip_mpp )
 
 set(SOURCE
     main.c
+    cJSON/cJSON.c
     ${LIB_SOURCE}
 )
 
