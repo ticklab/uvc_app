@@ -47,25 +47,6 @@ std::shared_ptr<easymedia::Flow> create_flow(const std::string &flow_name,
                                              const std::string &flow_param,
                                              const std::string &elem_param);
 
-class TransformFlow : public easymedia::Flow {
-public:
-  TransformFlow();
-  virtual ~TransformFlow() {
-    StopAllThread();
-    fprintf(stderr, "~transform flow quit\n");
-  }
-
-  uint32_t npu_output_type;
-  std::string model_identifier;
-  uint32_t npu_width;
-  uint32_t npu_height;
-  friend bool do_transform(easymedia::Flow *f,
-                           easymedia::MediaBufferVector &input_vector);
-};
-
-bool do_transform(easymedia::Flow *f,
-                  easymedia::MediaBufferVector &input_vector);
-
 class DynamicClipFlow : public easymedia::Flow {
 public:
   DynamicClipFlow(uint32_t dst_w, uint32_t dst_h);
@@ -101,15 +82,13 @@ private:
 
 bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector);
 
-extern std::shared_ptr<easymedia::Flow> rga_scale300;
+extern std::shared_ptr<easymedia::Flow> eptz_source;
 extern std::shared_ptr<easymedia::Flow> rknn;
 extern std::shared_ptr<DynamicClipFlow> dclip;
-extern std::shared_ptr<TransformFlow> transform;
 
-//zoom
+// zoom
 int zoom_config(int stream_width, int stream_height);
 int set_zoom(float val);
-
 
 class ZoomFlow : public easymedia::Flow {
 public:
@@ -121,11 +100,10 @@ public:
   int dst_width;
   int dst_height;
   friend bool do_zoom(easymedia::Flow *f,
-                              easymedia::MediaBufferVector &input_vector);
+                      easymedia::MediaBufferVector &input_vector);
 };
 
-bool do_zoom(easymedia::Flow *f,
-                     easymedia::MediaBufferVector &input_vector);
+bool do_zoom(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector);
 
 extern std::shared_ptr<ZoomFlow> zoom;
 int eptz_config(int stream_width, int stream_height, int eptz_width,

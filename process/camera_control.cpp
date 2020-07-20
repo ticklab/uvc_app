@@ -335,10 +335,8 @@ static void *uvc_camera(void *arg)
                     goto record_exit;
                   }
                   dclip->AddDownFlow(stream->uvc_flow, 0, 0);
-                  transform->AddDownFlow(dclip, 0, 0);
-                  rknn->AddDownFlow(transform, 0, 0);
-                  rga_scale300->AddDownFlow(rknn, 0, 0);
-                  stream->input->AddDownFlow(rga_scale300, 0, 0);
+                  stream->input->AddDownFlow(dclip, 0, 0);
+                  eptz_source->AddDownFlow(rknn, 0, 0);
                   #endif
               }else{
                   #if EPTZ_ENABLE
@@ -389,14 +387,12 @@ record_exit:
             video_rga_flow.reset();
           } else if (needEPTZ){
             #if EPTZ_ENABLE
-            stream->input->RemoveDownFlow(rga_scale300);
-            stream->input.reset();
-            rga_scale300->RemoveDownFlow(rknn);
-            rga_scale300.reset();
-            rknn->RemoveDownFlow(transform);
+            eptz_source->RemoveDownFlow(rknn);
+            eptz_source.reset();
             rknn.reset();
-            transform->RemoveDownFlow(dclip);
-            transform.reset();
+
+            stream->input->RemoveDownFlow(dclip);
+            stream->input.reset();
             dclip->RemoveDownFlow(stream->uvc_flow);
             dclip.reset();
             #endif

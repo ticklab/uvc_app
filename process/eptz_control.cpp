@@ -74,51 +74,6 @@ static int rga_blit(std::shared_ptr<easymedia::ImageBuffer> src,
   return ret;
 }
 
-bool do_transform(easymedia::Flow *f,
-                  easymedia::MediaBufferVector &input_vector) {
-  auto flow = static_cast<TransformFlow *>(f);
-
-  auto &npu_output_buf = input_vector[0];
-  if (!npu_output_buf) {
-    return false;
-  }
-  bool ret = false;
-  auto img = std::static_pointer_cast<easymedia::ImageBuffer>(
-      npu_output_buf->GetRelatedSPtrs()[0]);
-
-  if (npu_output_buf->GetValidSize() == 0)
-    goto out;
-
-  do {
-    last_focus_state = current_focus_state;
-    current_focus_state = count_rectXY(
-        npu_output_buf, arrayXY, lastXY, eptz_info.src_width,
-        eptz_info.src_height, eptz_info.dst_width, eptz_info.dst_height);
-  } while (0);
-
-out:
-  npu_output_buf->GetRelatedSPtrs().clear();
-  img->SetRelatedSPtr(npu_output_buf, 0);
-  ret = flow->SetOutput(img, 0);
-err:
-  return ret;
-}
-
-TransformFlow::TransformFlow() {
-  easymedia::SlotMap sm;
-  sm.thread_model = easymedia::Model::ASYNCCOMMON;
-  sm.mode_when_full = easymedia::InputMode::DROPFRONT;
-  sm.input_slots.push_back(0);
-  sm.input_maxcachenum.push_back(1);
-  sm.output_slots.push_back(0);
-  sm.process = do_transform;
-  if (!InstallSlotMap(sm, "transform", -1)) {
-    LOG_ERROR( "Fail to InstallSlotMap, %s\n", "transform");
-    SetError(-EINVAL);
-    return;
-  }
-}
-
 static char *enable_skip_frame = nullptr;
 
 bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector) {
@@ -142,7 +97,8 @@ bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector) {
   input_image.width = input->GetWidth();
   input_image.height = input->GetHeight();
   input_image.data = (uint8_t *)input->GetPtr();
-  input_image.pixel_format = ROCKX_PIXEL_FORMAT_RGB888;
+  input_image.pixel_format =
+      ROCKX_PIXEL_FORMAT_YUV420SP_NV12; // ROCKX_PIXEL_FORMAT_RGB888;
   auto &handles = flow->rockx_handles;
 
   rockx_handle_t &face_det_handle = handles[0];
@@ -153,7 +109,7 @@ bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector) {
   rockx_ret_t ret =
       rockx_face_detect(face_det_handle, &input_image, &face_array, nullptr);
   if (ret != ROCKX_RET_SUCCESS) {
-    LOG_ERROR( "rockx_face_detect error %d\n", ret);
+    LOG_ERROR("rockx_face_detect error %d\n", ret);
     return false;
   }
   if (face_array.count <= 0)
@@ -162,7 +118,7 @@ bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector) {
       rockx_object_track(object_track_handle, input_image.width,
                          input_image.height, 4, &face_array, &face_array_track);
   if (ret != ROCKX_RET_SUCCESS) {
-    LOG_ERROR( "rockx_face_detect error %d\n", ret);
+    LOG_ERROR("rockx_face_detect error %d\n", ret);
     return false;
   }
   size_t ret_buf_size =
@@ -180,9 +136,17 @@ bool do_rockx(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector) {
     array->bottom = face_array_track.object[i].box.bottom;
     memcpy(array->score, &face_array_track.object[i].score, 4);
   }
+
   ret_buf->SetSize(ret_buf_size);
   ret_buf->SetValidSize(face_array_track.count);
-  return flow->SetOutput(ret_buf, 0);
+
+  do {
+    current_focus_state = count_rectXY(
+        ret_buf, arrayXY, lastXY, eptz_info.src_width, eptz_info.src_height,
+        eptz_info.dst_width, eptz_info.dst_height);
+  } while (0);
+
+  return true;
 }
 
 RockxFlow::RockxFlow() {
@@ -197,7 +161,7 @@ RockxFlow::RockxFlow() {
   sm.hold_input.push_back(easymedia::HoldInputMode::INHERIT_FORM_INPUT);
   sm.process = do_rockx;
   if (!InstallSlotMap(sm, "rockx", -1)) {
-    LOG_ERROR( "Fail to InstallSlotMap, %s\n", "rockx");
+    LOG_ERROR("Fail to InstallSlotMap, %s\n", "rockx");
     SetError(-EINVAL);
     return;
   }
@@ -212,7 +176,7 @@ RockxFlow::RockxFlow() {
     rockx_module_t &model = models[i];
     rockx_ret_t ret = rockx_create(&npu_handle, model, config, config_size);
     if (ret != ROCKX_RET_SUCCESS) {
-      LOG_ERROR( "init rockx module %d error=%d\n", model, ret);
+      LOG_ERROR("init rockx module %d error=%d\n", model, ret);
       SetError(-EINVAL);
       return;
     }
@@ -270,20 +234,18 @@ DynamicClipFlow::DynamicClipFlow(uint32_t dst_w, uint32_t dst_h)
   sm.output_slots.push_back(0);
   sm.process = do_dynamic_clip;
   if (!InstallSlotMap(sm, "dynamic_clip", -1)) {
-    LOG_ERROR( "Fail to InstallSlotMap, %s\n", "dynamic_clip");
+    LOG_ERROR("Fail to InstallSlotMap, %s\n", "dynamic_clip");
     SetError(-EINVAL);
     return;
   }
 }
 
-std::shared_ptr<easymedia::Flow> rga_scale300 = nullptr;
+std::shared_ptr<easymedia::Flow> eptz_source = nullptr;
 std::shared_ptr<easymedia::Flow> rknn = nullptr;
 std::shared_ptr<DynamicClipFlow> dclip = nullptr;
-std::shared_ptr<TransformFlow> transform = nullptr;
 
 int eptz_config(int stream_width, int stream_height, int eptz_width,
                 int eptz_height) {
-  LOG_INFO("%s: enter \n", __FUNCTION__);
   eptz_info.src_width = stream_width;
   eptz_info.src_height = stream_height;
   eptz_info.dst_width = eptz_width;
@@ -301,10 +263,10 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
     eptz_info.iterate_y = 2;
   }
   LOG_INFO("%s: eptz_info src_wh [%d %d] dst_wh[%d %d], threshold_xy[%d %d] "
-         "iterate_xy[%d %d]\n",
-         __func__, eptz_info.src_width, eptz_info.src_height,
-         eptz_info.dst_width, eptz_info.dst_height, eptz_info.threshold_x,
-         eptz_info.threshold_y, eptz_info.iterate_x, eptz_info.iterate_y);
+           "iterate_xy[%d %d]\n",
+           __func__, eptz_info.src_width, eptz_info.src_height,
+           eptz_info.dst_width, eptz_info.dst_height, eptz_info.threshold_x,
+           eptz_info.threshold_y, eptz_info.iterate_x, eptz_info.iterate_y);
 
   tempXY =
       new float[4]{(float)(eptz_info.src_width - eptz_info.dst_width) / 2,
@@ -320,55 +282,42 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
                    (float)(eptz_info.dst_width), (float)(eptz_info.dst_height)};
 
   do {
-    int npu_width = 300;
-    int npu_height = 300;
-    std::string flow_name("filter");
+    std::string flow_name("source_stream");
     std::string flow_param("");
-    PARAM_STRING_APPEND(flow_param, KEY_NAME, "rkrga");
-    PARAM_STRING_APPEND(flow_param, KEK_THREAD_SYNC_MODEL, KEY_ASYNCCOMMON);
 
-    // Set output buffer type and size.
-    PARAM_STRING_APPEND(flow_param, KEY_INPUTDATATYPE, IMAGE_NV12);
-    PARAM_STRING_APPEND(flow_param, KEY_OUTPUTDATATYPE, IMAGE_RGB888);
-    PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_WIDTH, npu_width);
-    PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_HEIGHT, npu_height);
-    PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_VIR_WIDTH, npu_width);
-    PARAM_STRING_APPEND_TO(flow_param, KEY_BUFFER_VIR_HEIGHT, npu_height);
+    PARAM_STRING_APPEND(flow_param, KEY_NAME, "v4l2_capture_stream");
+    PARAM_STRING_APPEND(flow_param, KEK_THREAD_SYNC_MODEL, KEY_SYNC);
+    PARAM_STRING_APPEND(flow_param, KEK_INPUT_MODEL, KEY_DROPFRONT);
+    PARAM_STRING_APPEND_TO(flow_param, KEY_INPUT_CACHE_NUM, 5);
+    std::string stream_param = "";
+    PARAM_STRING_APPEND_TO(stream_param, KEY_USE_LIBV4L2, 1);
+    PARAM_STRING_APPEND(stream_param, KEY_DEVICE, "rkispp_scale1");
+    // PARAM_STRING_APPEND(param, KEY_SUB_DEVICE, sub_input_path);
+    PARAM_STRING_APPEND(stream_param, KEY_V4L2_CAP_TYPE,
+                        KEY_V4L2_C_TYPE(VIDEO_CAPTURE));
+    PARAM_STRING_APPEND(stream_param, KEY_V4L2_MEM_TYPE,
+                        KEY_V4L2_M_TYPE(MEMORY_DMABUF));
+    PARAM_STRING_APPEND_TO(stream_param, KEY_FRAMES,
+                           3); // if not set, default is 2
+    PARAM_STRING_APPEND(stream_param, KEY_OUTPUTDATATYPE, "image:nv12");
+    PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_WIDTH, 640);
+    PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_HEIGHT, 480);
+    PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_VIR_WIDTH, 640);
+    PARAM_STRING_APPEND_TO(stream_param, KEY_BUFFER_VIR_HEIGHT, 480);
 
-    PARAM_STRING_APPEND_TO(flow_param, KEY_OUTPUT_HOLD_INPUT,
-                           (int)easymedia::HoldInputMode::HOLD_INPUT);
-
-    std::string filter_param("");
-    //需要多一层转换
-    ImageRect src_rect = {0, 0, stream_width, stream_height};
-    ImageRect dst_rect = {0, 0, npu_width, npu_height};
-
-    std::vector<ImageRect> rect_vect;
-    rect_vect.push_back(src_rect);
-    rect_vect.push_back(dst_rect);
-
-    PARAM_STRING_APPEND(filter_param, KEY_BUFFER_RECT,
-                        easymedia::TwoImageRectToString(rect_vect).c_str());
-    PARAM_STRING_APPEND_TO(filter_param, KEY_BUFFER_ROTATE, 0);
-
-    rga_scale300 = create_flow(flow_name, flow_param, filter_param);
-    if (!rga_scale300) {
-      assert(0);
+    flow_param = easymedia::JoinFlowParam(flow_param, 1, stream_param);
+    LOG_INFO("\n#VideoCapture flow param:\n%s\n", flow_param.c_str());
+    eptz_source = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
+        flow_name.c_str(), flow_param.c_str());
+    if (!eptz_source) {
+      LOG_ERROR("Create flow %s failed\n", flow_name.c_str());
       return -1;
     }
   } while (0);
 
   rknn = std::make_shared<RockxFlow>();
   if (!rknn || rknn->GetError()) {
-    LOG_ERROR( "Fail to create rockx flow\n");
-    return -1;
-  }
-
-  // transform
-
-  transform = std::make_shared<TransformFlow>();
-  if (!transform || transform->GetError()) {
-    LOG_ERROR( "Fail to create transform flow\n");
+    LOG_ERROR("Fail to create rockx flow\n");
     return -1;
   }
 
@@ -376,7 +325,7 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
   dclip = std::make_shared<DynamicClipFlow>(eptz_info.dst_width,
                                             eptz_info.dst_height);
   if (!dclip || dclip->GetError()) {
-    LOG_ERROR( "Fail to create dynamic_clip flow\n");
+    LOG_ERROR("Fail to create dynamic_clip flow\n");
     return -1;
   }
   return 0;
@@ -389,6 +338,6 @@ std::shared_ptr<easymedia::Flow> create_flow(const std::string &flow_name,
   auto ret = easymedia::REFLECTOR(Flow)::Create<easymedia::Flow>(
       flow_name.c_str(), param.c_str());
   if (!ret)
-    LOG_ERROR( "Create flow %s failed\n", flow_name.c_str());
+    LOG_ERROR("Create flow %s failed\n", flow_name.c_str());
   return ret;
 }
