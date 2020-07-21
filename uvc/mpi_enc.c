@@ -153,6 +153,13 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
     LOG_INFO("enc_version:%d,RK_MPP_USE_FULL_RANGE:%d\n",
            p->enc_version, RK_MPP_USE_FULL_RANGE);
 
+    int need_full_range = 1;
+    char* full_range = getenv("ENABLE_FULL_RANGE");
+    if (full_range) {
+        need_full_range = atoi(full_range);
+        LOG_INFO("mpp full_range use env setting:%d \n",need_full_range);
+    }
+
     mpi = p->mpi;
     ctx = p->ctx;
     cfg = p->cfg;
@@ -259,7 +266,10 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
 #if RK_MPP_USE_FULL_RANGE
     ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
 #else
-    ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
+    if (need_full_range)
+       ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
+    else
+       ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
 #endif
     if (ret) {
         LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);

@@ -235,6 +235,12 @@ static void *uvc_camera(void *arg)
    // std::string input_path = "/dev/video0";
     std::string input_path = "rkispp_scale0";//"/dev/video0"; //isp main path
     std::string input_format = IMAGE_NV12;
+    int need_full_range = 1;
+    char* full_range = getenv("ENABLE_FULL_RANGE");
+    if (full_range) {
+        need_full_range = atoi(full_range);
+        LOG_INFO("uvc full_range use env setting:%d \n",need_full_range);
+    }
 
     //Reading yuv from camera
     std::string flow_name = "source_stream";
@@ -252,7 +258,7 @@ static void *uvc_camera(void *arg)
     PARAM_STRING_APPEND(stream_param, KEY_V4L2_MEM_TYPE, KEY_V4L2_M_TYPE(MEMORY_DMABUF));
     PARAM_STRING_APPEND_TO(stream_param, KEY_FRAMES, 3); // if not set, default is 2
     PARAM_STRING_APPEND(stream_param, KEY_OUTPUTDATATYPE, input_format);
-    if (stream->format == V4L2_PIX_FMT_H264) {
+    if ((stream->format == V4L2_PIX_FMT_H264) && (need_full_range == 0)) {
        LOG_INFO("stream->format:V4L2_PIX_FMT_H264,use V4L2_QUANTIZATION_LIM_RANGE!!");
        PARAM_STRING_APPEND_TO(stream_param, KEY_V4L2_QUANTIZATION, V4L2_QUANTIZATION_LIM_RANGE);
     }
