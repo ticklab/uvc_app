@@ -150,6 +150,7 @@ int main(int argc, char *argv[])
     uvc_control_join(flags);
 
     drm_unmap_buffer(buffer, size);
+    close(handle_fd);
     drm_free(fd, handle);
     drm_close(fd);
     return 0;

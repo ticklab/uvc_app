@@ -115,9 +115,11 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
 #if RK_MPP_ENC_TEST_NATIVE
     fcc = TEST_ENC_TPYE;
 #else
-    if (!uvc_get_user_run_state(e->video_id) || !uvc_buffer_write_enable(e->video_id))
+#ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
+    if (!uvc_get_user_run_state(e->video_id) || !uvc_buffer_write_enable(e->video_id)) {
         return false;
-
+    }
+#endif
     uvc_get_user_resolution(&width, &height, e->video_id);
     fcc = uvc_get_user_fcc(e->video_id);
 #endif
@@ -195,8 +197,10 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
     case V4L2_PIX_FMT_MJPEG:
     case V4L2_PIX_FMT_H264:
         if (fd >= 0 && mpi_enc_test_run(&e->mpi_data, fd, size) == MPP_OK) {
+#ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
             uvc_buffer_write(0, e->extra_data, e->extra_size,
                              e->mpi_data->enc_data, e->mpi_data->enc_len, fcc, e->video_id);
+#endif
         }
         break;
     default:

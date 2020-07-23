@@ -48,6 +48,11 @@ extern "C" {
 #define RK_MPP_H264_FORCE_IDR_COUNT 5
 #define RK_MPP_H264_FORCE_IDR_PERIOD 5 //must >=1
 #define RK_MPP_ENC_TEST_NATIVE 0
+#define RK_MPP_USE_ZERO_COPY 1
+#if RK_MPP_USE_ZERO_COPY
+#define RK_MPP_USE_UVC_VIDEO_BUFFER
+extern struct uvc_encode uvc_enc;
+#endif
 #define RK_MPP_DYNAMIC_DEBUG_ON 1 //release version can set to 0
 #define RK_MPP_RANGE_DEBUG_ON 1 //release version can set to 0
 
@@ -147,6 +152,15 @@ typedef struct
 } MpiEncH265Cfg;
 
 /***************************o not change the order above**************************************/
+typedef struct DestoryNode
+{
+    MppFrame destory_frame;
+    MppPacket destory_packet;
+    MppBuffer destory_buf;
+    MppBuffer destory_pkt_buf_out;
+    bool unfinished;
+    bool exit;
+} MppDestoryInfo;
 
 typedef struct
 {
@@ -228,11 +242,16 @@ typedef struct
     RK_S32 bps;
     RK_U32 gop_mode;
 
+    MppFrame frame;
     MppPacket packet;
     void *enc_data;
     size_t enc_len;
     RK_U32 enc_version;
     RK_U32 h2645_frm_count;
+#if RK_MPP_USE_ZERO_COPY
+    MppBufferGroup pkt_grp;
+    MppBuffer pkt_buf;
+#endif
     MpiEncCommonCfg common_cfg;
     MpiEncMjpegCfg mjpeg_cfg;
     MpiEncH264Cfg h264_cfg;
@@ -241,6 +260,15 @@ typedef struct
 
     int cfg_notify_fd;
     int cfg_notify_wd;
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+    MppDestoryInfo destory_info;
+
+    pthread_t destory_buf_hd;
+    sigset_t sig;
+    pthread_cond_t cond;
+    pthread_mutex_t cond_mutex;
+//    pthread_mutex_t destory_mutex;
+#endif
 } MpiEncTestData;
 
 MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data);
@@ -262,6 +290,10 @@ MPP_RET mpp_enc_cfg_get_u32(MppEncCfg cfg, const char *name, RK_U32 *val);
 MPP_RET mpp_enc_cfg_get_s64(MppEncCfg cfg, const char *name, RK_S64 *val);
 MPP_RET mpp_enc_cfg_get_u64(MppEncCfg cfg, const char *name, RK_U64 *val);
 
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+struct uvc_buffer *uvc_buffer_write_get(int id);
+void uvc_buffer_read_set(int id, struct uvc_buffer *buf);
+#endif
 #ifdef __cplusplus
 }
 #endif

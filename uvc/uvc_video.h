@@ -48,6 +48,19 @@ extern "C" {
 
 struct uvc_device;
 
+struct uvc_buffer {
+    void* buffer;
+    size_t size; // encode out size
+    size_t total_size;
+    int width;
+    int height;
+    int video_id;
+
+    size_t drm_buf_size;
+    int fd; // for packet buf fd
+    unsigned int handle; // for drm handle
+};
+
 struct uvc_user {
     unsigned int width;
     unsigned int height;
@@ -65,6 +78,8 @@ struct uvc_video {
     struct uvc_user uvc_user;
     int idle_cnt;
     struct uvc_buffer* buffer_s;
+    int drm_fd; // drm fd
+    bool can_exit;
 };
 
 int uvc_gadget_pthread_create(int *id);
