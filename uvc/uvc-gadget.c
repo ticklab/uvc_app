@@ -3171,7 +3171,8 @@ DBG("uvc_events_process:UVC_EVENT_STREAMOFF \n");
 
         return;
     case UVC_EVENT_RESUME:
-        LOG_INFO("UVC_EVENT_RESUME\n");
+        LOG_INFO("UVC_EVENT_RESUME: reset ispserver\n");
+        system("killall ispserver &");
         return;
     case UVC_EVENT_SUSPEND:
         LOG_INFO("UVC_EVENT_SUSPEND\n");
