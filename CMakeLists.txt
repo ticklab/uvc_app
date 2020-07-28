@@ -95,3 +95,8 @@ install(DIRECTORY . DESTINATION bin
         PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE
         GROUP_READ GROUP_WRITE GROUP_EXECUTE
         WORLD_READ WORLD_WRITE WORLD_EXECUTE)
+
+if(EXISTS "mpp_enc_cfg.conf")
+	set(ETC_DST "${PROJECT_SOURCE_DIR}/../../target/etc/")
+	file(COPY mpp_enc_cfg.conf DESTINATION ${ETC_DST})
+endif(EXISTS "mpp_enc_cfg.conf")
