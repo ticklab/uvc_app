@@ -291,7 +291,7 @@ int eptz_config(int stream_width, int stream_height, int eptz_width,
     PARAM_STRING_APPEND_TO(flow_param, KEY_INPUT_CACHE_NUM, 5);
     std::string stream_param = "";
     PARAM_STRING_APPEND_TO(stream_param, KEY_USE_LIBV4L2, 1);
-    PARAM_STRING_APPEND(stream_param, KEY_DEVICE, "rkispp_scale1");
+    PARAM_STRING_APPEND(stream_param, KEY_DEVICE, "rkispp_scale2");
     // PARAM_STRING_APPEND(param, KEY_SUB_DEVICE, sub_input_path);
     PARAM_STRING_APPEND(stream_param, KEY_V4L2_CAP_TYPE,
                         KEY_V4L2_C_TYPE(VIDEO_CAPTURE));

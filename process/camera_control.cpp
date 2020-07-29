@@ -393,14 +393,20 @@ record_exit:
             video_rga_flow.reset();
           } else if (needEPTZ){
             #if EPTZ_ENABLE
-            eptz_source->RemoveDownFlow(rknn);
-            eptz_source.reset();
-            rknn.reset();
-
-            stream->input->RemoveDownFlow(dclip);
+            if(eptz_source){
+                if(rknn)
+                  eptz_source->RemoveDownFlow(rknn);
+              eptz_source.reset();
+            }
+            if(rknn)
+              rknn.reset();
+            if(dclip)
+              stream->input->RemoveDownFlow(dclip);
             stream->input.reset();
-            dclip->RemoveDownFlow(stream->uvc_flow);
-            dclip.reset();
+            if(dclip){
+              dclip->RemoveDownFlow(stream->uvc_flow);
+              dclip.reset();
+            }
             #endif
           } else {
             #if EPTZ_ENABLE
