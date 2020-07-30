@@ -99,7 +99,8 @@ enum XuCmd {
     CMD_SET_MOTOR_BY_USER = 0x08,
     CMD_STOP_MOTOR_BY_USER = 0x09,
     CMD_SET_EPTZ = 0x0a,
-    CMD_MAX_NUM = CMD_SET_EPTZ,
+    CMD_SET_H265 = 0x0b,
+    CMD_MAX_NUM = CMD_SET_H265,
 };
 
 /* IO methods supported */
@@ -144,6 +145,7 @@ struct uvc_device {
     unsigned char ex_ip_data[MAX_UVC_REQUEST_DATA_LENGTH];//
     unsigned char ex_date_data[MAX_UVC_REQUEST_DATA_LENGTH];
     unsigned int eptz_flag;
+    unsigned int xu_h265;
 
     /* uvc buffer specific */
     enum io_method io;

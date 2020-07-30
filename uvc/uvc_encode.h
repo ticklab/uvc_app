@@ -51,7 +51,7 @@ struct uvc_encode {
     size_t extra_size;
 };
 
-int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc);
+int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc, int h265);
 void uvc_encode_exit(struct uvc_encode *e);
 bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size);
 

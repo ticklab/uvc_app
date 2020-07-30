@@ -64,7 +64,7 @@ extern "C"
     void set_uvc_control_restart(void);
     void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps, int format, int eptz));
     void uvc_control_stop_setcallback(void (*callback)());
-    void uvc_control_init(int width, int height, int fcc);
+    void uvc_control_init(int width, int height, int fcc, int h265);
     void uvc_control_exit();
     void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
                                 void *extra_data, size_t extra_size);

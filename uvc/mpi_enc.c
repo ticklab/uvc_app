@@ -984,12 +984,19 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     return ret;
 }
 
-void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc)
+void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int h265)
 {
     memset((void *)cmd, 0, sizeof(*cmd));
     cmd->width = width;
     cmd->height = height;
     cmd->format = g_format;
+
+    char* env_h265 = getenv("ENABLE_UVC_H265");
+    if (env_h265) {
+        h265 = atoi(env_h265);
+        LOG_INFO("V4L2_PIX_FMT_H264 force use h265 ?:%d \n",h265);
+    }
+
     switch (fcc)
     {
     case V4L2_PIX_FMT_YUYV:
@@ -999,8 +1006,13 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc)
         cmd->type = MPP_VIDEO_CodingMJPEG;
         break;
     case V4L2_PIX_FMT_H264:
-        cmd->type = MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingHEVC
+    {
+        if(h265)
+           cmd->type = MPP_VIDEO_CodingHEVC;
+        else
+           cmd->type = MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingHEVC
         break;
+    }
     default:
         LOG_INFO("%s: not support fcc: %d\n", __func__, fcc);
         break;

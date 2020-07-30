@@ -72,7 +72,7 @@ extern struct uvc_encode uvc_enc;
 //#define DEBUG_OUTPUT 1
 #if RK_MPP_ENC_TEST_NATIVE
 extern struct uvc_encode uvc_enc;
-extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc);
+extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265);
 #define TEST_ENC_TPYE V4L2_PIX_FMT_H264 //V4L2_PIX_FMT_MJPEG
 #endif
 #define MPP_ENC_CFG_MIN_FPS 1
@@ -278,7 +278,7 @@ typedef struct
 MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data);
 MPP_RET mpi_enc_test_run(MpiEncTestData **data, int fd, size_t size);
 MPP_RET mpi_enc_test_deinit(MpiEncTestData **data);
-void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc);
+void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int h265);
 void mpi_enc_cmd_config_mjpg(MpiEncTestCmd *cmd, int width, int height);
 void mpi_enc_cmd_config_h264(MpiEncTestCmd *cmd, int width, int height);
 void mpi_enc_set_format(MppFrameFormat format);

@@ -75,9 +75,9 @@ static char *strrmlb(char *pstr)
 }
 #endif
 
-int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc)
+int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265)
 {
-    LOG_INFO("%s: width = %d, height = %d, fcc = %d\n", __func__, width, height,fcc);
+    LOG_INFO("%s: width = %d, height = %d, fcc = %d, h265= %d\n", __func__, width, height,fcc,h265);
     memset(e, 0, sizeof(*e));
     e->video_id = -1;
     e->width = -1;
@@ -85,7 +85,7 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height,int fcc)
     e->width = width;
     e->height = height;
     e->fcc = fcc;
-    mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc);
+    mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc, h265);
     //mpi_enc_cmd_config_mjpg(&e->mpi_cmd, width, height);
     if(fcc == V4L2_PIX_FMT_YUYV)
         return 0;
