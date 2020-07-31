@@ -358,7 +358,7 @@ RET:
     return ret;
 }
 
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
 void do_destory_mpp_buf(MpiEncTestData *p)
 {
     if (p->destory_info.destory_frame)
@@ -371,14 +371,16 @@ void do_destory_mpp_buf(MpiEncTestData *p)
         mpp_buffer_put(p->destory_info.destory_buf);
         p->destory_info.destory_buf = NULL;
     }
-
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
     if (p->destory_info.destory_pkt_buf_out)
     {
         mpp_buffer_put(p->destory_info.destory_pkt_buf_out);
         p->destory_info.destory_pkt_buf_out = NULL;
     }
-
+#endif
     p->destory_info.unfinished = false;
+    p->destory_info.count ++;
+
 }
 
 void *thread_destory_mpp_buf(void *user)
@@ -386,11 +388,13 @@ void *thread_destory_mpp_buf(void *user)
     MpiEncTestData *p = (MpiEncTestData *)user;
     pthread_mutex_init(&p->cond_mutex, NULL);
     pthread_cond_init(&p->cond, NULL);
+    p->destory_info.unfinished = false;
     while (1)
     {
         pthread_mutex_lock(&p->cond_mutex);
         pthread_cond_wait(&p->cond, &p->cond_mutex);
-        do_destory_mpp_buf(p);
+        if(p->destory_info.unfinished)
+            do_destory_mpp_buf(p);
         pthread_mutex_unlock(&p->cond_mutex);
     }
 }
@@ -613,7 +617,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     }//9195 us for 1080p
 
 RET:
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     pthread_mutex_lock(&p->cond_mutex);
     if (p->destory_info.unfinished == false)
     {
@@ -621,11 +625,14 @@ RET:
         p->destory_info.destory_frame = frame;
         p->destory_info.destory_buf = buf;
         p->destory_info.destory_pkt_buf_out = pkt_buf_out;
+        //if (p->frame_count % 100 != 0) //for test
         pthread_cond_signal(&p->cond);
     }
     else
     {
-        LOG_INFO("not go here normal!!!!!!!!!!!!!!!!!\n");
+        //pthread_cond_signal(&p->cond);
+        do_destory_mpp_buf(p);
+        LOG_INFO("not go here normal,count=%d,frm=%d\n",p->destory_info.count, p->frame_count);
 #endif
         if (frame)
         {
@@ -643,9 +650,12 @@ RET:
             mpp_buffer_put(pkt_buf_out);
             pkt_buf_out = NULL;
         }
+#endif
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     }
     pthread_mutex_unlock(&p->cond_mutex);
 #endif
+
     return ret;
 #else
     MPP_RET ret;
@@ -889,7 +899,7 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         return ret;
     }
     pthread_create(&p->check_cfg_change_hd, NULL, thread_check_mpp_enc_chenge_loop, p);
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     pthread_create(&p->destory_buf_hd, NULL, thread_destory_mpp_buf, p);
 #endif
 }
@@ -909,7 +919,7 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
 {
     MPP_RET ret = MPP_OK;
     MpiEncTestData *p = *data;
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     pthread_cancel(p->destory_buf_hd);
     pthread_join(p->destory_buf_hd, NULL);
     pthread_mutex_destroy(&p->cond_mutex);

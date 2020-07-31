@@ -49,8 +49,12 @@ extern "C" {
 #define RK_MPP_H264_FORCE_IDR_PERIOD 5 //must >=1
 #define RK_MPP_ENC_TEST_NATIVE 0
 #define RK_MPP_USE_ZERO_COPY 1
+
 #if RK_MPP_USE_ZERO_COPY
+#define RK_MPP_USE_DESTORY_BUFF_THREAD
+#if !RK_MPP_ENC_TEST_NATIVE
 #define RK_MPP_USE_UVC_VIDEO_BUFFER
+#endif
 extern struct uvc_encode uvc_enc;
 #endif
 #define RK_MPP_DYNAMIC_DEBUG_ON 1 //release version can set to 0
@@ -159,7 +163,7 @@ typedef struct DestoryNode
     MppBuffer destory_buf;
     MppBuffer destory_pkt_buf_out;
     bool unfinished;
-    bool exit;
+    RK_U32 count;
 } MppDestoryInfo;
 
 typedef struct
@@ -167,7 +171,7 @@ typedef struct
     // global flow control flag
     RK_U32 frm_eos;
     RK_U32 pkt_eos;
-    RK_S32 frame_count;
+    RK_U32 frame_count;
     RK_U64 stream_size;
 #if RK_MPP_RANGE_DEBUG_ON
 #define RANGE_PATH_MAX_LEN 128
@@ -260,7 +264,7 @@ typedef struct
 
     int cfg_notify_fd;
     int cfg_notify_wd;
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     MppDestoryInfo destory_info;
 
     pthread_t destory_buf_hd;
