@@ -49,15 +49,18 @@
 #define UVC_EVENT_RESUME        (V4L2_EVENT_PRIVATE_START + 7)
 #define UVC_EVENT_LAST          (V4L2_EVENT_PRIVATE_START + 7)
 
-#define MAX_UVC_REQUEST_DATA_LENGTH	60
+#define MAX_UVC_REQUEST_DATA_LENGTH 60
 
-struct uvc_request_data {
+struct uvc_request_data
+{
     __s32 length;
     __u8 data[60];
 };
 
-struct uvc_event {
-    union {
+struct uvc_event
+{
+    union
+    {
         enum usb_device_speed speed;
         struct usb_ctrlrequest req;
         struct uvc_request_data data;
@@ -88,7 +91,8 @@ extern "C" {
  * Generic stuff
  */
 
-enum XuCmd {
+enum XuCmd
+{
     CMD_GET_CAMERA_VERSION = 0x01,
     CMD_SET_CAMERA_IP,
     CMD_START_CAMERA,
@@ -104,20 +108,36 @@ enum XuCmd {
 };
 
 /* IO methods supported */
-enum io_method {
+enum io_method
+{
     IO_METHOD_MMAP,
     IO_METHOD_USERPTR,
+    IO_METHOD_DMA_BUFF,
 };
 
+#define UVC_IO_METHOD_MMAP 0
+#define UVC_IO_METHOD_USERPTR 1
+#define UVC_IO_METHOD_DMA_BUFF 2
+
+#define UVC_IO_METHOD      UVC_IO_METHOD_DMA_BUFF // here can set 0 or 2 //  1 still not support
+
 /* Buffer representing one video frame */
-struct buffer {
+struct buffer
+{
     struct v4l2_buffer buf;
     void *start;
     size_t length;
 };
 
+struct v4l2_buffer_info
+{
+    struct uvc_buffer *uvc_buf;
+    int fd;
+};
+
 /* Represents a UVC based video output device */
-struct uvc_device {
+struct uvc_device
+{
     int video_id;
     /* uvc device specific */
     int uvc_fd;
@@ -181,7 +201,11 @@ struct uvc_device {
     uint8_t cs;
     uint8_t entity_id;
     struct v4l2_buffer ubuf;
+
+    struct v4l2_buffer_info *vbuf_info;
 };
+
+
 
 int uvc_gadget_main(int id);
 

@@ -183,10 +183,11 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
              p->enc_version, RK_MPP_USE_FULL_RANGE);
 
     int need_full_range = 1;
-    char* full_range = getenv("ENABLE_FULL_RANGE");
-    if (full_range) {
+    char *full_range = getenv("ENABLE_FULL_RANGE");
+    if (full_range)
+    {
         need_full_range = atoi(full_range);
-        LOG_INFO("mpp full_range use env setting:%d \n",need_full_range);
+        LOG_INFO("mpp full_range use env setting:%d \n", need_full_range);
     }
 
     mpi = p->mpi;
@@ -315,9 +316,9 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
     ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
 #else
     if (need_full_range)
-       ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
+        ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
     else
-       ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
+        ret = mpp_enc_cfg_set_s32(cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
 #endif
     if (ret)
     {
@@ -393,13 +394,65 @@ void *thread_destory_mpp_buf(void *user)
     {
         pthread_mutex_lock(&p->cond_mutex);
         pthread_cond_wait(&p->cond, &p->cond_mutex);
-        if(p->destory_info.unfinished)
+        if (p->destory_info.unfinished)
             do_destory_mpp_buf(p);
         pthread_mutex_unlock(&p->cond_mutex);
     }
 }
 
 #endif
+static MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
+{
+    MPP_RET ret = MPP_OK;
+    bool change = false;
+    RK_U32 last;
+
+    if (set_low)
+    {
+        if (!p->mjpeg_cfg.qfactor)
+        {
+            last = p->mjpeg_cfg.frc_quant;
+            p->mjpeg_cfg.frc_quant = (p->mjpeg_cfg.frc_quant > MJPEG_FRC_QUANT_MIN ?
+                                      (p->mjpeg_cfg.frc_quant - 1) :
+                                      p->mjpeg_cfg.frc_quant);
+            if (p->mjpeg_cfg.frc_quant != last)
+                change = true;
+
+        }
+        else
+        {
+            last = p->mjpeg_cfg.frc_qfactor;
+            p->mjpeg_cfg.frc_qfactor = (p->mjpeg_cfg.frc_qfactor > MJPEG_FRC_QFACTOR_MIN ?
+                                        (p->mjpeg_cfg.frc_qfactor - 1) :
+                                        p->mjpeg_cfg.frc_qfactor);
+            if (p->mjpeg_cfg.frc_qfactor != last)
+                change = true;
+        }
+    }
+
+    if (!change)
+        return ret;
+
+    if (!p->mjpeg_cfg.qfactor)
+    {
+        mpp_enc_cfg_set_s32(p->cfg, "jpeg:quant", p->mjpeg_cfg.frc_quant);
+        LOG_INFO("frc_quant change %d to %d\n", last, p->mjpeg_cfg.frc_quant);
+    }
+    else
+    {
+        mpp_enc_cfg_set_u32(p->cfg, "jpeg:q_factor", p->mjpeg_cfg.frc_qfactor);
+        LOG_INFO("frc_qfactor change %d to %d\n", last, p->mjpeg_cfg.frc_qfactor);
+    }
+
+    ret = p->mpi->control(p->ctx, MPP_ENC_SET_CFG, p->cfg);
+    if (ret)
+    {
+        LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
+    }
+
+    return ret;
+}
+
 static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 {
 #if RK_MPP_USE_ZERO_COPY
@@ -411,6 +464,8 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     RK_S32 i;
     MppBuffer buf = NULL;
     MppBuffer pkt_buf_out = NULL;
+    int try_count = p->common_cfg.frc_fps ? (1000 / p->common_cfg.frc_fps / 2) : 20;
+    bool get_ok = false;
 
     if (NULL == p)
         return MPP_ERR_NULL_PTR;
@@ -439,16 +494,54 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 //   memset(&outputCommit, 0, sizeof(outputCommit));
     outputCommit.type = MPP_BUFFER_TYPE_DRM;
 
-    if ((!uvc_get_user_run_state(uvc_enc.video_id) || !uvc_buffer_write_enable(uvc_enc.video_id)))
+    while (try_count--)
     {
-        LOG_ERROR("not get write buff,read too slow.\n");
+        if ((!uvc_get_user_run_state(uvc_enc.video_id) || !uvc_buffer_write_enable(uvc_enc.video_id)))
+        {
+            // LOG_ERROR("not get write buff,read too slow.%d,%d\n",
+            //      uvc_get_user_run_state(uvc_enc.video_id),uvc_buffer_write_enable(uvc_enc.video_id));
+            // return ret;
+            usleep(2000);
+        }
+        else
+        {
+            get_ok = true;
+            break;
+        }
+
+    }
+    if (!get_ok)
+    {
+        p->loss_frm ++;
+        p->continuous_frm = 0;
+#if RK_MPP_DYNAMIC_DEBUG_ON
+        if (access(RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK, 0)) //no exit and output log
+#endif
+            LOG_ERROR("not get write buff,read too slow %d.\"touch %s \" can close debug.\n",
+                      p->loss_frm,
+                      RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK);
+        if (p->loss_frm >= 5 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.need_frc)
+        {
+            p->loss_frm = 0;
+            mpp_mjpeg_simple_frc(p, true);
+        }
         return ret;
+    }
+    else
+    {
+        p->continuous_frm ++;
+        if (p->continuous_frm > 1000)
+        {
+            p->continuous_frm = 0;
+            p->loss_frm = ((p->loss_frm > 0) ? (p->loss_frm - 1) : 0);
+            // TODO:can turn up the quant here when loss_frm = 0 or continuous_frm up to more high
+        }
     }
 
     uvc_buf = uvc_buffer_write_get(uvc_enc.video_id);
     if (!uvc_buf)
     {
-        printf("uvc_buffer_write_get failed\n");
+        LOG_ERROR("uvc_buffer_write_get failed\n");
         goto RET;
     }
 
@@ -457,7 +550,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     ret = mpp_buffer_import(&pkt_buf_out, &outputCommit);
     if (ret)
     {
-        printf("import output picture buffer failed\n");
+        LOG_ERROR("import output picture buffer failed\n");
         goto RET;
     }
 #else
@@ -477,7 +570,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     ret = mpp_buffer_import(&buf, &inputCommit);
     if (ret)
     {
-        printf("import input picture buffer failed\n");
+        LOG_ERROR("import input picture buffer failed\n");
         goto RET;
     }
     mpp_frame_set_buffer(frame, buf);
@@ -510,14 +603,14 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     ret = mpi->poll(ctx, MPP_PORT_INPUT, MPP_POLL_BLOCK);
     if (ret)
     {
-        printf("mpp task input poll failed ret %d\n", ret);
+        LOG_ERROR("mpp task input poll failed ret %d\n", ret);
         goto RET;
     }
 
     ret = mpi->dequeue(ctx, MPP_PORT_INPUT, &task);
     if (ret || NULL == task)
     {
-        printf("mpp task input dequeue failed ret %d task %p\n", ret, task);
+        LOG_ERROR("mpp task input dequeue failed ret %d task %p\n", ret, task);
         goto RET;
     }
 
@@ -528,7 +621,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     ret = mpi->enqueue(ctx, MPP_PORT_INPUT, task);
     if (ret)
     {
-        printf("mpp task input enqueue failed\n");
+        LOG_ERROR("mpp task input enqueue failed\n");
         goto RET;
     }
     //800us+
@@ -536,7 +629,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     ret = mpi->poll(ctx, MPP_PORT_OUTPUT, MPP_POLL_BLOCK);
     if (ret)
     {
-        printf("mpp task output poll failed ret %d\n", ret);
+        LOG_ERROR("mpp task output poll failed ret %d\n", ret);
         goto RET;
     }//9028 us for 1080p
 #else
@@ -551,7 +644,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     ret = mpi->dequeue(ctx, MPP_PORT_OUTPUT, &task);
     if (ret || NULL == task)
     {
-        printf("mpp task output dequeue failed ret %d task %p\n", ret, task);
+        LOG_ERROR("mpp task output dequeue failed ret %d task %p\n", ret, task);
         goto RET;
     }
 
@@ -564,6 +657,11 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
         {
             // write packet to file here
             size_t len = mpp_packet_get_length(packet);
+#if RK_MPP_DYNAMIC_DEBUG_ON
+            if (!access(RK_MPP_OUT_LEN_DEBUG_CHECK, 0))
+                LOG_INFO("out_len=%d\n", len);
+#endif
+
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
             uvc_buf->size = len;
             uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
@@ -582,7 +680,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
                 {
                     fclose(p->fp_output);
                     p->fp_output = NULL;
-                    printf("debug out file close\n");
+                    LOG_INFO("debug out file close\n");
                 }
             }
             else if (!access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
@@ -595,7 +693,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
 #else
                     fwrite(ptr, 1, len, p->fp_output);
 #endif
-                    printf("debug out file open\n");
+                    LOG_INFO("debug out file open\n");
                 }
 #endif
             }
@@ -608,11 +706,15 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
         //9175 us for 1080p
         p->frame_count++;
     }
-
+    /*
+            if(p->frame_count % 100 == 0) {
+              LOG_INFO("outlen=%d\n", uvc_buf->size);
+            }
+    */
     ret = mpi->enqueue(ctx, MPP_PORT_OUTPUT, task);
     if (ret)
     {
-        printf("mpp task output enqueue failed\n");
+        LOG_ERROR("mpp task output enqueue failed\n");
         goto RET;
     }//9195 us for 1080p
 
@@ -632,7 +734,7 @@ RET:
     {
         //pthread_cond_signal(&p->cond);
         do_destory_mpp_buf(p);
-        LOG_INFO("not go here normal,count=%d,frm=%d\n",p->destory_info.count, p->frame_count);
+        LOG_INFO("not go here normal,count=%d,frm=%d\n", p->destory_info.count, p->frame_count);
 #endif
         if (frame)
         {
@@ -991,10 +1093,11 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
     cmd->height = height;
     cmd->format = g_format;
 
-    char* env_h265 = getenv("ENABLE_UVC_H265");
-    if (env_h265) {
+    char *env_h265 = getenv("ENABLE_UVC_H265");
+    if (env_h265)
+    {
         h265 = atoi(env_h265);
-        LOG_INFO("V4L2_PIX_FMT_H264 force use h265 ?:%d \n",h265);
+        LOG_INFO("V4L2_PIX_FMT_H264 force use h265 ?:%d \n", h265);
     }
 
     switch (fcc)
@@ -1007,10 +1110,10 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
         break;
     case V4L2_PIX_FMT_H264:
     {
-        if(h265)
-           cmd->type = MPP_VIDEO_CodingHEVC;
+        if (h265)
+            cmd->type = MPP_VIDEO_CodingHEVC;
         else
-           cmd->type = MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingHEVC
+            cmd->type = MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingHEVC
         break;
     }
     default:
@@ -1100,9 +1203,12 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->common_cfg.split_arg = 0;
     p->common_cfg.force_idr_count = RK_MPP_H264_FORCE_IDR_COUNT;
     p->common_cfg.force_idr_period = RK_MPP_H264_FORCE_IDR_PERIOD;
+    p->common_cfg.frc_fps = 25; // use frame rate control
+    p->common_cfg.need_frc = true;
 
     //mjpeg set
     p->mjpeg_cfg.quant = 7;
+    p->mjpeg_cfg.qfactor = 80; //default set this
     p->mjpeg_cfg.range = MPP_FRAME_RANGE_JPEG; //default for full(only full)
 
     //h264 set
@@ -1143,12 +1249,13 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
 static void dump_mpp_enc_cfg(MpiEncTestData *p)
 {
     LOG_INFO("### dump_mpp_enc_cfg for common cfg:\n");
-    LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d\n",
+    LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d frc_fps=%d need_frc=%d\n",
              p->common_cfg.fbc, p->common_cfg.split_mode, p->common_cfg.split_arg,
-             p->common_cfg.force_idr_count, p->common_cfg.force_idr_period);
+             p->common_cfg.force_idr_count, p->common_cfg.force_idr_period,
+             p->common_cfg.frc_fps, p->common_cfg.need_frc);
 
     LOG_INFO("###dump_mpp_enc_cfg for mjpeg cfg:\n");
-    LOG_INFO("quant=%d,range=%d\n", p->mjpeg_cfg.quant, p->mjpeg_cfg.range);
+    LOG_INFO("quant=%d,q_fator=%d,range=%d\n", p->mjpeg_cfg.quant, p->mjpeg_cfg.qfactor, p->mjpeg_cfg.range);
 
     LOG_INFO("### dump_mpp_enc_cfg for h264 cfg:\n");
     LOG_INFO("gop=%d,re_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
@@ -1261,371 +1368,381 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
 
     switch (p->type)
     {
-        case MPP_VIDEO_CodingMJPEG :
+    case MPP_VIDEO_CodingMJPEG :
+    {
+        cJSON *child_mjpeg = cJSON_GetObjectItem(child, "mjpeg");
+        if (!child_mjpeg)
         {
-            cJSON *child_mjpeg = cJSON_GetObjectItem(child, "mjpeg");
-            if (!child_mjpeg)
-            {
-                LOG_ERROR("parse_mpp_enc_cfg mjpeg err\n");
-                return -1;
-            }
-            else
-            {
-                cJSON *child_mjpeg_param = NULL;
-                if (init)
-                    child_mjpeg_param = cJSON_GetObjectItem(child_mjpeg, "param_init");
-                else
-                    child_mjpeg_param = cJSON_GetObjectItem(child_mjpeg, "param_change");
-                if (child_mjpeg_param)
-                {
-                    cJSON *child_mjpeg_quant = cJSON_GetObjectItem(child_mjpeg_param, "quant");
-                    if (child_mjpeg_quant)
-                    {
-                        p->mjpeg_cfg.quant = child_mjpeg_quant->valueint;
-                        p->mjpeg_cfg.quant = p->mjpeg_cfg.quant < 1 ? 1 :
-                                             p->mjpeg_cfg.quant > 10 ? 10 :
-                                             p->mjpeg_cfg.quant;
-                        p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
-                    }
-                    cJSON *child_mjpeg_range = cJSON_GetObjectItem(child_mjpeg_param, "range");
-                    if (child_mjpeg_range)
-                    {
-                        p->mjpeg_cfg.range = strstr(child_mjpeg_range->valuestring, "limit") ?
-                                             MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
-                        p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
-                    }
-                    LOG_INFO("mjpeg_cfg.change:0x%x\n", p->mjpeg_cfg.change);
-                }
-                else
-                {
-                    LOG_INFO("no find mjpeg param_init or param_change\n");
-                }
-            }
+            LOG_ERROR("parse_mpp_enc_cfg mjpeg err\n");
+            return -1;
         }
-        break;
-        case MPP_VIDEO_CodingAVC :
+        else
         {
-            cJSON *child_h264 = cJSON_GetObjectItem(child, "h264");
-            if (!child_h264)
-            {
-                LOG_ERROR("parse_mpp_enc_cfg h264 err\n");
-                return -1;
-            }
+            cJSON *child_mjpeg_param = NULL;
+            if (init)
+                child_mjpeg_param = cJSON_GetObjectItem(child_mjpeg, "param_init");
             else
+                child_mjpeg_param = cJSON_GetObjectItem(child_mjpeg, "param_change");
+            if (child_mjpeg_param)
             {
-                cJSON *child_h264_param = NULL;
-                if (init)
-                    child_h264_param = cJSON_GetObjectItem(child_h264, "param_init");
-                else
-                    child_h264_param = cJSON_GetObjectItem(child_h264, "param_change");
-                if (child_h264_param)
+                cJSON *child_mjpeg_quant = cJSON_GetObjectItem(child_mjpeg_param, "quant");
+                if (child_mjpeg_quant)
                 {
-                    cJSON *child_h264_gop = cJSON_GetObjectItem(child_h264_param, "gop");
-                    if (child_h264_gop)
-                    {
-                        p->h264_cfg.gop = child_h264_gop->valueint;
-                        p->h264_cfg.gop = p->h264_cfg.gop < 1 ? 1 :
-                                          p->h264_cfg.gop > 100 ? 100 :
-                                          p->h264_cfg.gop;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
-                    }
-                    cJSON *child_h264_rc_mode = cJSON_GetObjectItem(child_h264_param, "rc_mode");
-                    if (child_h264_rc_mode)
-                    {
-                        p->h264_cfg.rc_mode = strstr(child_h264_rc_mode->valuestring, "cbr") ? MPP_ENC_RC_MODE_CBR :
-                                              strstr(child_h264_rc_mode->valuestring, "vbr") ? MPP_ENC_RC_MODE_VBR :
-                                              strstr(child_h264_rc_mode->valuestring, "fixqp") ? MPP_ENC_RC_MODE_FIXQP : MPP_ENC_RC_MODE_CBR;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
-                    }
-                    cJSON *child_h264_framerate = cJSON_GetObjectItem(child_h264_param, "framerate");
-                    if (child_h264_framerate)
-                    {
-                        p->h264_cfg.framerate = child_h264_framerate->valueint;
-                        p->h264_cfg.framerate = p->h264_cfg.framerate < MPP_ENC_CFG_MIN_FPS ? MPP_ENC_CFG_MIN_FPS :
-                                                p->h264_cfg.framerate > MPP_ENC_CFG_MAX_FPS ? MPP_ENC_CFG_MAX_FPS :
-                                                p->h264_cfg.framerate;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
-                    }
-                    cJSON *child_h264_range = cJSON_GetObjectItem(child_h264_param, "range");
-                    if (child_h264_range)
-                    {
-                        p->h264_cfg.range = strstr(child_h264_range->valuestring, "limit") ?
-                                            MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(3);
-                    }
-                    cJSON *child_h264_head_each_idr = cJSON_GetObjectItem(child_h264_param, "head_each_idr");
-                    if (child_h264_head_each_idr)
-                    {
-                        p->h264_cfg.head_each_idr = strstr(child_h264_head_each_idr->valuestring, "on") ?
-                                                    MPP_ENC_HEADER_MODE_EACH_IDR : MPP_ENC_HEADER_MODE_DEFAULT;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(4);
-                    }
-                    cJSON *child_h264_sei = cJSON_GetObjectItem(child_h264_param, "sei");
-                    if (child_h264_sei)
-                    {
-                        p->h264_cfg.sei = strstr(child_h264_sei->valuestring, "SEQ") ? MPP_ENC_SEI_MODE_ONE_SEQ :
-                                          strstr(child_h264_sei->valuestring, "FRAME") ? MPP_ENC_SEI_MODE_ONE_FRAME :
-                                          MPP_ENC_SEI_MODE_DISABLE;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
-                    }
-                    cJSON *child_h264_qp_init = cJSON_GetObjectItem(child_h264_param, "qp_init");
-                    if (child_h264_qp_init)
-                    {
-                        p->h264_cfg.qp.init = child_h264_qp_init->valueint;
-                        p->h264_cfg.qp.init = p->h264_cfg.qp.init < 1 ? 1 :
-                                              p->h264_cfg.qp.init > 51 ? 51 :
-                                              p->h264_cfg.qp.init;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
-                    }
-                    cJSON *child_h264_qp_max = cJSON_GetObjectItem(child_h264_param, "qp_max");
-                    if (child_h264_qp_max)
-                    {
-                        p->h264_cfg.qp.max = child_h264_qp_max->valueint;
-                        p->h264_cfg.qp.max = p->h264_cfg.qp.max < 8 ? 8 :
-                                             p->h264_cfg.qp.max > 51 ? 51 :
-                                             p->h264_cfg.qp.max;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(7);
-                    }
-                    cJSON *child_h264_qp_min = cJSON_GetObjectItem(child_h264_param, "qp_min");
-                    if (child_h264_qp_min)
-                    {
-                        p->h264_cfg.qp.min = child_h264_qp_min->valueint;
-                        p->h264_cfg.qp.min = p->h264_cfg.qp.min < 0 ? 0 :
-                                             p->h264_cfg.qp.min > 48 ? 48 :
-                                             p->h264_cfg.qp.min;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(8);
-                    }
-                    cJSON *child_h264_qp_step = cJSON_GetObjectItem(child_h264_param, "qp_step");
-                    if (child_h264_qp_step)
-                    {
-                        p->h264_cfg.qp.step = child_h264_qp_step->valueint;
-                        p->h264_cfg.qp.step = p->h264_cfg.qp.step < 1 ? 1 :
-                                              p->h264_cfg.qp.step > 51 ? 51 :
-                                              p->h264_cfg.qp.step;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9);
-                    }
-                    cJSON *child_h264_profile = cJSON_GetObjectItem(child_h264_param, "profile");
-                    if (child_h264_profile)
-                    {
-                        p->h264_cfg.profile = child_h264_profile->valueint;
-                        if (p->h264_cfg.profile != 66 && p->h264_cfg.profile != 77 && p->h264_cfg.profile != 100)
-                        {
-                            LOG_INFO("set h264_cfg.profile err %d, set default to %d\n",
-                                     p->h264_cfg.profile, MPP_ENC_CFG_H264_DEFAULT_PROFILE);
-                            p->h264_cfg.profile = MPP_ENC_CFG_H264_DEFAULT_PROFILE;
-                        }
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(10);
-                    }
-                    cJSON *child_h264_cabac_en = cJSON_GetObjectItem(child_h264_param, "cabac_en");
-                    if (child_h264_cabac_en)
-                    {
-                        p->h264_cfg.cabac_en = child_h264_cabac_en->valueint;
-                        p->h264_cfg.cabac_en = p->h264_cfg.cabac_en < 0 ? 0 :
-                                               p->h264_cfg.cabac_en > 1 ? 1 :
-                                               p->h264_cfg.cabac_en;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(11);
-                    }
-                    cJSON *child_h264_cabac_idc = cJSON_GetObjectItem(child_h264_param, "cabac_idc");
-                    if (child_h264_cabac_idc)
-                    {
-                        p->h264_cfg.cabac_idc = child_h264_cabac_idc->valueint;
-                        p->h264_cfg.cabac_idc = p->h264_cfg.cabac_idc < 0 ? 0 :
-                                                p->h264_cfg.cabac_idc > 1 ? 1 :
-                                                p->h264_cfg.cabac_idc;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(12);
-                    }
-                    cJSON *child_h264_trans_8x8 = cJSON_GetObjectItem(child_h264_param, "trans_8x8");
-                    if (child_h264_trans_8x8)
-                    {
-                        p->h264_cfg.trans_8x8 = child_h264_trans_8x8->valueint;
-                        p->h264_cfg.trans_8x8 = p->h264_cfg.trans_8x8 < 0 ? 0 :
-                                                p->h264_cfg.trans_8x8 > 1 ? 1 :
-                                                p->h264_cfg.trans_8x8;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(13);
-                    }
-                    cJSON *child_h264_level = cJSON_GetObjectItem(child_h264_param, "level");
-                    if (child_h264_level)
-                    {
-                        p->h264_cfg.level = child_h264_level->valueint;
-                        if (!((p->h264_cfg.level >= 10 && p->h264_cfg.level <= 13) ||
-                                (p->h264_cfg.level >= 20 && p->h264_cfg.level <= 22) ||
-                                (p->h264_cfg.level >= 30 && p->h264_cfg.level <= 32) ||
-                                (p->h264_cfg.level >= 40 && p->h264_cfg.level <= 42) ||
-                                (p->h264_cfg.level >= 50 && p->h264_cfg.level <= 52)))
-                        {
-                            LOG_INFO("set h264_cfg.level err %d, set default to %d\n",
-                                     p->h264_cfg.level, MPP_ENC_CFG_H264_DEFAULT_LEVEL);
-                            p->h264_cfg.level = MPP_ENC_CFG_H264_DEFAULT_LEVEL;
-                        }
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(14);
-                    }
-                    cJSON *child_h264_bps = cJSON_GetObjectItem(child_h264_param, "bps");
-                    if (child_h264_bps)
-                    {
-                        p->h264_cfg.bps = child_h264_bps->valueint;
-                        p->h264_cfg.bps = p->h264_cfg.bps < MPP_ENC_CFG_MIN_BPS ? MPP_ENC_CFG_MIN_BPS :
-                                          p->h264_cfg.bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
-                                          p->h264_cfg.bps;
-                        p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(15);
-                    }
-                    LOG_INFO("h264_cfg.change:0x%x\n", p->h264_cfg.change);
+                    p->mjpeg_cfg.quant = child_mjpeg_quant->valueint;
+                    p->mjpeg_cfg.quant = p->mjpeg_cfg.quant < 1 ? 1 :
+                                         p->mjpeg_cfg.quant > 10 ? 10 :
+                                         p->mjpeg_cfg.quant;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
                 }
-                else
+                cJSON *child_mjpeg_range = cJSON_GetObjectItem(child_mjpeg_param, "range");
+                if (child_mjpeg_range)
                 {
-                    LOG_INFO("no find h264 param_init or param_change\n");
+                    p->mjpeg_cfg.range = strstr(child_mjpeg_range->valuestring, "limit") ?
+                                         MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
                 }
-            }
-        }
-        break;
-        case MPP_VIDEO_CodingVP8 :
-        {
-            ret = -1;
-        }
-        break;
-        case MPP_VIDEO_CodingHEVC :
-        {
-            cJSON *child_h265 = cJSON_GetObjectItem(child, "h265");
-            if (!child_h265)
-            {
-                LOG_ERROR("parse_mpp_enc_cfg h265 err\n");
-                return -1;
-            }
-            else
-            {
-                cJSON *child_h265_param = NULL;
-                if (init)
-                    child_h265_param = cJSON_GetObjectItem(child_h265, "param_init");
-                else
-                    child_h265_param = cJSON_GetObjectItem(child_h265, "param_change");
-                if (child_h265_param)
+                cJSON *child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_param, "qfactor");
+                if (child_mjpeg_qfactor)
                 {
-                    cJSON *child_h265_gop = cJSON_GetObjectItem(child_h265_param, "gop");
-                    if (child_h265_gop)
-                    {
-                        p->h265_cfg.gop = child_h265_gop->valueint;
-                        p->h265_cfg.gop = p->h265_cfg.gop < 1 ? 1 :
-                                          p->h265_cfg.gop > 100 ? 100 :
-                                          p->h265_cfg.gop;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
-                    }
-                    cJSON *child_h265_rc_mode = cJSON_GetObjectItem(child_h265_param, "rc_mode");
-                    if (child_h265_rc_mode)
-                    {
-                        p->h265_cfg.rc_mode = strstr(child_h265_rc_mode->valuestring, "cbr") ? MPP_ENC_RC_MODE_CBR :
-                                              strstr(child_h265_rc_mode->valuestring, "vbr") ? MPP_ENC_RC_MODE_VBR :
-                                              strstr(child_h265_rc_mode->valuestring, "fixqp") ? MPP_ENC_RC_MODE_FIXQP : MPP_ENC_RC_MODE_CBR;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
-                    }
-                    cJSON *child_h265_framerate = cJSON_GetObjectItem(child_h265_param, "framerate");
-                    if (child_h265_framerate)
-                    {
-                        p->h265_cfg.framerate = child_h265_framerate->valueint;
-                        p->h265_cfg.framerate = p->h265_cfg.framerate < MPP_ENC_CFG_MIN_FPS ? MPP_ENC_CFG_MIN_FPS :
-                                                p->h265_cfg.framerate > MPP_ENC_CFG_MAX_FPS ? MPP_ENC_CFG_MAX_FPS :
-                                                p->h265_cfg.framerate;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
-                    }
-                    cJSON *child_h265_range = cJSON_GetObjectItem(child_h265_param, "range");
-                    if (child_h265_range)
-                    {
-                        p->h265_cfg.range = strstr(child_h265_range->valuestring, "limit") ?
-                                            MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(3);
-                    }
-                    cJSON *child_h265_head_each_idr = cJSON_GetObjectItem(child_h265_param, "head_each_idr");
-                    if (child_h265_head_each_idr)
-                    {
-                        p->h265_cfg.head_each_idr = strstr(child_h265_head_each_idr->valuestring, "on") ?
-                                                    MPP_ENC_HEADER_MODE_EACH_IDR : MPP_ENC_HEADER_MODE_DEFAULT;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(4);
-                    }
-                    cJSON *child_h265_sei = cJSON_GetObjectItem(child_h265_param, "sei");
-                    if (child_h265_sei)
-                    {
-                        p->h265_cfg.sei = strstr(child_h265_sei->valuestring, "SEQ") ? MPP_ENC_SEI_MODE_ONE_SEQ :
-                                          strstr(child_h265_sei->valuestring, "FRAME") ? MPP_ENC_SEI_MODE_ONE_FRAME :
-                                          MPP_ENC_SEI_MODE_DISABLE;;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
-                    }
-                    cJSON *child_h265_qp_init = cJSON_GetObjectItem(child_h265_param, "qp_init");
-                    if (child_h265_qp_init)
-                    {
-                        p->h265_cfg.qp.init = child_h265_qp_init->valueint;
-                        p->h265_cfg.qp.init = p->h265_cfg.qp.init < 1 ? 1 :
-                                              p->h265_cfg.qp.init > 51 ? 51 :
-                                              p->h265_cfg.qp.init;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
-                    }
-                    cJSON *child_h265_qp_max = cJSON_GetObjectItem(child_h265_param, "qp_max");
-                    if (child_h265_qp_max)
-                    {
-                        p->h265_cfg.qp.max = child_h265_qp_max->valueint;
-                        p->h265_cfg.qp.max = p->h265_cfg.qp.max < 8 ? 8 :
-                                             p->h265_cfg.qp.max > 51 ? 51 :
-                                             p->h265_cfg.qp.max;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(7);
-                    }
-                    cJSON *child_h265_qp_min = cJSON_GetObjectItem(child_h265_param, "qp_min");
-                    if (child_h265_qp_min)
-                    {
-                        p->h265_cfg.qp.min = child_h265_qp_min->valueint;
-                        p->h265_cfg.qp.min = p->h265_cfg.qp.min < 0 ? 0 :
-                                             p->h265_cfg.qp.min > 48 ? 48 :
-                                             p->h265_cfg.qp.min;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(8);
-                    }
-                    cJSON *child_h265_qp_step = cJSON_GetObjectItem(child_h265_param, "qp_step");
-                    if (child_h265_qp_step)
-                    {
-                        p->h265_cfg.qp.step = child_h265_qp_step->valueint;
-                        p->h265_cfg.qp.step = p->h265_cfg.qp.step < 1 ? 1 :
-                                              p->h265_cfg.qp.step > 51 ? 51 :
-                                              p->h265_cfg.qp.step;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9);
-                    }
-                    cJSON *child_h265_qp_max_i = cJSON_GetObjectItem(child_h265_param, "max_i_qp");
-                    if (child_h265_qp_max_i)
-                    {
-                        p->h265_cfg.qp.max_i_qp = child_h265_qp_max_i->valueint;
-                        p->h265_cfg.qp.max_i_qp = p->h265_cfg.qp.max_i_qp < 8 ? 8 :
-                                                  p->h265_cfg.qp.max_i_qp > 51 ? 51 :
-                                                  p->h265_cfg.qp.max_i_qp;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(10);
-                    }
-                    cJSON *child_h265_qp_min_i = cJSON_GetObjectItem(child_h265_param, "min_i_qp");
-                    if (child_h265_qp_min_i)
-                    {
-                        p->h265_cfg.qp.min_i_qp = child_h265_qp_min_i->valueint;
-                        p->h265_cfg.qp.min_i_qp = p->h265_cfg.qp.min_i_qp < 0 ? 0 :
-                                                  p->h265_cfg.qp.min_i_qp > 48 ? 48 :
-                                                  p->h265_cfg.qp.min_i_qp;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(11);
-                    }
-                    cJSON *child_h265_bps = cJSON_GetObjectItem(child_h265_param, "bps");
-                    if (child_h265_bps)
-                    {
-                        p->h265_cfg.bps = child_h265_bps->valueint;
-                        p->h265_cfg.bps = p->h265_cfg.bps < MPP_ENC_CFG_MIN_BPS ? MPP_ENC_CFG_MIN_BPS :
-                                          p->h265_cfg.bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
-                                          p->h265_cfg.bps;
-                        p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(12);
-                    }
+                    p->mjpeg_cfg.qfactor = child_mjpeg_qfactor->valueint;
+                    p->mjpeg_cfg.qfactor = p->mjpeg_cfg.qfactor < 0 ? 0 :
+                                           p->mjpeg_cfg.qfactor > 99 ? 99 :
+                                           p->mjpeg_cfg.qfactor;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                }
 
-                    LOG_INFO("h265_cfg.change:0x%x\n", p->h265_cfg.change);
-                }
-                else
-                {
-                    LOG_INFO("no find h265 param_init or param_change\n");
-                }
+                LOG_INFO("mjpeg_cfg.change:0x%x\n", p->mjpeg_cfg.change);
+            }
+            else
+            {
+                LOG_INFO("no find mjpeg param_init or param_change\n");
             }
         }
-        break;
-        default :
+    }
+    break;
+    case MPP_VIDEO_CodingAVC :
+    {
+        cJSON *child_h264 = cJSON_GetObjectItem(child, "h264");
+        if (!child_h264)
         {
-            LOG_ERROR("unsupport encoder coding type %d\n", p->type);
-            ret = -1;
+            LOG_ERROR("parse_mpp_enc_cfg h264 err\n");
+            return -1;
         }
-        break;
+        else
+        {
+            cJSON *child_h264_param = NULL;
+            if (init)
+                child_h264_param = cJSON_GetObjectItem(child_h264, "param_init");
+            else
+                child_h264_param = cJSON_GetObjectItem(child_h264, "param_change");
+            if (child_h264_param)
+            {
+                cJSON *child_h264_gop = cJSON_GetObjectItem(child_h264_param, "gop");
+                if (child_h264_gop)
+                {
+                    p->h264_cfg.gop = child_h264_gop->valueint;
+                    p->h264_cfg.gop = p->h264_cfg.gop < 1 ? 1 :
+                                      p->h264_cfg.gop > 100 ? 100 :
+                                      p->h264_cfg.gop;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
+                }
+                cJSON *child_h264_rc_mode = cJSON_GetObjectItem(child_h264_param, "rc_mode");
+                if (child_h264_rc_mode)
+                {
+                    p->h264_cfg.rc_mode = strstr(child_h264_rc_mode->valuestring, "cbr") ? MPP_ENC_RC_MODE_CBR :
+                                          strstr(child_h264_rc_mode->valuestring, "vbr") ? MPP_ENC_RC_MODE_VBR :
+                                          strstr(child_h264_rc_mode->valuestring, "fixqp") ? MPP_ENC_RC_MODE_FIXQP : MPP_ENC_RC_MODE_CBR;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
+                }
+                cJSON *child_h264_framerate = cJSON_GetObjectItem(child_h264_param, "framerate");
+                if (child_h264_framerate)
+                {
+                    p->h264_cfg.framerate = child_h264_framerate->valueint;
+                    p->h264_cfg.framerate = p->h264_cfg.framerate < MPP_ENC_CFG_MIN_FPS ? MPP_ENC_CFG_MIN_FPS :
+                                            p->h264_cfg.framerate > MPP_ENC_CFG_MAX_FPS ? MPP_ENC_CFG_MAX_FPS :
+                                            p->h264_cfg.framerate;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                }
+                cJSON *child_h264_range = cJSON_GetObjectItem(child_h264_param, "range");
+                if (child_h264_range)
+                {
+                    p->h264_cfg.range = strstr(child_h264_range->valuestring, "limit") ?
+                                        MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(3);
+                }
+                cJSON *child_h264_head_each_idr = cJSON_GetObjectItem(child_h264_param, "head_each_idr");
+                if (child_h264_head_each_idr)
+                {
+                    p->h264_cfg.head_each_idr = strstr(child_h264_head_each_idr->valuestring, "on") ?
+                                                MPP_ENC_HEADER_MODE_EACH_IDR : MPP_ENC_HEADER_MODE_DEFAULT;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(4);
+                }
+                cJSON *child_h264_sei = cJSON_GetObjectItem(child_h264_param, "sei");
+                if (child_h264_sei)
+                {
+                    p->h264_cfg.sei = strstr(child_h264_sei->valuestring, "SEQ") ? MPP_ENC_SEI_MODE_ONE_SEQ :
+                                      strstr(child_h264_sei->valuestring, "FRAME") ? MPP_ENC_SEI_MODE_ONE_FRAME :
+                                      MPP_ENC_SEI_MODE_DISABLE;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
+                }
+                cJSON *child_h264_qp_init = cJSON_GetObjectItem(child_h264_param, "qp_init");
+                if (child_h264_qp_init)
+                {
+                    p->h264_cfg.qp.init = child_h264_qp_init->valueint;
+                    p->h264_cfg.qp.init = p->h264_cfg.qp.init < 1 ? 1 :
+                                          p->h264_cfg.qp.init > 51 ? 51 :
+                                          p->h264_cfg.qp.init;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
+                }
+                cJSON *child_h264_qp_max = cJSON_GetObjectItem(child_h264_param, "qp_max");
+                if (child_h264_qp_max)
+                {
+                    p->h264_cfg.qp.max = child_h264_qp_max->valueint;
+                    p->h264_cfg.qp.max = p->h264_cfg.qp.max < 8 ? 8 :
+                                         p->h264_cfg.qp.max > 51 ? 51 :
+                                         p->h264_cfg.qp.max;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(7);
+                }
+                cJSON *child_h264_qp_min = cJSON_GetObjectItem(child_h264_param, "qp_min");
+                if (child_h264_qp_min)
+                {
+                    p->h264_cfg.qp.min = child_h264_qp_min->valueint;
+                    p->h264_cfg.qp.min = p->h264_cfg.qp.min < 0 ? 0 :
+                                         p->h264_cfg.qp.min > 48 ? 48 :
+                                         p->h264_cfg.qp.min;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(8);
+                }
+                cJSON *child_h264_qp_step = cJSON_GetObjectItem(child_h264_param, "qp_step");
+                if (child_h264_qp_step)
+                {
+                    p->h264_cfg.qp.step = child_h264_qp_step->valueint;
+                    p->h264_cfg.qp.step = p->h264_cfg.qp.step < 1 ? 1 :
+                                          p->h264_cfg.qp.step > 51 ? 51 :
+                                          p->h264_cfg.qp.step;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9);
+                }
+                cJSON *child_h264_profile = cJSON_GetObjectItem(child_h264_param, "profile");
+                if (child_h264_profile)
+                {
+                    p->h264_cfg.profile = child_h264_profile->valueint;
+                    if (p->h264_cfg.profile != 66 && p->h264_cfg.profile != 77 && p->h264_cfg.profile != 100)
+                    {
+                        LOG_INFO("set h264_cfg.profile err %d, set default to %d\n",
+                                 p->h264_cfg.profile, MPP_ENC_CFG_H264_DEFAULT_PROFILE);
+                        p->h264_cfg.profile = MPP_ENC_CFG_H264_DEFAULT_PROFILE;
+                    }
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(10);
+                }
+                cJSON *child_h264_cabac_en = cJSON_GetObjectItem(child_h264_param, "cabac_en");
+                if (child_h264_cabac_en)
+                {
+                    p->h264_cfg.cabac_en = child_h264_cabac_en->valueint;
+                    p->h264_cfg.cabac_en = p->h264_cfg.cabac_en < 0 ? 0 :
+                                           p->h264_cfg.cabac_en > 1 ? 1 :
+                                           p->h264_cfg.cabac_en;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(11);
+                }
+                cJSON *child_h264_cabac_idc = cJSON_GetObjectItem(child_h264_param, "cabac_idc");
+                if (child_h264_cabac_idc)
+                {
+                    p->h264_cfg.cabac_idc = child_h264_cabac_idc->valueint;
+                    p->h264_cfg.cabac_idc = p->h264_cfg.cabac_idc < 0 ? 0 :
+                                            p->h264_cfg.cabac_idc > 1 ? 1 :
+                                            p->h264_cfg.cabac_idc;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(12);
+                }
+                cJSON *child_h264_trans_8x8 = cJSON_GetObjectItem(child_h264_param, "trans_8x8");
+                if (child_h264_trans_8x8)
+                {
+                    p->h264_cfg.trans_8x8 = child_h264_trans_8x8->valueint;
+                    p->h264_cfg.trans_8x8 = p->h264_cfg.trans_8x8 < 0 ? 0 :
+                                            p->h264_cfg.trans_8x8 > 1 ? 1 :
+                                            p->h264_cfg.trans_8x8;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(13);
+                }
+                cJSON *child_h264_level = cJSON_GetObjectItem(child_h264_param, "level");
+                if (child_h264_level)
+                {
+                    p->h264_cfg.level = child_h264_level->valueint;
+                    if (!((p->h264_cfg.level >= 10 && p->h264_cfg.level <= 13) ||
+                            (p->h264_cfg.level >= 20 && p->h264_cfg.level <= 22) ||
+                            (p->h264_cfg.level >= 30 && p->h264_cfg.level <= 32) ||
+                            (p->h264_cfg.level >= 40 && p->h264_cfg.level <= 42) ||
+                            (p->h264_cfg.level >= 50 && p->h264_cfg.level <= 52)))
+                    {
+                        LOG_INFO("set h264_cfg.level err %d, set default to %d\n",
+                                 p->h264_cfg.level, MPP_ENC_CFG_H264_DEFAULT_LEVEL);
+                        p->h264_cfg.level = MPP_ENC_CFG_H264_DEFAULT_LEVEL;
+                    }
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(14);
+                }
+                cJSON *child_h264_bps = cJSON_GetObjectItem(child_h264_param, "bps");
+                if (child_h264_bps)
+                {
+                    p->h264_cfg.bps = child_h264_bps->valueint;
+                    p->h264_cfg.bps = p->h264_cfg.bps < MPP_ENC_CFG_MIN_BPS ? MPP_ENC_CFG_MIN_BPS :
+                                      p->h264_cfg.bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
+                                      p->h264_cfg.bps;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(15);
+                }
+                LOG_INFO("h264_cfg.change:0x%x\n", p->h264_cfg.change);
+            }
+            else
+            {
+                LOG_INFO("no find h264 param_init or param_change\n");
+            }
+        }
+    }
+    break;
+    case MPP_VIDEO_CodingVP8 :
+    {
+        ret = -1;
+    }
+    break;
+    case MPP_VIDEO_CodingHEVC :
+    {
+        cJSON *child_h265 = cJSON_GetObjectItem(child, "h265");
+        if (!child_h265)
+        {
+            LOG_ERROR("parse_mpp_enc_cfg h265 err\n");
+            return -1;
+        }
+        else
+        {
+            cJSON *child_h265_param = NULL;
+            if (init)
+                child_h265_param = cJSON_GetObjectItem(child_h265, "param_init");
+            else
+                child_h265_param = cJSON_GetObjectItem(child_h265, "param_change");
+            if (child_h265_param)
+            {
+                cJSON *child_h265_gop = cJSON_GetObjectItem(child_h265_param, "gop");
+                if (child_h265_gop)
+                {
+                    p->h265_cfg.gop = child_h265_gop->valueint;
+                    p->h265_cfg.gop = p->h265_cfg.gop < 1 ? 1 :
+                                      p->h265_cfg.gop > 100 ? 100 :
+                                      p->h265_cfg.gop;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
+                }
+                cJSON *child_h265_rc_mode = cJSON_GetObjectItem(child_h265_param, "rc_mode");
+                if (child_h265_rc_mode)
+                {
+                    p->h265_cfg.rc_mode = strstr(child_h265_rc_mode->valuestring, "cbr") ? MPP_ENC_RC_MODE_CBR :
+                                          strstr(child_h265_rc_mode->valuestring, "vbr") ? MPP_ENC_RC_MODE_VBR :
+                                          strstr(child_h265_rc_mode->valuestring, "fixqp") ? MPP_ENC_RC_MODE_FIXQP : MPP_ENC_RC_MODE_CBR;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
+                }
+                cJSON *child_h265_framerate = cJSON_GetObjectItem(child_h265_param, "framerate");
+                if (child_h265_framerate)
+                {
+                    p->h265_cfg.framerate = child_h265_framerate->valueint;
+                    p->h265_cfg.framerate = p->h265_cfg.framerate < MPP_ENC_CFG_MIN_FPS ? MPP_ENC_CFG_MIN_FPS :
+                                            p->h265_cfg.framerate > MPP_ENC_CFG_MAX_FPS ? MPP_ENC_CFG_MAX_FPS :
+                                            p->h265_cfg.framerate;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                }
+                cJSON *child_h265_range = cJSON_GetObjectItem(child_h265_param, "range");
+                if (child_h265_range)
+                {
+                    p->h265_cfg.range = strstr(child_h265_range->valuestring, "limit") ?
+                                        MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(3);
+                }
+                cJSON *child_h265_head_each_idr = cJSON_GetObjectItem(child_h265_param, "head_each_idr");
+                if (child_h265_head_each_idr)
+                {
+                    p->h265_cfg.head_each_idr = strstr(child_h265_head_each_idr->valuestring, "on") ?
+                                                MPP_ENC_HEADER_MODE_EACH_IDR : MPP_ENC_HEADER_MODE_DEFAULT;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(4);
+                }
+                cJSON *child_h265_sei = cJSON_GetObjectItem(child_h265_param, "sei");
+                if (child_h265_sei)
+                {
+                    p->h265_cfg.sei = strstr(child_h265_sei->valuestring, "SEQ") ? MPP_ENC_SEI_MODE_ONE_SEQ :
+                                      strstr(child_h265_sei->valuestring, "FRAME") ? MPP_ENC_SEI_MODE_ONE_FRAME :
+                                      MPP_ENC_SEI_MODE_DISABLE;;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
+                }
+                cJSON *child_h265_qp_init = cJSON_GetObjectItem(child_h265_param, "qp_init");
+                if (child_h265_qp_init)
+                {
+                    p->h265_cfg.qp.init = child_h265_qp_init->valueint;
+                    p->h265_cfg.qp.init = p->h265_cfg.qp.init < 1 ? 1 :
+                                          p->h265_cfg.qp.init > 51 ? 51 :
+                                          p->h265_cfg.qp.init;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
+                }
+                cJSON *child_h265_qp_max = cJSON_GetObjectItem(child_h265_param, "qp_max");
+                if (child_h265_qp_max)
+                {
+                    p->h265_cfg.qp.max = child_h265_qp_max->valueint;
+                    p->h265_cfg.qp.max = p->h265_cfg.qp.max < 8 ? 8 :
+                                         p->h265_cfg.qp.max > 51 ? 51 :
+                                         p->h265_cfg.qp.max;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(7);
+                }
+                cJSON *child_h265_qp_min = cJSON_GetObjectItem(child_h265_param, "qp_min");
+                if (child_h265_qp_min)
+                {
+                    p->h265_cfg.qp.min = child_h265_qp_min->valueint;
+                    p->h265_cfg.qp.min = p->h265_cfg.qp.min < 0 ? 0 :
+                                         p->h265_cfg.qp.min > 48 ? 48 :
+                                         p->h265_cfg.qp.min;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(8);
+                }
+                cJSON *child_h265_qp_step = cJSON_GetObjectItem(child_h265_param, "qp_step");
+                if (child_h265_qp_step)
+                {
+                    p->h265_cfg.qp.step = child_h265_qp_step->valueint;
+                    p->h265_cfg.qp.step = p->h265_cfg.qp.step < 1 ? 1 :
+                                          p->h265_cfg.qp.step > 51 ? 51 :
+                                          p->h265_cfg.qp.step;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9);
+                }
+                cJSON *child_h265_qp_max_i = cJSON_GetObjectItem(child_h265_param, "max_i_qp");
+                if (child_h265_qp_max_i)
+                {
+                    p->h265_cfg.qp.max_i_qp = child_h265_qp_max_i->valueint;
+                    p->h265_cfg.qp.max_i_qp = p->h265_cfg.qp.max_i_qp < 8 ? 8 :
+                                              p->h265_cfg.qp.max_i_qp > 51 ? 51 :
+                                              p->h265_cfg.qp.max_i_qp;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(10);
+                }
+                cJSON *child_h265_qp_min_i = cJSON_GetObjectItem(child_h265_param, "min_i_qp");
+                if (child_h265_qp_min_i)
+                {
+                    p->h265_cfg.qp.min_i_qp = child_h265_qp_min_i->valueint;
+                    p->h265_cfg.qp.min_i_qp = p->h265_cfg.qp.min_i_qp < 0 ? 0 :
+                                              p->h265_cfg.qp.min_i_qp > 48 ? 48 :
+                                              p->h265_cfg.qp.min_i_qp;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(11);
+                }
+                cJSON *child_h265_bps = cJSON_GetObjectItem(child_h265_param, "bps");
+                if (child_h265_bps)
+                {
+                    p->h265_cfg.bps = child_h265_bps->valueint;
+                    p->h265_cfg.bps = p->h265_cfg.bps < MPP_ENC_CFG_MIN_BPS ? MPP_ENC_CFG_MIN_BPS :
+                                      p->h265_cfg.bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
+                                      p->h265_cfg.bps;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(12);
+                }
+
+                LOG_INFO("h265_cfg.change:0x%x\n", p->h265_cfg.change);
+            }
+            else
+            {
+                LOG_INFO("no find h265 param_init or param_change\n");
+            }
+        }
+    }
+    break;
+    default :
+    {
+        LOG_ERROR("unsupport encoder coding type %d\n", p->type);
+        ret = -1;
+    }
+    break;
     }
 
     return ret;
@@ -1644,12 +1761,13 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 
     mpi_get_env_u32("enc_version", &p->enc_version, RK_MPP_VERSION_DEFAULT);
 
-    char* full_range = getenv("ENABLE_FULL_RANGE");
-    if (full_range) {
+    char *full_range = getenv("ENABLE_FULL_RANGE");
+    if (full_range)
+    {
         int need_full_range = atoi(full_range);
         p->h264_cfg.range = need_full_range ? MPP_FRAME_RANGE_JPEG : MPP_FRAME_RANGE_MPEG;
         p->h265_cfg.range = need_full_range ? MPP_FRAME_RANGE_JPEG : MPP_FRAME_RANGE_MPEG;
-        LOG_INFO("mpp full_range use env setting:%d \n",need_full_range);
+        LOG_INFO("mpp full_range use env setting:%d \n", need_full_range);
     }
 
     mpi = p->mpi;
@@ -1682,212 +1800,221 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     mpp_enc_cfg_set_s32(cfg, "codec:type", p->type);
     switch (p->type)
     {
-        case MPP_VIDEO_CodingMJPEG :
+    case MPP_VIDEO_CodingMJPEG :
+    {
+        if (!p->mjpeg_cfg.qfactor && (init || (p->mjpeg_cfg.change & BIT(0))))
         {
-            if (init || (p->mjpeg_cfg.change & BIT(0)))
-                mpp_enc_cfg_set_s32(cfg, "jpeg:quant", p->mjpeg_cfg.quant);
+            mpp_enc_cfg_set_s32(cfg, "jpeg:quant", p->mjpeg_cfg.quant);
+            p->mjpeg_cfg.frc_quant = p->mjpeg_cfg.quant;
         }
-        break;
-        case MPP_VIDEO_CodingAVC :
+        if (p->mjpeg_cfg.qfactor && (init || (p->mjpeg_cfg.change & BIT(2))))
         {
-            if (init || (p->h264_cfg.change & BIT(0)))
-                mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h264_cfg.gop);
-            if (init || (p->h264_cfg.change & BIT(1)))
-                mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h264_cfg.rc_mode);
-            if (init || (p->h264_cfg.change & BIT(2)))
-            {
-                /* setup default parameter */
-                p->fps_in_den = 1;
-                p->fps_in_num = p->h264_cfg.framerate;
-                p->fps_out_den = 1;
-                p->fps_out_num = p->h264_cfg.framerate;
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", p->fps_in_num);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", p->fps_in_den);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
-            }
-            if (init || (p->h264_cfg.change & BIT(3)))
-            {
-                ret = mpp_enc_cfg_set_s32(cfg, "prep:range", p->h264_cfg.range);
-                if (ret)
-                {
-                    LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
-                    goto RET;
-                }
-            }
+            mpp_enc_cfg_set_u32(cfg, "jpeg:q_factor", p->mjpeg_cfg.qfactor);
+            p->mjpeg_cfg.frc_qfactor = p->mjpeg_cfg.qfactor;
+        }
 
-            if (init || (p->h264_cfg.change & BIT(4)))
+    }
+    break;
+    case MPP_VIDEO_CodingAVC :
+    {
+        if (init || (p->h264_cfg.change & BIT(0)))
+            mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h264_cfg.gop);
+        if (init || (p->h264_cfg.change & BIT(1)))
+            mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h264_cfg.rc_mode);
+        if (init || (p->h264_cfg.change & BIT(2)))
+        {
+            /* setup default parameter */
+            p->fps_in_den = 1;
+            p->fps_in_num = p->h264_cfg.framerate;
+            p->fps_out_den = 1;
+            p->fps_out_num = p->h264_cfg.framerate;
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", p->fps_in_num);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", p->fps_in_den);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+        }
+        if (init || (p->h264_cfg.change & BIT(3)))
+        {
+            ret = mpp_enc_cfg_set_s32(cfg, "prep:range", p->h264_cfg.range);
+            if (ret)
             {
-                ret = mpi->control(ctx, MPP_ENC_SET_HEADER_MODE, &p->h264_cfg.head_each_idr);
-                if (ret)
-                {
-                    LOG_ERROR("mpi control enc set codec cfg failed ret %d\n", ret);
-                    goto RET;
-                }
+                LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
+                goto RET;
             }
-            if (init || (p->h264_cfg.change & BIT(5)))
-            {
-                ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->h264_cfg.sei);
-                if (ret)
-                {
-                    LOG_ERROR("mpi control enc set sei cfg failed ret %d\n", ret);
-                    goto RET;
-                }
-            }
-            if (init || (p->h264_cfg.change & BIT(6)))
-                mpp_enc_cfg_set_s32(cfg, "h264:qp_init", p->h264_cfg.qp.init);
-            if (init || (p->h264_cfg.change & BIT(7)))
-                mpp_enc_cfg_set_s32(cfg, "h264:qp_max", p->h264_cfg.qp.max);
-            if (init || (p->h264_cfg.change & BIT(8)))
-                mpp_enc_cfg_set_s32(cfg, "h264:qp_min", p->h264_cfg.qp.min);
-            if (init || (p->h264_cfg.change & BIT(9)))
-                mpp_enc_cfg_set_s32(cfg, "h264:qp_step", p->h264_cfg.qp.step);
-            if (init || (p->h264_cfg.change & BIT(10)))
-                mpp_enc_cfg_set_s32(cfg, "h264:profile", p->h264_cfg.profile);
-            if (init || (p->h264_cfg.change & BIT(11)))
-                mpp_enc_cfg_set_s32(cfg, "h264:cabac_en", p->h264_cfg.cabac_en);
-            if (init || (p->h264_cfg.change & BIT(12)))
-                mpp_enc_cfg_set_s32(cfg, "h264:cabac_idc", p->h264_cfg.cabac_idc);
-            if (init || (p->h264_cfg.change & BIT(13)))
-                mpp_enc_cfg_set_s32(cfg, "h264:trans8x8", p->h264_cfg.trans_8x8);
-            if (init || (p->h264_cfg.change & BIT(14)))
-                mpp_enc_cfg_set_s32(cfg, "h264:level", p->h264_cfg.level);
+        }
 
-            if (init || (p->h264_cfg.change & BIT(15)))
+        if (init || (p->h264_cfg.change & BIT(4)))
+        {
+            ret = mpi->control(ctx, MPP_ENC_SET_HEADER_MODE, &p->h264_cfg.head_each_idr);
+            if (ret)
             {
-                switch (rc_mode)
-                {
-                case MPP_ENC_RC_MODE_FIXQP :
-                {
-                    /* do not set bps on fix qp mode */
-                } break;
-                case MPP_ENC_RC_MODE_CBR :
-                {
-                    /* CBR mode has narrow bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 15 / 16);
-                }
-                break;
-                case MPP_ENC_RC_MODE_VBR :
-                {
-                    /* CBR mode has wide bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 16);
-                }
-                break;
-                default :
-                {
-                    LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
-                }
-                break;
-                }
+                LOG_ERROR("mpi control enc set codec cfg failed ret %d\n", ret);
+                goto RET;
             }
         }
-        break;
-        case MPP_VIDEO_CodingVP8 :
+        if (init || (p->h264_cfg.change & BIT(5)))
         {
-        } break;
-        case MPP_VIDEO_CodingHEVC :
-        {
-            if (init || (p->h265_cfg.change & BIT(0)))
-                mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h265_cfg.gop);
-            if (init || (p->h265_cfg.change & BIT(1)))
-                mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h265_cfg.rc_mode);
-            if (init || (p->h265_cfg.change & BIT(2)))
+            ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->h264_cfg.sei);
+            if (ret)
             {
-                /* setup default parameter */
-                p->fps_in_den = 1;
-                p->fps_in_num = p->h265_cfg.framerate;
-                p->fps_out_den = 1;
-                p->fps_out_num = p->h265_cfg.framerate;
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", p->fps_in_num);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", p->fps_in_den);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
-                mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
-            }
-            if (init || (p->h265_cfg.change & BIT(3)))
-            {
-                ret = mpp_enc_cfg_set_s32(cfg, "prep:range", p->h265_cfg.range);
-                if (ret)
-                {
-                    LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
-                    goto RET;
-                }
-            }
-            if (init || (p->h265_cfg.change & BIT(4)))
-            {
-                ret = mpi->control(ctx, MPP_ENC_SET_HEADER_MODE, &p->h265_cfg.head_each_idr);
-                if (ret)
-                {
-                    LOG_ERROR("mpi control enc set codec cfg failed ret %d\n", ret);
-                    goto RET;
-                }
-            }
-            if (init || (p->h265_cfg.change & BIT(5)))
-            {
-                ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->h265_cfg.sei);
-                if (ret)
-                {
-                    LOG_ERROR("mpi control enc set sei cfg failed ret %d\n", ret);
-                    goto RET;
-                }
-            }
-            if (init || (p->h265_cfg.change & BIT(6)))
-                mpp_enc_cfg_set_s32(cfg, "h265:qp_init", p->h265_cfg.qp.init);
-            if (init || (p->h265_cfg.change & BIT(7)))
-                mpp_enc_cfg_set_s32(cfg, "h265:qp_max", p->h265_cfg.qp.max);
-            if (init || (p->h265_cfg.change & BIT(8)))
-                mpp_enc_cfg_set_s32(cfg, "h265:qp_min", p->h265_cfg.qp.min);
-            if (init || (p->h265_cfg.change & BIT(9)))
-                mpp_enc_cfg_set_s32(cfg, "h265:qp_step", p->h265_cfg.qp.step);
-            if (init || (p->h265_cfg.change & BIT(10)))
-                mpp_enc_cfg_set_s32(cfg, "h265:qp_max_i", p->h265_cfg.qp.max_i_qp);
-            if (init || (p->h265_cfg.change & BIT(11)))
-                mpp_enc_cfg_set_s32(cfg, "h265:qp_min_i", p->h265_cfg.qp.min_i_qp);
-            if (init || (p->h265_cfg.change & BIT(12)))
-            {
-                switch (rc_mode)
-                {
-                    case MPP_ENC_RC_MODE_FIXQP :
-                    {
-                        /* do not set bps on fix qp mode */
-                    } break;
-                    case MPP_ENC_RC_MODE_CBR :
-                    {
-                        /* CBR mode has narrow bound */
-                        mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
-                        mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
-                        mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 15 / 16);
-                    }
-                    break;
-                    case MPP_ENC_RC_MODE_VBR :
-                    {
-                        /* CBR mode has wide bound */
-                        mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
-                        mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
-                        mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 16);
-                    }
-                    break;
-                    default :
-                    {
-                        LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
-                    }
-                    break;
-                }
+                LOG_ERROR("mpi control enc set sei cfg failed ret %d\n", ret);
+                goto RET;
             }
         }
-        break;
-        default :
+        if (init || (p->h264_cfg.change & BIT(6)))
+            mpp_enc_cfg_set_s32(cfg, "h264:qp_init", p->h264_cfg.qp.init);
+        if (init || (p->h264_cfg.change & BIT(7)))
+            mpp_enc_cfg_set_s32(cfg, "h264:qp_max", p->h264_cfg.qp.max);
+        if (init || (p->h264_cfg.change & BIT(8)))
+            mpp_enc_cfg_set_s32(cfg, "h264:qp_min", p->h264_cfg.qp.min);
+        if (init || (p->h264_cfg.change & BIT(9)))
+            mpp_enc_cfg_set_s32(cfg, "h264:qp_step", p->h264_cfg.qp.step);
+        if (init || (p->h264_cfg.change & BIT(10)))
+            mpp_enc_cfg_set_s32(cfg, "h264:profile", p->h264_cfg.profile);
+        if (init || (p->h264_cfg.change & BIT(11)))
+            mpp_enc_cfg_set_s32(cfg, "h264:cabac_en", p->h264_cfg.cabac_en);
+        if (init || (p->h264_cfg.change & BIT(12)))
+            mpp_enc_cfg_set_s32(cfg, "h264:cabac_idc", p->h264_cfg.cabac_idc);
+        if (init || (p->h264_cfg.change & BIT(13)))
+            mpp_enc_cfg_set_s32(cfg, "h264:trans8x8", p->h264_cfg.trans_8x8);
+        if (init || (p->h264_cfg.change & BIT(14)))
+            mpp_enc_cfg_set_s32(cfg, "h264:level", p->h264_cfg.level);
+
+        if (init || (p->h264_cfg.change & BIT(15)))
         {
-            LOG_ERROR("unsupport encoder coding type %d\n", p->type);
+            switch (rc_mode)
+            {
+            case MPP_ENC_RC_MODE_FIXQP :
+            {
+                /* do not set bps on fix qp mode */
+            } break;
+            case MPP_ENC_RC_MODE_CBR :
+            {
+                /* CBR mode has narrow bound */
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 15 / 16);
+            }
+            break;
+            case MPP_ENC_RC_MODE_VBR :
+            {
+                /* CBR mode has wide bound */
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 16);
+            }
+            break;
+            default :
+            {
+                LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+            }
+            break;
+            }
         }
-        break;
+    }
+    break;
+    case MPP_VIDEO_CodingVP8 :
+    {
+    } break;
+    case MPP_VIDEO_CodingHEVC :
+    {
+        if (init || (p->h265_cfg.change & BIT(0)))
+            mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h265_cfg.gop);
+        if (init || (p->h265_cfg.change & BIT(1)))
+            mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h265_cfg.rc_mode);
+        if (init || (p->h265_cfg.change & BIT(2)))
+        {
+            /* setup default parameter */
+            p->fps_in_den = 1;
+            p->fps_in_num = p->h265_cfg.framerate;
+            p->fps_out_den = 1;
+            p->fps_out_num = p->h265_cfg.framerate;
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", p->fps_in_num);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", p->fps_in_den);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+        }
+        if (init || (p->h265_cfg.change & BIT(3)))
+        {
+            ret = mpp_enc_cfg_set_s32(cfg, "prep:range", p->h265_cfg.range);
+            if (ret)
+            {
+                LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
+                goto RET;
+            }
+        }
+        if (init || (p->h265_cfg.change & BIT(4)))
+        {
+            ret = mpi->control(ctx, MPP_ENC_SET_HEADER_MODE, &p->h265_cfg.head_each_idr);
+            if (ret)
+            {
+                LOG_ERROR("mpi control enc set codec cfg failed ret %d\n", ret);
+                goto RET;
+            }
+        }
+        if (init || (p->h265_cfg.change & BIT(5)))
+        {
+            ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->h265_cfg.sei);
+            if (ret)
+            {
+                LOG_ERROR("mpi control enc set sei cfg failed ret %d\n", ret);
+                goto RET;
+            }
+        }
+        if (init || (p->h265_cfg.change & BIT(6)))
+            mpp_enc_cfg_set_s32(cfg, "h265:qp_init", p->h265_cfg.qp.init);
+        if (init || (p->h265_cfg.change & BIT(7)))
+            mpp_enc_cfg_set_s32(cfg, "h265:qp_max", p->h265_cfg.qp.max);
+        if (init || (p->h265_cfg.change & BIT(8)))
+            mpp_enc_cfg_set_s32(cfg, "h265:qp_min", p->h265_cfg.qp.min);
+        if (init || (p->h265_cfg.change & BIT(9)))
+            mpp_enc_cfg_set_s32(cfg, "h265:qp_step", p->h265_cfg.qp.step);
+        if (init || (p->h265_cfg.change & BIT(10)))
+            mpp_enc_cfg_set_s32(cfg, "h265:qp_max_i", p->h265_cfg.qp.max_i_qp);
+        if (init || (p->h265_cfg.change & BIT(11)))
+            mpp_enc_cfg_set_s32(cfg, "h265:qp_min_i", p->h265_cfg.qp.min_i_qp);
+        if (init || (p->h265_cfg.change & BIT(12)))
+        {
+            switch (rc_mode)
+            {
+            case MPP_ENC_RC_MODE_FIXQP :
+            {
+                /* do not set bps on fix qp mode */
+            } break;
+            case MPP_ENC_RC_MODE_CBR :
+            {
+                /* CBR mode has narrow bound */
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 15 / 16);
+            }
+            break;
+            case MPP_ENC_RC_MODE_VBR :
+            {
+                /* CBR mode has wide bound */
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
+                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 16);
+            }
+            break;
+            default :
+            {
+                LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+            }
+            break;
+            }
+        }
+    }
+    break;
+    default :
+    {
+        LOG_ERROR("unsupport encoder coding type %d\n", p->type);
+    }
+    break;
     }
     ret = mpi->control(ctx, MPP_ENC_SET_CFG, cfg);
     if (ret)
@@ -1976,11 +2103,68 @@ void *thread_check_mpp_enc_chenge_loop(void *user)
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
     MpiEncTestData *p = (MpiEncTestData *)user;
     int last_wd = 0;
+    unsigned char buf[1024] = {0};
+    struct inotify_event *event = NULL;
+    bool modify = false;
     while (1)
     {
         last_wd = p->cfg_notify_wd;
         p->cfg_notify_wd = inotify_add_watch(p->cfg_notify_fd, RK_MPP_ENC_CFG_MODIFY_PATH, IN_MODIFY);//IN_ALL_EVENTS);
+        modify = false;
+        if (p->cfg_notify_wd != -1)
+        {
+            if ((last_wd == -1 && p->cfg_notify_wd == 1))
+            {
+                modify = true;
+            }
+            else
+            {
+                fd_set fds;
+                FD_ZERO(&fds);
+                FD_SET(p->cfg_notify_fd, &fds);
 
+                if (select(p->cfg_notify_fd + 1, &fds, NULL, NULL, NULL) > 0)
+                {
+                    int len, index = 0;
+                    memset(buf, 0, sizeof(buf));
+                    len = read(p->cfg_notify_fd, &buf, sizeof(buf));
+
+                    while (len > 0 && index < len)
+                    {
+                        event = (struct inotify_event *)(buf + index);
+                        if (event->mask == IN_MODIFY)
+                        {
+                            modify = true;
+                        }
+                        index += sizeof(struct inotify_event) + event->len;
+                    }
+
+                }
+
+            }
+        }
+        sleep(1);
+        if (modify)
+        {
+            LOG_INFO("the enc cfg file change or creat, do update.wd=%d,last_wd=%d\n", p->cfg_notify_wd, last_wd);
+            ret = read_mpp_enc_cfg_modify_file(p, false);
+            if (ret)
+                LOG_ERROR("error: the enc cfg file is broken.please check.\n");
+            else
+            {
+                dump_mpp_enc_cfg(p);
+                mpp_ret = mpp_enc_cfg_set(p, false);
+                if (mpp_ret)
+                {
+                    LOG_ERROR("mpp_enc_cfg_set failed ret %d\n", mpp_ret);
+                }
+            }
+        }
+
+        inotify_rm_watch(p->cfg_notify_fd, p->cfg_notify_wd);
+        close(p->cfg_notify_fd);
+        p->cfg_notify_fd = inotify_init();
+#if 0
         if (p->cfg_notify_wd == IN_MODIFY || (last_wd == -1 && p->cfg_notify_wd == 1))
         {
             LOG_INFO("the enc cfg file change or creat, do update.wd=%d,last_wd=%d\n", p->cfg_notify_wd, last_wd);
@@ -2001,6 +2185,7 @@ void *thread_check_mpp_enc_chenge_loop(void *user)
             p->cfg_notify_fd = inotify_init();
         }
         sleep(1);
+#endif
     }
 }
 

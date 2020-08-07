@@ -63,6 +63,8 @@ extern struct uvc_encode uvc_enc;
 #define RK_MPP_DYNAMIC_DEBUG_OUT_CHECK "/tmp/uvc_enc_out"
 #define RK_MPP_DYNAMIC_DEBUG_IN_CHECK "/tmp/uvc_enc_in" //open it will lower the fps
 #define RK_MPP_RANGE_DEBUG_IN_CHECK "/tmp/uvc_range_in"
+#define RK_MPP_OUT_LEN_DEBUG_CHECK "/tmp/uvc_out_len"
+#define RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK "/tmp/uvc_frm_loss"
 
 #define RK_MPP_DEBUG_OUT_FILE "/data/uvc_enc_out.bin"
 #define RK_MPP_DEBUG_IN_FILE "/data/uvc_enc_in.bin"
@@ -82,6 +84,17 @@ extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc,
 #define MPP_ENC_CFG_MAX_BPS 98 * 1000 * 1000
 #define MPP_ENC_CFG_H264_DEFAULT_PROFILE 100
 #define MPP_ENC_CFG_H264_DEFAULT_LEVEL 40
+
+//**********for simple frc************//
+#define MJPEG_FRC_BPS_MAX 15*1024*1024
+#define MJPEG_FRC_BPS_MIN 10*1024*1024
+
+#define MJPEG_FRC_QUANT_MAX 10
+#define MJPEG_FRC_QUANT_MIN 7
+
+#define MJPEG_FRC_QFACTOR_MAX 99
+#define MJPEG_FRC_QFACTOR_MIN 80
+//**********************//
 
 typedef struct
 {
@@ -114,6 +127,8 @@ typedef struct
     RK_U32 split_arg;
     RK_U32 force_idr_count;
     RK_U32 force_idr_period;
+    RK_U32 frc_fps;
+    bool need_frc;
 } MpiEncCommonCfg;
 
 typedef struct
@@ -121,6 +136,10 @@ typedef struct
     RK_U32 change;
     RK_U32 quant; // 1- 10 default:7
     MppFrameColorRange range; // full:MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
+    RK_U32 qfactor; // 0-99  priprity option this. set 0 is close this and set use quant
+
+    RK_U32 frc_quant;
+    RK_U32 frc_qfactor;
 
 } MpiEncMjpegCfg;
 
@@ -271,6 +290,9 @@ typedef struct
     sigset_t sig;
     pthread_cond_t cond;
     pthread_mutex_t cond_mutex;
+
+    RK_U32 loss_frm;
+    RK_U32 continuous_frm;
 //    pthread_mutex_t destory_mutex;
 #endif
 } MpiEncTestData;

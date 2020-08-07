@@ -48,8 +48,9 @@ extern "C" {
 
 struct uvc_device;
 
-struct uvc_buffer {
-    void* buffer;
+struct uvc_buffer
+{
+    void *buffer;
     size_t size; // encode out size
     size_t total_size;
     int width;
@@ -59,25 +60,29 @@ struct uvc_buffer {
     size_t drm_buf_size;
     int fd; // for packet buf fd
     unsigned int handle; // for drm handle
+
+    int v4l2_fd;
 };
 
-struct uvc_user {
+struct uvc_user
+{
     unsigned int width;
     unsigned int height;
     bool run;
     unsigned int fcc;
 };
 
-struct uvc_video {
+struct uvc_video
+{
     int id;
     bool uvc_process;
     pthread_t uvc_pid;
-    struct video_uvc* uvc;
+    struct video_uvc *uvc;
     pthread_mutex_t buffer_mutex;
     pthread_mutex_t user_mutex;
     struct uvc_user uvc_user;
     int idle_cnt;
-    struct uvc_buffer* buffer_s;
+    struct uvc_buffer *buffer_s;
     int drm_fd; // drm fd
     bool can_exit;
 };
@@ -96,22 +101,26 @@ bool uvc_video_get_uvc_process(int id);
 int uvc_buffer_init(int id);
 void uvc_buffer_deinit(int id);
 bool uvc_buffer_write_enable(int id);
+bool uvc_mpp_buffer_write_enable(int id);
+
 void uvc_buffer_write(unsigned short stamp,
-                      void* extra_data,
+                      void *extra_data,
                       size_t extra_size,
-                      void* data,
+                      void *data,
                       size_t size,
                       unsigned int fcc,
                       int id);
 void uvc_set_user_resolution(int width, int height, int id);
-void uvc_get_user_resolution(int* width, int* height, int id);
+void uvc_get_user_resolution(int *width, int *height, int id);
 bool uvc_get_user_run_state(int id);
 void uvc_set_user_run_state(bool state, int id);
 void uvc_set_user_fcc(unsigned int fcc, int id);
 unsigned int uvc_get_user_fcc(int id);
 void uvc_memset_uvc_user(int id);
-pthread_t* uvc_video_get_uvc_pid(int id);
+pthread_t *uvc_video_get_uvc_pid(int id);
 void uvc_user_fill_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int id);
+void uvc_buffer_write_set(int id, struct uvc_buffer *buf);
+void uvc_buffer_all_set(int id, struct uvc_buffer *buf);
 
 #ifdef __cplusplus
 }

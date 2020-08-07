@@ -61,10 +61,11 @@ struct uvc_ctrl
     int eptz;
 };
 
-static struct uvc_ctrl uvc_ctrl[3] = {
-    {-1, false, false, -1, -1, -1, 1,0},
-    {-1, false, false, -1, -1, -1, 1,0},
-    {-1, false, false, -1, -1, -1, 1,0}, //isp
+static struct uvc_ctrl uvc_ctrl[3] =
+{
+    { -1, false, false, -1, -1, -1, 1, 0},
+    { -1, false, false, -1, -1, -1, 1, 0},
+    { -1, false, false, -1, -1, -1, 1, 0}, //isp
 };
 
 struct uvc_encode uvc_enc;
@@ -208,7 +209,7 @@ void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
     else if (uvc_enc.width > 0 && uvc_enc.height > 0)
     {
         LOG_ERROR("%s: cam_size = %u, uvc_enc.width = %d, uvc_enc.height = %d\n",
-               __func__, cam_size, uvc_enc.width, uvc_enc.height);
+                  __func__, cam_size, uvc_enc.width, uvc_enc.height);
     }
     pthread_mutex_unlock(&lock);
 }
@@ -288,11 +289,11 @@ void uvc_control_loop(void)
     if (uvc_ctrl[2].start)
     {
         LOG_INFO("%s: video_id:%d, width:%d,height:%d,fps:%d,format:%d,eptz:%d !\n", __func__,
-               uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].format,uvc_ctrl[2].eptz);
+                 uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].format, uvc_ctrl[2].eptz);
         if (camera_start_callback)
         {
             LOG_INFO("%s  camera_start_callback start!\n", __func__);
-            camera_start_callback(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps,uvc_ctrl[2].format, uvc_ctrl[2].eptz);
+            camera_start_callback(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].format, uvc_ctrl[2].eptz);
         }
         //camera_control_start(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
         uvc_ctrl[2].start = false;
@@ -343,7 +344,7 @@ void uvc_control_join(uint32_t flags)
     }
 }
 
-void set_uvc_control_start(int video_id, int width, int height, int fps,int format, int eptz)
+void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz)
 {
     LOG_INFO("%s!\n", __func__);
     if (uvc_video_id_get(0) == video_id)

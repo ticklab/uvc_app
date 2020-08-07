@@ -47,28 +47,31 @@
 #include "drm.h"
 #endif
 
-struct uvc_buffer_list {
-    std::list<struct uvc_buffer*> buffer_list;
+struct uvc_buffer_list
+{
+    std::list<struct uvc_buffer *> buffer_list;
     pthread_mutex_t mutex;
 };
 
-struct video_uvc {
+struct video_uvc
+{
     struct uvc_buffer_list write;
     struct uvc_buffer_list read;
+    struct uvc_buffer_list all;
     pthread_t id;
     bool run;
     int video_id;
 };
 
-static std::list<struct uvc_video*> lst_v;
+static std::list<struct uvc_video *> lst_v;
 static pthread_mutex_t mtx_v = PTHREAD_MUTEX_INITIALIZER;
 
 
 static struct uvc_buffer *uvc_buffer_create(int width, int height, struct uvc_video *v)
 {
-    struct uvc_buffer* buffer = NULL;
+    struct uvc_buffer *buffer = NULL;
 
-    buffer = (struct uvc_buffer*)calloc(1, sizeof(struct uvc_buffer));
+    buffer = (struct uvc_buffer *)calloc(1, sizeof(struct uvc_buffer));
     if (!buffer)
         return NULL;
     buffer->width = width;
@@ -99,7 +102,8 @@ static struct uvc_buffer *uvc_buffer_create(int width, int height, struct uvc_vi
 #else
     buffer->buffer = calloc(1, buffer->size);
 #endif
-    if (!buffer->buffer) {
+    if (!buffer->buffer)
+    {
         free(buffer);
         return NULL;
     }
@@ -108,21 +112,22 @@ static struct uvc_buffer *uvc_buffer_create(int width, int height, struct uvc_vi
     return buffer;
 }
 
-static void uvc_buffer_push_back(struct uvc_buffer_list* uvc_buffer,
-                                 struct uvc_buffer* buffer)
+static void uvc_buffer_push_back(struct uvc_buffer_list *uvc_buffer,
+                                 struct uvc_buffer *buffer)
 {
     pthread_mutex_lock(&uvc_buffer->mutex);
     uvc_buffer->buffer_list.push_back(buffer);
     pthread_mutex_unlock(&uvc_buffer->mutex);
 }
 
-static struct uvc_buffer* uvc_buffer_pop_front(
-    struct uvc_buffer_list* uvc_buffer)
+static struct uvc_buffer *uvc_buffer_pop_front(
+    struct uvc_buffer_list *uvc_buffer)
 {
-    struct uvc_buffer* buffer = NULL;
+    struct uvc_buffer *buffer = NULL;
 
     pthread_mutex_lock(&uvc_buffer->mutex);
-    if (!uvc_buffer->buffer_list.empty()) {
+    if (!uvc_buffer->buffer_list.empty())
+    {
         buffer = uvc_buffer->buffer_list.front();
         uvc_buffer->buffer_list.pop_front();
     }
@@ -130,15 +135,16 @@ static struct uvc_buffer* uvc_buffer_pop_front(
     return buffer;
 }
 
-static struct uvc_buffer* uvc_buffer_front(struct uvc_buffer_list* uvc_buffer)
+static struct uvc_buffer *uvc_buffer_front(struct uvc_buffer_list *uvc_buffer)
 {
-    struct uvc_buffer* buffer = NULL;
+    struct uvc_buffer *buffer = NULL;
 
     pthread_mutex_lock(&uvc_buffer->mutex);
     if (!uvc_buffer->buffer_list.empty())
         buffer = uvc_buffer->buffer_list.front();
-    else
+    else //{printf("buff null\n");
         buffer = NULL;
+//     }
     pthread_mutex_unlock(&uvc_buffer->mutex);
     return buffer;
 }
@@ -164,12 +170,13 @@ static void uvc_drm_buffer_destroy(struct uvc_video *v, struct uvc_buffer_list *
 
 }
 #endif
-static void uvc_buffer_destroy(struct uvc_buffer_list* uvc_buffer)
+static void uvc_buffer_destroy(struct uvc_buffer_list *uvc_buffer)
 {
-    struct uvc_buffer* buffer = NULL;
+    struct uvc_buffer *buffer = NULL;
 
     pthread_mutex_lock(&uvc_buffer->mutex);
-    while (!uvc_buffer->buffer_list.empty()) {
+    while (!uvc_buffer->buffer_list.empty())
+    {
         buffer = uvc_buffer->buffer_list.front();
         free(buffer->buffer);
         free(buffer);
@@ -179,14 +186,14 @@ static void uvc_buffer_destroy(struct uvc_buffer_list* uvc_buffer)
     pthread_mutex_destroy(&uvc_buffer->mutex);
 }
 
-static void uvc_buffer_clear(struct uvc_buffer_list* uvc_buffer)
+static void uvc_buffer_clear(struct uvc_buffer_list *uvc_buffer)
 {
     pthread_mutex_lock(&uvc_buffer->mutex);
     uvc_buffer->buffer_list.clear();
     pthread_mutex_unlock(&uvc_buffer->mutex);
 }
 
-static void* uvc_gadget_pthread(void* arg)
+static void *uvc_gadget_pthread(void *arg)
 {
     int *id = (int *)arg;
 
@@ -202,8 +209,10 @@ int uvc_gadget_pthread_create(int *id)
     pthread_t *pid = NULL;
 
     uvc_memset_uvc_user(*id);
-    if ((pid = uvc_video_get_uvc_pid(*id))) {
-        if (pthread_create(pid, NULL, uvc_gadget_pthread, id)) {
+    if ((pid = uvc_video_get_uvc_pid(*id)))
+    {
+        if (pthread_create(pid, NULL, uvc_gadget_pthread, id))
+        {
             LOG_ERROR("create uvc_gadget_pthread fail!\n");
             return -1;
         }
@@ -215,10 +224,13 @@ static int _uvc_video_id_check(int id)
 {
     int ret = 0;
 
-    if (!lst_v.empty()) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (!lst_v.empty())
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 ret = -1;
                 break;
             }
@@ -246,9 +258,11 @@ int uvc_video_id_add(int id)
     LOG_INFO("add uvc video id: %d\n", id);
 
     pthread_mutex_lock(&mtx_v);
-    if (!_uvc_video_id_check(id)) {
-        struct uvc_video* v = (struct uvc_video*)calloc(1, sizeof(struct uvc_video));
-        if (v) {
+    if (!_uvc_video_id_check(id))
+    {
+        struct uvc_video *v = (struct uvc_video *)calloc(1, sizeof(struct uvc_video));
+        if (v)
+        {
             v->id = id;
             lst_v.push_back(v);
             pthread_mutex_unlock(&mtx_v);
@@ -257,11 +271,15 @@ int uvc_video_id_add(int id)
             pthread_mutex_init(&v->buffer_mutex, NULL);
             pthread_mutex_init(&v->user_mutex, NULL);
             ret = 0;
-        } else {
+        }
+        else
+        {
             LOG_ERROR("%s: %d: memory alloc fail.\n", __func__, __LINE__);
             ret = -1;
         }
-    } else {
+    }
+    else
+    {
         LOG_INFO("%s: %d: %d already exist.\n", __func__, __LINE__, id);
         ret = -1;
     }
@@ -273,10 +291,13 @@ int uvc_video_id_add(int id)
 void uvc_video_id_remove(int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 pthread_mutex_destroy(&l->buffer_mutex);
                 pthread_mutex_destroy(&l->user_mutex);
                 free(l);
@@ -293,11 +314,14 @@ int uvc_video_id_get(unsigned int seq)
     int ret = -1;
 
     pthread_mutex_lock(&mtx_v);
-    if (!lst_v.empty()) {
+    if (!lst_v.empty())
+    {
         unsigned int cnt = 0;
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            if (cnt++ == seq) {
-                struct uvc_video* l = *i;
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            if (cnt++ == seq)
+            {
+                struct uvc_video *l = *i;
                 ret = l->id;
                 break;
             }
@@ -312,7 +336,8 @@ static void uvc_gadget_pthread_exit(int id);
 
 static int uvc_video_id_exit(int id)
 {
-    if (uvc_video_id_check(id)) {
+    if (uvc_video_id_check(id))
+    {
         uvc_gadget_pthread_exit(id);
         uvc_video_id_remove(id);
         return 0;
@@ -326,8 +351,9 @@ static int _uvc_video_id_exit_all()
     int ret = -1;
 
     pthread_mutex_lock(&mtx_v);
-    if (!lst_v.empty()) {
-        struct uvc_video* l = lst_v.front();
+    if (!lst_v.empty())
+    {
+        struct uvc_video *l = lst_v.front();
         pthread_mutex_unlock(&mtx_v);
         uvc_video_id_exit(l->id);
         pthread_mutex_lock(&mtx_v);
@@ -344,7 +370,7 @@ void uvc_video_id_exit_all()
         continue;
 }
 
-static void _uvc_video_set_uvc_process(struct uvc_video* v, bool state)
+static void _uvc_video_set_uvc_process(struct uvc_video *v, bool state)
 {
     v->uvc_process = state;
 }
@@ -352,10 +378,13 @@ static void _uvc_video_set_uvc_process(struct uvc_video* v, bool state)
 void uvc_video_set_uvc_process(int id, bool state)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_video_set_uvc_process(l, state);
                 break;
             }
@@ -364,7 +393,7 @@ void uvc_video_set_uvc_process(int id, bool state)
     pthread_mutex_unlock(&mtx_v);
 }
 
-static bool _uvc_video_get_uvc_process(struct uvc_video* v)
+static bool _uvc_video_get_uvc_process(struct uvc_video *v)
 {
     return v->uvc_process;
 }
@@ -374,10 +403,13 @@ bool uvc_video_get_uvc_process(int id)
     bool state = false;
 
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 state = _uvc_video_get_uvc_process(l);
                 break;
             }
@@ -388,15 +420,18 @@ bool uvc_video_get_uvc_process(int id)
     return state;
 }
 
-pthread_t* uvc_video_get_uvc_pid(int id)
+pthread_t *uvc_video_get_uvc_pid(int id)
 {
     pthread_t *tid = NULL;
 
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 tid = &l->uvc_pid;
                 break;
             }
@@ -410,11 +445,15 @@ pthread_t* uvc_video_get_uvc_pid(int id)
 void uvc_video_join_uvc_pid(int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
-                if (l->uvc_pid) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
+                if (l->uvc_pid)
+                {
                     pthread_mutex_unlock(&mtx_v);
                     pthread_join(l->uvc_pid, NULL);
                     l->uvc_pid = 0;
@@ -434,13 +473,13 @@ static void uvc_gadget_pthread_exit(int id)
     uvc_video_join_uvc_pid(id);
 }
 
-static void _uvc_get_user_resolution(struct uvc_video *v, int* width, int* height);
+static void _uvc_get_user_resolution(struct uvc_video *v, int *width, int *height);
 
 static int _uvc_buffer_init(struct uvc_video *v)
 {
     int i = 0;
     int ret = 0;
-    struct uvc_buffer* buffer = NULL;
+    struct uvc_buffer *buffer = NULL;
     int width, height;
 
     _uvc_get_user_resolution(v, &width, &height);
@@ -448,7 +487,8 @@ static int _uvc_buffer_init(struct uvc_video *v)
     pthread_mutex_lock(&v->buffer_mutex);
 
     v->uvc = new video_uvc();
-    if (!v->uvc) {
+    if (!v->uvc)
+    {
         ret = -1;
         goto exit;
     }
@@ -458,17 +498,26 @@ static int _uvc_buffer_init(struct uvc_video *v)
     v->buffer_s = NULL;
     pthread_mutex_init(&v->uvc->write.mutex, NULL);
     pthread_mutex_init(&v->uvc->read.mutex, NULL);
+
     uvc_buffer_clear(&v->uvc->write);
     uvc_buffer_clear(&v->uvc->read);
+    uvc_buffer_clear(&v->uvc->all);
+
     LOG_INFO("UVC_BUFFER_NUM = %d\n", UVC_BUFFER_NUM);
     v->drm_fd = -1;
-    for (i = 0; i < UVC_BUFFER_NUM; i++) {
+    for (i = 0; i < UVC_BUFFER_NUM; i++)
+    {
         buffer = uvc_buffer_create(width, height, v);
-        if (!buffer) {
+        if (!buffer)
+        {
             ret = -1;
             goto exit;
         }
+#if (UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF)
+        uvc_buffer_push_back(&v->uvc->all, buffer);
+#endif
         uvc_buffer_push_back(&v->uvc->write, buffer);
+
     }
     _uvc_video_set_uvc_process(v, true);
 
@@ -481,10 +530,13 @@ int uvc_buffer_init(int id)
 {
     int ret = -1;
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 ret = _uvc_buffer_init(l);
                 break;
             }
@@ -498,14 +550,23 @@ int uvc_buffer_init(int id)
 static void _uvc_buffer_deinit(struct uvc_video *v)
 {
     pthread_mutex_lock(&v->buffer_mutex);
-    if (v->uvc) {
+    if (v->uvc)
+    {
         v->uvc->run = 0;
         _uvc_video_set_uvc_process(v, false);
         if (v->buffer_s)
             uvc_buffer_push_back(&v->uvc->write, v->buffer_s);
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+
+#if UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
+        LOG_INFO("_uvc_buffer_deinit all\n");
+        uvc_drm_buffer_destroy(v, &v->uvc->all);
+#else
+        LOG_INFO("_uvc_buffer_deinit write\n");
         uvc_drm_buffer_destroy(v, &v->uvc->write);
+        LOG_INFO("_uvc_buffer_deinit read\n");
         uvc_drm_buffer_destroy(v, &v->uvc->read);
+#endif
         drm_close(v->drm_fd);
         LOG_INFO("_uvc_buffer_deinit drm_close drm_fd:%d\n", v->drm_fd);
         v->drm_fd = -1;
@@ -543,10 +604,13 @@ void uvc_buffer_deinit(int id)
     pthread_mutex_unlock(&mtx_v);
 #else
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_buffer_deinit(l);
                 break;
             }
@@ -573,10 +637,47 @@ bool uvc_buffer_write_enable(int id)
     bool ret = false;
 
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
+                ret = _uvc_buffer_write_enable(l);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&mtx_v);
+
+    return ret;
+}
+
+static bool _uvc_mpp_buffer_write_enable(struct uvc_video *v)
+{
+    bool ret = false;
+
+    //if (pthread_mutex_trylock(&v->buffer_mutex))
+    //    return ret;
+    if (v->uvc && uvc_buffer_front(&v->uvc->write))
+        ret = true;
+    // pthread_mutex_unlock(&v->buffer_mutex);
+    return ret;
+}
+
+bool uvc_mpp_buffer_write_enable(int id)
+{
+    bool ret = false;
+
+    pthread_mutex_lock(&mtx_v);
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 ret = _uvc_buffer_write_enable(l);
                 break;
             }
@@ -591,19 +692,23 @@ bool uvc_buffer_write_enable(int id)
 #define EX_DATA_LEN (EX_MAX_LEN - 2)
 static void _uvc_buffer_write(struct uvc_video *v,
                               unsigned short stamp,
-                              void* extra_data,
+                              void *extra_data,
                               size_t extra_size,
-                              void* data,
+                              void *data,
                               size_t size,
                               unsigned int fcc)
 {
     const size_t cnt = extra_size / (EX_DATA_LEN + 1) + 1;
     pthread_mutex_lock(&v->buffer_mutex);
-    if (v->uvc && data) {
-        struct uvc_buffer* buffer = uvc_buffer_pop_front(&v->uvc->write);
-        if (buffer && buffer->buffer) {
-            if (buffer->total_size >= extra_size + size) {
-                switch (fcc) {
+    if (v->uvc && data)
+    {
+        struct uvc_buffer *buffer = uvc_buffer_pop_front(&v->uvc->write);
+        if (buffer && buffer->buffer)
+        {
+            if (buffer->total_size >= extra_size + size)
+            {
+                switch (fcc)
+                {
                 case V4L2_PIX_FMT_YUYV:
 #if YUYV_AS_RAW
 #ifdef USE_RK_MODULE
@@ -616,44 +721,48 @@ static void _uvc_buffer_write(struct uvc_video *v,
 #endif
                     break;
                 case V4L2_PIX_FMT_MJPEG:
-                    if (extra_data && buffer->total_size >= extra_size + size + 4 * cnt) {
+                    if (extra_data && buffer->total_size >= extra_size + size + 4 * cnt)
+                    {
                         size_t index = 4;// FF D8 FF E0
-                        size_t len = *((unsigned char*)data + index);
-                        len = len * 256 + *((unsigned char*)data + index + 1);
+                        size_t len = *((unsigned char *)data + index);
+                        len = len * 256 + *((unsigned char *)data + index + 1);
                         index = index + len;
                         memcpy(buffer->buffer, data, index);
                         size_t ind = index;
-                        for (size_t i = 1; i < cnt; i++) {
-                            memset((char*)buffer->buffer + ind, 0xFF, 1);
+                        for (size_t i = 1; i < cnt; i++)
+                        {
+                            memset((char *)buffer->buffer + ind, 0xFF, 1);
                             ind++;
-                            memset((char*)buffer->buffer + ind, 0xE2, 1);
+                            memset((char *)buffer->buffer + ind, 0xE2, 1);
                             ind++;
-                            memset((char*)buffer->buffer + ind, EX_MAX_LEN / 256, 1);
+                            memset((char *)buffer->buffer + ind, EX_MAX_LEN / 256, 1);
                             ind++;
-                            memset((char*)buffer->buffer + ind, EX_MAX_LEN % 256, 1);
+                            memset((char *)buffer->buffer + ind, EX_MAX_LEN % 256, 1);
                             ind++;
-                            memcpy((char*)buffer->buffer + ind,
-                                   (char*)extra_data + (i - 1) * EX_DATA_LEN, EX_DATA_LEN);
+                            memcpy((char *)buffer->buffer + ind,
+                                   (char *)extra_data + (i - 1) * EX_DATA_LEN, EX_DATA_LEN);
                             ind += EX_DATA_LEN;
                         }
-                        memset((char*)buffer->buffer + ind, 0xFF, 1);
+                        memset((char *)buffer->buffer + ind, 0xFF, 1);
                         ind ++;
-                        memset((char*)buffer->buffer + ind, 0xE2, 1);
+                        memset((char *)buffer->buffer + ind, 0xE2, 1);
                         ind++;
-                        memset((char*)buffer->buffer + ind,
+                        memset((char *)buffer->buffer + ind,
                                (2 + extra_size - EX_DATA_LEN * (cnt - 1)) / 256, 1);
                         ind++;
-                        memset((char*)buffer->buffer + ind,
+                        memset((char *)buffer->buffer + ind,
                                (2 + extra_size - EX_DATA_LEN * (cnt - 1)) % 256, 1);
                         ind++;
-                        memcpy((char*)buffer->buffer + ind,
-                               (char*)extra_data + EX_DATA_LEN * (cnt - 1),
+                        memcpy((char *)buffer->buffer + ind,
+                               (char *)extra_data + EX_DATA_LEN * (cnt - 1),
                                extra_size - EX_DATA_LEN * (cnt - 1));
                         ind += extra_size - EX_DATA_LEN * (cnt - 1);
-                        memcpy((char*)buffer->buffer + ind,
-                                (char*)data + index, size - index);
+                        memcpy((char *)buffer->buffer + ind,
+                               (char *)data + index, size - index);
                         extra_size += 4 * cnt;
-                    } else {
+                    }
+                    else
+                    {
                         memcpy(buffer->buffer, data, size);
                     }
                     //memcpy((char*)buffer->buffer + size, &stamp, sizeof(stamp));
@@ -663,12 +772,14 @@ static void _uvc_buffer_write(struct uvc_video *v,
                     if (extra_data && extra_size > 0)
                         memcpy(buffer->buffer, extra_data, extra_size);
                     if (extra_size >= 0)
-                        memcpy((char*)buffer->buffer + extra_size, data, size);
+                        memcpy((char *)buffer->buffer + extra_size, data, size);
                     break;
                 }
                 buffer->size = extra_size + size;
                 uvc_buffer_push_back(&v->uvc->read, buffer);
-            } else {
+            }
+            else
+            {
                 uvc_buffer_push_back(&v->uvc->write, buffer);
             }
         }
@@ -677,18 +788,21 @@ static void _uvc_buffer_write(struct uvc_video *v,
 }
 
 void uvc_buffer_write(unsigned short stamp,
-                      void* extra_data,
+                      void *extra_data,
                       size_t extra_size,
-                      void* data,
+                      void *data,
                       size_t size,
                       unsigned int fcc,
                       int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_buffer_write(l, stamp, extra_data, extra_size, data, size, fcc);
                 break;
             }
@@ -742,6 +856,51 @@ void uvc_buffer_read_set(int id, struct uvc_buffer *buf)
 
     pthread_mutex_unlock(&mtx_v);
 }
+
+void uvc_buffer_write_set(int id, struct uvc_buffer *buf)
+{
+    pthread_mutex_lock(&mtx_v);
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
+                // l->can_exit = true;
+                pthread_mutex_lock(&l->buffer_mutex);
+                uvc_buffer_push_back(&l->uvc->write, buf);
+                pthread_mutex_unlock(&l->buffer_mutex);
+                break;
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&mtx_v);
+}
+
+void uvc_buffer_all_set(int id, struct uvc_buffer *buf)
+{
+    pthread_mutex_lock(&mtx_v);
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
+                // l->can_exit = true;
+                pthread_mutex_lock(&l->buffer_mutex);
+                uvc_buffer_push_back(&l->uvc->all, buf);
+                pthread_mutex_unlock(&l->buffer_mutex);
+                break;
+            }
+        }
+    }
+
+    pthread_mutex_unlock(&mtx_v);
+}
+
 #endif
 static void _uvc_set_user_resolution(struct uvc_video *v, int width, int height)
 {
@@ -749,17 +908,20 @@ static void _uvc_set_user_resolution(struct uvc_video *v, int width, int height)
     v->uvc_user.width = width;
     v->uvc_user.height = height;
     LOG_INFO("uvc_user.width = %u, uvc_user.height = %u\n", v->uvc_user.width,
-           v->uvc_user.height);
+             v->uvc_user.height);
     pthread_mutex_unlock(&v->user_mutex);
 }
 
 void uvc_set_user_resolution(int width, int height, int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_set_user_resolution(l, width, height);
                 break;
             }
@@ -768,7 +930,7 @@ void uvc_set_user_resolution(int width, int height, int id)
     pthread_mutex_unlock(&mtx_v);
 }
 
-static void _uvc_get_user_resolution(struct uvc_video *v, int* width, int* height)
+static void _uvc_get_user_resolution(struct uvc_video *v, int *width, int *height)
 {
     pthread_mutex_lock(&v->user_mutex);
     *width = v->uvc_user.width;
@@ -776,13 +938,16 @@ static void _uvc_get_user_resolution(struct uvc_video *v, int* width, int* heigh
     pthread_mutex_unlock(&v->user_mutex);
 }
 
-void uvc_get_user_resolution(int* width, int* height, int id)
+void uvc_get_user_resolution(int *width, int *height, int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_get_user_resolution(l , width, height);
                 break;
             }
@@ -807,10 +972,13 @@ bool uvc_get_user_run_state(int id)
     bool state = false;
 
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 state = _uvc_get_user_run_state(l);
                 break;
             }
@@ -831,10 +999,13 @@ static void _uvc_set_user_run_state(struct uvc_video *v, bool state)
 void uvc_set_user_run_state(bool state, int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_set_user_run_state(l, state);
                 break;
             }
@@ -851,10 +1022,13 @@ static void _uvc_set_user_fcc(struct uvc_video *v, unsigned int fcc)
 void uvc_set_user_fcc(unsigned int fcc, int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_set_user_fcc(l, fcc);
                 break;
             }
@@ -873,10 +1047,13 @@ unsigned int uvc_get_user_fcc(int id)
     unsigned int fcc = 0;
 
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 fcc = _uvc_get_user_fcc(l);
                 break;
             }
@@ -895,10 +1072,13 @@ static void _uvc_memset_uvc_user(struct uvc_video *v)
 void uvc_memset_uvc_user(int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_memset_uvc_user(l);
                 break;
             }
@@ -907,7 +1087,7 @@ void uvc_memset_uvc_user(int id)
     pthread_mutex_unlock(&mtx_v);
 }
 
-static bool _uvc_buffer_check(struct uvc_video* v, struct uvc_buffer* buffer)
+static bool _uvc_buffer_check(struct uvc_video *v, struct uvc_buffer *buffer)
 {
     int width = 0, height = 0;
 
@@ -920,10 +1100,23 @@ static bool _uvc_buffer_check(struct uvc_video* v, struct uvc_buffer* buffer)
 
 static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, struct v4l2_buffer *buf)
 {
-    struct uvc_buffer* buffer = NULL;
+    struct uvc_buffer *buffer = NULL;
+
+#if UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
+    for (int i = 0; i < dev->nbufs; i++)
+    {
+        if (dev->vbuf_info[i].fd == buf->m.fd)
+        {
+            v->buffer_s = dev->vbuf_info[i].uvc_buf;
+            break;
+        }
+    }
+    uvc_buffer_push_back(&v->uvc->write, v->buffer_s);
+#endif
 
     v->idle_cnt = 0;
-    while (!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v)) {
+    while (!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v))
+    {
         pthread_mutex_unlock(&mtx_v);
         usleep(1000);
         v->idle_cnt++;
@@ -931,46 +1124,92 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
         if (v->idle_cnt > 1000)//first mpp data maybe delay more than 100ms
             break;
     }
-    if (buffer) {
+
+    if (buffer)
+    {
         if (!_uvc_buffer_check(v, buffer))
             return;
-        if (_uvc_get_user_run_state(v) && _uvc_video_get_uvc_process(v)) {
-            if (buf->length >= buffer->size && buffer->buffer) {
+        if (_uvc_get_user_run_state(v) && _uvc_video_get_uvc_process(v))
+        {
+            if (buf->length >= buffer->size && buffer->buffer)
+            {
+                // buf->bytesused = 550*1024;//for test
                 buf->bytesused = buffer->size;
+#if UVC_IO_METHOD == UVC_IO_METHOD_MMAP
                 memcpy(dev->mem[buf->index].start, buffer->buffer, buffer->size);
+#elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
+
+#else
+                dev->mem[buf->index].start = buffer->buffer;
+#endif
             }
-        } else {
+        }
+        else
+        {
             buf->bytesused = buf->length;
         }
+
         buffer = uvc_buffer_pop_front(&v->uvc->read);
-        if (!v->buffer_s) {
+#if UVC_IO_METHOD == UVC_IO_METHOD_MMAP
+        if (!v->buffer_s)
+        {
             v->buffer_s = buffer;
-        } else {
+        }
+        else
+        {
             uvc_buffer_push_back(&v->uvc->write, v->buffer_s);
             v->buffer_s = buffer;
         }
-    } else if (v->buffer_s) {
+#elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
+
+#else
+
+#endif
+
+    }
+    else if (v->buffer_s)
+    {
         if (!_uvc_buffer_check(v, v->buffer_s))
             return;
-        if (_uvc_get_user_run_state(v) && _uvc_video_get_uvc_process(v)) {
-            if (buf->length >= v->buffer_s->size && v->buffer_s->buffer) {
+        if (_uvc_get_user_run_state(v) && _uvc_video_get_uvc_process(v))
+        {
+            if (buf->length >= v->buffer_s->size && v->buffer_s->buffer)
+            {
                 buf->bytesused = v->buffer_s->size;
+#if UVC_IO_METHOD == UVC_IO_METHOD_MMAP
                 memcpy(dev->mem[buf->index].start, v->buffer_s->buffer, v->buffer_s->size);
+#elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
+
+#else
+                dev->mem[buf->index].start = v->buffer_s->buffer;
+#endif
             }
         }
-    } else {
-        buf->bytesused = 0;// buf->length;
-        memset(dev->mem[buf->index].start, 0, buf->length);
     }
+    else
+    {
+        buf->bytesused = 0;// buf->length;
+#if UVC_IO_METHOD == UVC_IO_METHOD_MMAP
+        memset(dev->mem[buf->index].start, 0, buf->length);
+#elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
+
+#else
+
+#endif
+    }
+
 }
 
 void uvc_user_fill_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int id)
 {
     pthread_mutex_lock(&mtx_v);
-    if (_uvc_video_id_check(id)) {
-        for (std::list<struct uvc_video*>::iterator i = lst_v.begin(); i != lst_v.end(); ++i) {
-            struct uvc_video* l = *i;
-            if (id == l->id) {
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
                 _uvc_user_fill_buffer(l, dev, buf);
                 break;
             }
@@ -978,3 +1217,4 @@ void uvc_user_fill_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int i
     }
     pthread_mutex_unlock(&mtx_v);
 }
+
