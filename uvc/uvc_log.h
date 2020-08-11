@@ -24,7 +24,7 @@ extern int uvc_app_log_level;
 #define LOG_LEVEL_DEBUG 3
 
 #ifndef LOG_TAG
-#define LOG_TAG "uvp_app"
+#define LOG_TAG "uvc_app"
 #endif // LOG_TAG
 
 #define LOG_INFO(format, ...)                                                  \
