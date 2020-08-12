@@ -198,6 +198,11 @@ void uvc_control_exit()
 void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
                             void *extra_data, size_t extra_size)
 {
+#ifdef ENABLE_BUFFER_TIME_DEBUG
+    struct timeval buffer_time;
+    gettimeofday(&buffer_time, NULL);
+    LOG_ERROR("UVC READ CAMERA BUFFER TIME:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
+#endif
     pthread_mutex_lock(&lock);
     if (cam_size <= uvc_enc.width * uvc_enc.height * 2)
     {

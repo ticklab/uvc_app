@@ -27,6 +27,8 @@ extern int uvc_app_log_level;
 #define LOG_TAG "uvc_app"
 #endif // LOG_TAG
 
+//#define ENABLE_BUFFER_TIME_DEBUG
+
 #define LOG_INFO(format, ...)                                                  \
   do {                                                                         \
     if (uvc_app_log_level < LOG_LEVEL_INFO)                                \

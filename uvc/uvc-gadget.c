@@ -1136,7 +1136,11 @@ uvc_video_process(struct uvc_device *dev)
         usleep(10000);
         return 0;
     }
-
+#ifdef ENABLE_BUFFER_TIME_DEBUG
+    struct timeval process_time;
+    gettimeofday(&process_time, NULL);
+    LOG_ERROR("UVC V4L2 READY TO WRITE BUFFER:%d.%d (s)",process_time.tv_sec,process_time.tv_usec);
+#endif
     /* Prepare a v4l2 buffer to be dequeued from UVC domain. */
     CLEAR(dev->ubuf);
 
@@ -1189,6 +1193,11 @@ uvc_video_process(struct uvc_device *dev)
 
 #ifdef ENABLE_BUFFER_DEBUG
         LOG_INFO("%d: ReQueueing buffer at UVC side = %d size = %d\n", dev->video_id, dev->ubuf.index, dev->ubuf.bytesused);
+#endif
+#ifdef ENABLE_BUFFER_TIME_DEBUG
+    struct timeval buffer_time;
+    gettimeofday(&buffer_time, NULL);
+    LOG_ERROR("UVC V4L2 BUFFER TIME END:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
 #endif
     }
     else
@@ -3463,6 +3472,11 @@ uvc_events_process(struct uvc_device *dev)
 
     case UVC_EVENT_STREAMON:
         DBG("uvc_events_process:UVC_EVENT_STREAMON dev->io=%d\n", dev->io);
+#ifdef ENABLE_BUFFER_TIME_DEBUG
+    struct timeval buffer_time;
+    gettimeofday(&buffer_time, NULL);
+    LOG_ERROR("UVC STREAMON START TIME:%d.%d (us)",buffer_time.tv_sec,buffer_time.tv_usec);
+#endif
         if (!dev->bulk)
             uvc_handle_streamon_event(dev);
         return;

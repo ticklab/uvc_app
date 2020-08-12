@@ -197,6 +197,12 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
     case V4L2_PIX_FMT_MJPEG:
     case V4L2_PIX_FMT_H264:
         if (fd >= 0 && mpi_enc_test_run(&e->mpi_data, fd, size) == MPP_OK) {
+#ifdef ENABLE_BUFFER_TIME_DEBUG
+    struct timeval buffer_time;
+    gettimeofday(&buffer_time, NULL);
+    LOG_ERROR("UVC ENCODE BUFFER TIME END:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
+#endif
+
 #ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
             uvc_buffer_write(0, e->extra_data, e->extra_size,
                              e->mpi_data->enc_data, e->mpi_data->enc_len, fcc, e->video_id);
