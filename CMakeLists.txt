@@ -50,7 +50,6 @@ option(COMPILES_CAMERA "compile:with rkmedia v4l2 flow " OFF)
 option(EPTZ_SUPPORT "uvc support eptz" OFF)
 if(COMPILES_CAMERA)
 
-
 include_directories(process)
 add_definitions(-DCAMERA_CONTROL)
 set(SOURCE
@@ -58,16 +57,24 @@ set(SOURCE
    process/camera_control.cpp
    process/camera_pu_control.cpp
    )
+option(USE_ROCKIT "uvc camera use rockit" OFF)
+if(USE_ROCKIT)
+
+add_definitions(-DUSE_ROCKIT=1)
 SET(UVC_APP_DEPENDENT_LIBS
    ${UVC_APP_DEPENDENT_LIBS}
-   easymedia
+   rockit
    )
+install(FILES conf/uvc.json DESTINATION ../etc/uvc_app/)
 
-if(EPTZ_SUPPORT)
+else()
+
+add_definitions(-DUSE_RKMEDIA=1)
 add_definitions(-DEPTZ_ENABLE=1)
 include_directories(${ROCKX_HEADER_DIR})
 set(UVC_APP_DEPENDENT_LIBS
     ${UVC_APP_DEPENDENT_LIBS}
+    easymedia
     rockx
     rga
     ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
@@ -80,6 +87,7 @@ set(Algorithm_LIBS ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
 install(FILES ${Algorithm_LIBS} DESTINATION lib)
 
 endif()
+
 endif()
 
 ADD_EXECUTABLE(uvc_app ${SOURCE})

@@ -53,17 +53,28 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <iostream>
+#include <list>
 
+#include "uvc_log.h"
+#if EPTZ_ENABLE
+#include "eptz_control.h"
+#endif
+
+#if USE_RKMEDIA
 #include <easymedia/buffer.h>
 #include <easymedia/key_string.h>
 #include <easymedia/media_config.h>
 #include <easymedia/utils.h>
 
 #include <easymedia/flow.h>
-#include "uvc_log.h"
 
-#if EPTZ_ENABLE
-#include "eptz_control.h"
+#endif
+
+#if USE_ROCKIT
+#include <rockit/rt_header.h>
+#include <rockit/rt_metadata.h>
+#include <rockit/RTUVCGraph.h>
+#include <rockit/RTMediaBuffer.h>
 #endif
 
 struct Camera_Stream
@@ -75,15 +86,20 @@ struct Camera_Stream
     int eptz;
     pthread_mutex_t record_mutex;
     pthread_cond_t record_cond;
+#if USE_ROCKIT
+    RTUVCGraph *uvc_graph;
+#endif
+#if USE_RKMEDIA
     std::shared_ptr<easymedia::Flow> input;
     std::shared_ptr<easymedia::Flow> uvc_flow;
-
-    pthread_t record_id;
-    int deviceid;
     volatile int pthread_run;
     RK_U32 uvc_flow_output;
+#endif
+    pthread_t record_id;
+    int deviceid;
 };
 
+#if USE_RKMEDIA
 static bool do_uvc(easymedia::Flow *f,
                    easymedia::MediaBufferVector &input_vector);
 class UVCJoinFlow : public easymedia::Flow
@@ -124,11 +140,15 @@ UVCJoinFlow::UVCJoinFlow(uint32_t id)
         return;
     }
 }
+#endif
+
+#define RT_ALIGN(x, a)  (((x) + (a) - 1) & ~((a) - 1))
 
 static struct Camera_Stream *stream_list = NULL;
 static pthread_rwlock_t notelock = PTHREAD_RWLOCK_INITIALIZER;
 static std::list<pthread_t> record_id_list;
 
+#if USE_RKMEDIA
 bool do_uvc(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector)
 {
     UVCJoinFlow *flow = (UVCJoinFlow *)f;
@@ -151,11 +171,28 @@ static void camera_control_wait(struct Camera_Stream *stream)
     pthread_mutex_unlock(&stream->record_mutex);
 }
 
+#endif
+
+#if USE_ROCKIT
+static RT_RET emitted_buffer_to_uvc(RTMediaBuffer *buffer)
+{
+    uvc_read_camera_buffer(buffer->getData(), buffer->getFd(), buffer->getLength(),
+                           NULL, 0);
+    buffer->release();
+    return RT_OK;
+}
+#endif
+
 void video_record_signal(struct Camera_Stream *stream)
 {
     pthread_mutex_lock(&stream->record_mutex);
+#if USE_ROCKIT
+    stream->uvc_graph->stop();
+#endif
+#if USE_RKMEDIA
     stream->pthread_run = 0;
     pthread_cond_signal(&stream->record_cond);
+#endif
     pthread_mutex_unlock(&stream->record_mutex);
 }
 
@@ -173,6 +210,80 @@ static void *uvc_camera(void *arg)
 {
     struct Camera_Stream *stream = (struct Camera_Stream *)arg;
     prctl(PR_SET_NAME, "uvc_camera", 0, 0, 0);
+#if USE_ROCKIT
+    int needEPTZ = 0;
+    int eptzWidth = 0;
+    int eptzHeight = 0;
+    char* enableEptz = getenv("ENABLE_EPTZ");
+    printf("enableEptz=%s", enableEptz);
+    if (enableEptz){
+      printf("%s :uvc eptz use evn setting \n",__FUNCTION__);
+      needEPTZ = atoi(enableEptz);
+    }
+    int need_full_range = 1;
+    char* full_range = getenv("ENABLE_FULL_RANGE");
+    if (full_range) {
+        need_full_range = atoi(full_range);
+        LOG_INFO("uvc full_range use env setting:%d \n",need_full_range);
+    }
+
+    if (needEPTZ) {
+        eptzWidth = stream->width;
+        eptzHeight = stream->height;
+        if (eptzWidth > 1920 || eptzHeight > 1080) {
+            needEPTZ = 0;
+            printf("%s :needEPTZ, not support this width(>1920) and height(>1080) \n");
+        } else if (eptzWidth == 1920) {
+            stream->width = 2560;
+            stream->height = 1440;
+        } else if(eptzWidth <= 1280 && eptzWidth > 120) {
+            stream->width = eptzWidth * 1.5;
+            stream->height = eptzHeight * 1.5;
+        } else {
+            needEPTZ = 0;
+            printf("%s :needEPTZ, match fail \n");
+        }
+        if(needEPTZ)
+            printf("%s :needEPTZ uvc width:%d,height:%d \n",
+                    __func__, stream->width, stream->height);
+    }
+
+    if (needEPTZ) {
+        stream->uvc_graph = new RTUVCGraph("eptz");
+    } else {
+        stream->uvc_graph = new RTUVCGraph("uvc");
+    }
+    stream->uvc_graph->enableEPTZ(needEPTZ);
+    stream->uvc_graph->observeUVCOutputStream(&emitted_buffer_to_uvc);
+    RtMetaData cameraParams;
+    cameraParams.setInt32("opt_width",        stream->width);
+    cameraParams.setInt32("opt_height",       stream->height);
+    cameraParams.setInt32("opt_vir_width",    stream->width);
+    cameraParams.setInt32("opt_vir_height",   stream->height);
+    cameraParams.setInt32("node_buff_size",   stream->width * stream->height * 2);
+    if ((stream->format == V4L2_PIX_FMT_H264) && (need_full_range == 0)) {
+       LOG_INFO("stream->format:V4L2_PIX_FMT_H264,use V4L2_QUANTIZATION_LIM_RANGE!!");
+       cameraParams.setInt32("opt_quantization", V4L2_QUANTIZATION_LIM_RANGE);
+    }
+    stream->uvc_graph->updateCameraParams(&cameraParams);
+    if (needEPTZ) {
+        RtMetaData eptzParams;
+        int32_t virWidth = RT_ALIGN(eptzWidth, 16);
+        int32_t virHeight = RT_ALIGN(eptzHeight, 16);
+        eptzParams.setInt32("opt_width",       stream->width);
+        eptzParams.setInt32("opt_height",      stream->height);
+        eptzParams.setInt32("opt_clip_width",  eptzWidth);
+        eptzParams.setInt32("opt_clip_height", eptzHeight);
+        eptzParams.setInt32("node_buff_size",  virWidth * virHeight * 2);
+        stream->uvc_graph->updateEPTZParams(&eptzParams);
+    }
+
+    stream->uvc_graph->prepare();
+    stream->uvc_graph->start();
+
+    stream->uvc_graph->waitUntilDone();
+#endif
+#if USE_RKMEDIA
     int needEPTZ = 0;
     int eptz_width = 0;
     int eptz_height = 0;
@@ -368,12 +479,14 @@ static void *uvc_camera(void *arg)
         camera_control_wait(stream);
     }
     goto record_exit;
+#endif
 
 record_exit:
     LOG_INFO("%s exit\n", __func__);
     pthread_rwlock_wrlock(&notelock);
     //system("killall -9 mediaserver");
     //usleep(500000);//rkisp requst the stream without init aiq close first!
+#if USE_RKMEDIA
     if (stream->uvc_flow_output) {
         if (stream->input) {
             if (video_save_flow)
@@ -422,6 +535,12 @@ record_exit:
         }
         stream->uvc_flow.reset();
     }
+#endif
+#if USE_ROCKIT
+    if (stream->uvc_graph) {
+        delete(stream->uvc_graph);
+    }
+#endif
 
     pthread_mutex_destroy(&stream->record_mutex);
     pthread_cond_destroy(&stream->record_cond);
@@ -456,9 +575,11 @@ extern "C" int camera_control_start(int id, int width, int height, int fps, int 
     }
     pthread_mutex_init(&stream->record_mutex, NULL);
     pthread_cond_init(&stream->record_cond, NULL);
+#if USE_RKMEDIA
     stream->pthread_run = 1;
     stream->input = NULL;
     stream->uvc_flow = NULL;
+#endif
     stream->fps = fps;
     stream->width = width;
     stream->height = height;
@@ -485,6 +606,7 @@ addvideo_exit:
 
     if (stream)
     {
+#if USE_RKMEDIA
         if (stream->input)
         {
             if (stream->uvc_flow)
@@ -493,11 +615,13 @@ addvideo_exit:
         }
         if (stream->uvc_flow)
             stream->uvc_flow.reset();
-
+#endif
         pthread_mutex_destroy(&stream->record_mutex);
         pthread_cond_destroy(&stream->record_cond);
+#if USE_RKMEDIA
         stream->input = NULL;
         stream->uvc_flow = NULL;
+#endif
         free(stream);
         stream = NULL;
     }
@@ -539,9 +663,15 @@ extern "C" void camera_control_init()
 
 extern "C" void camera_control_set_zoom(int val)
 {
+#if USE_ROCKIT
+    if (stream_list->uvc_graph) {
+        stream_list->uvc_graph->setZoom((float)val/10);
+    }
+#else
     #if EPTZ_ENABLE
     set_zoom((float)val/10);
     #endif
+#endif
 }
 
 extern "C" void camera_control_deinit()
