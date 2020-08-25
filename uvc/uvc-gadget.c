@@ -1341,7 +1341,7 @@ uvc_video_qbuf_userptr(struct uvc_device *dev)
 
     return 0;
 }
-
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
 static int
 uvc_video_qbuf_dmabuff(struct uvc_device *dev)
 {
@@ -1387,7 +1387,7 @@ uvc_video_qbuf_dmabuff(struct uvc_device *dev)
 
     return 0;
 }
-
+#endif
 static int
 uvc_video_qbuf(struct uvc_device *dev)
 {
@@ -1403,7 +1403,9 @@ uvc_video_qbuf(struct uvc_device *dev)
         ret = uvc_video_qbuf_userptr(dev);
         break;
     case IO_METHOD_DMA_BUFF:
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
         ret = uvc_video_qbuf_dmabuff(dev);
+#endif
         break;
 
     default:

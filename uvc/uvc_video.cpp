@@ -1121,7 +1121,7 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
         usleep(1000);
         v->idle_cnt++;
         pthread_mutex_lock(&mtx_v);
-        if (v->idle_cnt > 1000)//first mpp data maybe delay more than 100ms
+        if (v->idle_cnt > 3000)//first mpp data maybe delay more than 100ms
             break;
     }
 
@@ -1179,7 +1179,7 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
 #if UVC_IO_METHOD == UVC_IO_METHOD_MMAP
                 memcpy(dev->mem[buf->index].start, v->buffer_s->buffer, v->buffer_s->size);
 #elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
-
+                buf->bytesused = 0;
 #else
                 dev->mem[buf->index].start = v->buffer_s->buffer;
 #endif
