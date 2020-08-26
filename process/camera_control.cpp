@@ -664,8 +664,10 @@ extern "C" void camera_control_init()
 extern "C" void camera_control_set_zoom(int val)
 {
 #if USE_ROCKIT
-    if (stream_list->uvc_graph) {
-        stream_list->uvc_graph->setZoom((float)val/10);
+    if (stream_list) {
+       if (stream_list->uvc_graph) {
+           stream_list->uvc_graph->setZoom((float)val/10);
+       }
     }
 #else
     #if EPTZ_ENABLE
