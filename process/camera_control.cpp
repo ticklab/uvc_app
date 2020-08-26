@@ -234,8 +234,23 @@ static void *uvc_camera(void *arg)
             needEPTZ = 0;
             printf("%s :needEPTZ, not support this width(>1920) and height(>1080) \n");
         } else if (eptzWidth == 1920) {
-            stream->width = 2560;
-            stream->height = 1440;
+            char* max_width = getenv("CAMERA_MAX_WIDTH");
+            char* max_height = getenv("CAMERA_MAX_HEIGHT");
+	    if(max_width && max_height){
+               int tmp_width = atoi(max_width);
+               int tmp_height = atoi(max_height);
+               LOG_INFO("needEPTZ, camera max resolutio [%d %d] \n", tmp_width, tmp_height);
+               if(tmp_width > 1920 && tmp_height > 1080){
+                    stream->width = tmp_width;
+                    stream->height = tmp_height;
+               }else{
+                    needEPTZ = 0;
+                    LOG_ERROR("needEPTZ, but camera max resolutio not support! error \n");
+               }
+            }else{
+               stream->width = 2560;
+               stream->height = 1440;
+            }
         } else if(eptzWidth <= 1280 && eptzWidth > 120) {
             stream->width = eptzWidth * 1.5;
             stream->height = eptzHeight * 1.5;
