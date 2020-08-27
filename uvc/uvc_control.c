@@ -378,7 +378,7 @@ void set_uvc_control_restart(void)
     if (uvc_flags & UVC_CONTROL_CAMERA)
     {
         LOG_INFO("maybe has error for usb uvc ,reboot to recovery now!\n");
-        system("killall -9 uvc_app");
+        system("killall -9 uvc_app &");
         //uvc_restart = true;
     }
 }
