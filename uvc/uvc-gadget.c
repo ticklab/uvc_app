@@ -3218,6 +3218,9 @@ uvc_events_process_control_data(struct uvc_device *dev,
             {
                 memcpy(&dev->eptz_flag, data->data, data->length);
                 LOG_INFO("Extension: CMD_SET_EPTZ set cur data: %d\n", dev->eptz_flag);
+#ifdef CAMERA_CONTROL
+                camera_control_set_eptz(dev->eptz_flag);
+#endif
             }
             break;
 

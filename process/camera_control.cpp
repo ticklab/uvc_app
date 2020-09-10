@@ -676,6 +676,20 @@ extern "C" void camera_control_init()
     //todo
 }
 
+extern "C" void camera_control_set_eptz(int val){
+    if (val > 0)
+       val = 1;
+     else
+       val = 0;
+#if USE_ROCKIT
+    if (stream_list) {
+       if (stream_list->uvc_graph) {
+           stream_list->uvc_graph->enableEPTZ(val);
+       }
+    }
+#endif
+}
+
 extern "C" void camera_control_set_zoom(int val)
 {
 #if USE_ROCKIT
