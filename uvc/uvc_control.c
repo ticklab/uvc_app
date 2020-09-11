@@ -195,7 +195,7 @@ void uvc_control_exit()
     pthread_mutex_unlock(&lock);
 }
 
-void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
+void uvc_read_camera_buffer(void *cam_buf, MPP_ENC_INFO_DEF *info,
                             void *extra_data, size_t extra_size)
 {
 #ifdef ENABLE_BUFFER_TIME_DEBUG
@@ -204,17 +204,17 @@ void uvc_read_camera_buffer(void *cam_buf, int cam_fd, size_t cam_size,
     LOG_ERROR("UVC READ CAMERA BUFFER TIME:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
 #endif
     pthread_mutex_lock(&lock);
-    if (cam_size <= uvc_enc.width * uvc_enc.height * 2)
+    if (info->size <= uvc_enc.width * uvc_enc.height * 2)
     {
         uvc_enc.video_id = uvc_video_id_get(0);
         uvc_enc.extra_data = extra_data;
         uvc_enc.extra_size = extra_size;
-        uvc_encode_process(&uvc_enc, cam_buf, cam_fd, cam_size);
+        uvc_encode_process(&uvc_enc, cam_buf, info);
     }
     else if (uvc_enc.width > 0 && uvc_enc.height > 0)
     {
         LOG_ERROR("%s: cam_size = %u, uvc_enc.width = %d, uvc_enc.height = %d\n",
-                  __func__, cam_size, uvc_enc.width, uvc_enc.height);
+                  __func__, info->size, uvc_enc.width, uvc_enc.height);
     }
     pthread_mutex_unlock(&lock);
 }

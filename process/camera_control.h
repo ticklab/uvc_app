@@ -47,6 +47,8 @@ extern "C"
     int camera_control_start(int id, int width, int height, int fps, int format, int eptz);
     int camera_control_stop(int deviceid);
     void camera_control_set_zoom(int val);
+    extern void uvc_read_camera_buffer(void *cam_buf, struct MPP_ENC_INFO *info,
+                                            void *extra_data, size_t extra_size);
     void camera_control_set_eptz(int val);
 
 #ifdef __cplusplus

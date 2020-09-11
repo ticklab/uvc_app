@@ -25,6 +25,8 @@ int uvc_app_log_level = LOG_INFO;
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
+#define UVC_VERSION "SDK V1.02"
+
 int main(int argc, char *argv[])
 {
     int fd;
@@ -38,6 +40,16 @@ int main(int argc, char *argv[])
     int y, uv;
     int extra_cnt = 0;
     uint32_t flags = 0;
+#if ENABLE_SHM_SERVER
+    int media_set = 0x01;
+#endif
+#if USE_ROCKIT
+    int media_set = 0x02;
+#endif
+#if USE_RKMEDIA
+    int media_set = 0x04;
+#endif
+    LOG_INFO("VERSION:%s %s %s media_set:0x%x\n", UVC_VERSION, __DATE__, __TIME__, media_set);
 #ifdef ENABLE_MINILOGGER
     enable_minilog = 1;
     __minilog_log_init(argv[0], NULL, false, true, argv[0],"1.0.0");
@@ -130,7 +142,8 @@ int main(int argc, char *argv[])
     uvc_encode_init(&uvc_enc, width, height, TEST_ENC_TPYE);
 #else
     uvc_control_run(flags);
- #endif
+#endif
+    MPP_ENC_INFO_DEF info;
     while (1)
     {
         if (test_file) {
@@ -139,9 +152,10 @@ int main(int argc, char *argv[])
             }
             size = fread(buffer, 1, width * height * 3 / 2, test_file);
         }
-
+        info.fd = handle_fd;
+        info.size = size;
         extra_cnt++;
-        uvc_read_camera_buffer(buffer, handle_fd, size, &extra_cnt, sizeof(extra_cnt));
+        uvc_read_camera_buffer(buffer, &info, &extra_cnt, sizeof(extra_cnt));
         usleep(30000);
     }
     if (test_file)

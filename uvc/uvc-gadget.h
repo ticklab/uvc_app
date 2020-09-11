@@ -78,6 +78,7 @@ extern "C" {
 
 #include "uvc_video.h"
 #include "uvc_control.h"
+#include "mpi_enc.h"
 
 #include <stddef.h>
 #include <stdbool.h>
@@ -119,7 +120,11 @@ enum io_method
 #define UVC_IO_METHOD_USERPTR 1
 #define UVC_IO_METHOD_DMA_BUFF 2
 
-#define UVC_IO_METHOD      UVC_IO_METHOD_DMA_BUFF // here can set 0 or 2 //  1 still not support
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+#define UVC_IO_METHOD   UVC_IO_METHOD_DMA_BUFF // do not modify, modify the RK_MPP_USE_UVC_VIDEO_BUFFER to choice
+#else
+#define UVC_IO_METHOD   UVC_IO_METHOD_MMAP //UVC_IO_METHOD_DMA_BUFF // here can set 0 or 2 //  1 still not support
+#endif
 
 /* Buffer representing one video frame */
 struct buffer
@@ -133,6 +138,14 @@ struct v4l2_buffer_info
 {
     struct uvc_buffer *uvc_buf;
     int fd;
+};
+
+enum USB_STATE
+{
+    USB_STATE_FIRST_GET_READY,
+    USB_STATE_FIRST_GET_OK,
+    USB_STATE_FIST_SEND_OK,
+    USB_STATE_NORMAL_RUN
 };
 
 /* Represents a UVC based video output device */
@@ -203,6 +216,13 @@ struct uvc_device
     struct v4l2_buffer ubuf;
 
     struct v4l2_buffer_info *vbuf_info;
+    int abandon_count;
+    enum USB_STATE usb_state;
+    unsigned long long int first_usb_get_ready_pts;
+    unsigned long long int first_usb_get_ok_pts;
+    unsigned long long int first_usb_send_ok_pts;
+    unsigned long long int first_cmd_pts;
+    unsigned long long int stream_on_pts;
 };
 
 

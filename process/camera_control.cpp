@@ -157,9 +157,68 @@ bool do_uvc(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector)
         return false;
 
     auto img = std::static_pointer_cast<easymedia::ImageBuffer>(img_buf);
+    struct MPP_ENC_INFO info;
+    info.fd = img_buf->GetFD();
+    info.size = img_buf->GetValidSize();
+#if UVC_DYNAMIC_DEBUG_USE_TIME
+    if (uvc_debug_info.first_frm || !access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
+    {
+        int32_t use_time_us, now_time_us;
+        info.pts =img_buf->GetUSTimeStamp();
+        uvc_debug_info.first_frm = false;
+        struct timespec now_tm = {0, 0};
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000;
+        use_time_us = now_time_us - info.pts;
+        LOG_INFO("isp->rkmedia->uvc latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        if (uvc_debug_info.first_frm)
+        {
+            use_time_us = now_time_us - uvc_debug_info.stream_on_pts;
+            LOG_INFO("streamon->isp->rkmedia->uvc latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        }
+    }
+#endif
 
-    uvc_read_camera_buffer(img_buf->GetPtr(), img_buf->GetFD(), img_buf->GetValidSize(),
-                           NULL, 0);
+
+#if UVC_DYNAMIC_DEBUG_FPS
+    if (!access(UVC_DYNAMIC_DEBUG_ISP_FPS_CHECK, 0))
+    {
+        uvc_debug_info.debug_isp_fps = true;
+    }
+    else if (!access(UVC_DYNAMIC_DEBUG_IPC_FPS_CHECK, 0))
+    {
+        uvc_debug_info.debug_ipc_fps = true;
+        uvc_debug_info.debug_isp_fps = false;
+    }
+    else
+    {
+        uvc_debug_info.debug_isp_fps = false;
+        uvc_debug_info.debug_ipc_fps = false;
+    }
+    if (uvc_debug_info.debug_isp_fps || uvc_debug_info.debug_ipc_fps)
+    {
+        ++uvc_debug_info.isp_frm;
+        if (uvc_debug_info.isp_frm == 100)
+        {
+            struct timeval now_time;
+            gettimeofday(&now_time, NULL);
+            int64_t use_timems = (now_time.tv_sec * 1000 + now_time.tv_usec / 1000) -
+                                 (uvc_debug_info.enter_time.tv_sec * 1000 +
+                                  uvc_debug_info.enter_time.tv_usec / 1000);
+            uvc_debug_info.enter_time.tv_sec = now_time.tv_sec;
+            uvc_debug_info.enter_time.tv_usec = now_time.tv_usec;
+            uvc_debug_info.fps = (1000.0 * uvc_debug_info.isp_frm) / use_timems;
+            uvc_debug_info.isp_frm = 0;
+            LOG_INFO("%s fps:%0.1f\n", uvc_debug_info.debug_isp_fps ? "isp" : "ipc", uvc_debug_info.fps);
+        }
+    }
+
+    if (!uvc_debug_info.debug_isp_fps)
+#endif
+    {
+        uvc_read_camera_buffer(img_buf->GetPtr(), &info,
+                               NULL, 0);
+    }
     return true;
 }
 
@@ -176,8 +235,70 @@ static void camera_control_wait(struct Camera_Stream *stream)
 #if USE_ROCKIT
 static RT_RET emitted_buffer_to_uvc(RTMediaBuffer *buffer)
 {
-    uvc_read_camera_buffer(buffer->getData(), buffer->getFd(), buffer->getLength(),
-                           NULL, 0);
+    struct MPP_ENC_INFO info;
+    info.fd = buffer->getFd();
+    info.size = buffer->getLength();
+#if UVC_DYNAMIC_DEBUG_USE_TIME
+    if (uvc_debug_info.first_frm || !access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
+    {
+        int32_t use_time_us, now_time_us;
+        long long int pts;
+        buffer->getMetaData()->findInt64(kKeyFramePts, &pts);
+        info.pts = pts;
+        uvc_debug_info.first_frm = false;
+        struct timespec now_tm = {0, 0};
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000;
+        use_time_us = now_time_us - info.pts;
+        LOG_INFO("isp->rockit->uvc latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        if (uvc_debug_info.first_frm)
+        {
+            use_time_us = now_time_us - uvc_debug_info.stream_on_pts;
+            LOG_INFO("streamon->isp->rockit->uvc latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        }
+        //LOG_INFO("isp:0x%x , uvc:0x%x \n", info.pts, now_time_us);
+    }
+#endif
+
+#if UVC_DYNAMIC_DEBUG_FPS
+    if (!access(UVC_DYNAMIC_DEBUG_ISP_FPS_CHECK, 0))
+    {
+        uvc_debug_info.debug_isp_fps = true;
+    }
+    else if (!access(UVC_DYNAMIC_DEBUG_IPC_FPS_CHECK, 0))
+    {
+        uvc_debug_info.debug_ipc_fps = true;
+        uvc_debug_info.debug_isp_fps = false;
+    }
+    else
+    {
+        uvc_debug_info.debug_isp_fps = false;
+        uvc_debug_info.debug_ipc_fps = false;
+    }
+	if (uvc_debug_info.debug_isp_fps || uvc_debug_info.debug_ipc_fps)
+    {
+        ++uvc_debug_info.isp_frm;
+        if (uvc_debug_info.isp_frm == 100)
+        {
+            struct timeval now_time;
+            gettimeofday(&now_time, NULL);
+            int64_t use_timems = (now_time.tv_sec * 1000 + now_time.tv_usec / 1000) -
+                                 (uvc_debug_info.enter_time.tv_sec * 1000 +
+                                  uvc_debug_info.enter_time.tv_usec / 1000);
+            uvc_debug_info.enter_time.tv_sec = now_time.tv_sec;
+            uvc_debug_info.enter_time.tv_usec = now_time.tv_usec;
+            uvc_debug_info.fps = (1000.0 * uvc_debug_info.isp_frm) / use_timems;
+            uvc_debug_info.isp_frm = 0;
+            LOG_INFO("%s fps:%0.1f\n", uvc_debug_info.debug_isp_fps ? "isp" : "ipc", uvc_debug_info.fps);
+        }
+    }
+
+    if (!uvc_debug_info.debug_isp_fps)
+#endif
+    {
+        uvc_read_camera_buffer(buffer->getData(), &info,
+                               NULL, 0);
+    }
     buffer->release();
     return RT_OK;
 }

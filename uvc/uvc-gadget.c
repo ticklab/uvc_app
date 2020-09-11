@@ -1177,8 +1177,9 @@ uvc_video_process(struct uvc_device *dev)
 
         if (!dev->ubuf.bytesused)
         {
-            LOG_INFO("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.\n",
-                     dev->video_id);
+            dev->abandon_count ++;
+            LOG_INFO("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
+                     dev->video_id, dev->abandon_count);
             //return 0;
         }
         ret = ioctl(dev->uvc_fd, VIDIOC_QBUF, &dev->ubuf);
@@ -1345,6 +1346,7 @@ uvc_video_qbuf_userptr(struct uvc_device *dev)
 static int
 uvc_video_qbuf_dmabuff(struct uvc_device *dev)
 {
+    LOG_INFO("uvc_video_qbuf_dmabuff enter\n");
     unsigned int i;
     int ret;
     struct v4l2_requestbuffers req;
@@ -3484,10 +3486,21 @@ uvc_events_process(struct uvc_device *dev)
 #endif
         if (!dev->bulk)
             uvc_handle_streamon_event(dev);
+        dev->abandon_count = 0;
+        dev->usb_state = USB_STATE_FIRST_GET_READY;
+
+        struct timespec now_tm = {0, 0};
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        dev->stream_on_pts = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
+#if UVC_DYNAMIC_DEBUG_FPS
+        uvc_debug_info.stream_on_pts = dev->stream_on_pts;
+        uvc_debug_info.first_frm = true;
+        gettimeofday(&uvc_debug_info.enter_time, NULL);
+#endif
         return;
 
     case UVC_EVENT_STREAMOFF:
-        DBG("uvc_events_process:UVC_EVENT_STREAMOFF \n");
+        DBG("uvc_events_process:UVC_EVENT_STREAMOFF enter\n");
         /* Stop V4L2 streaming... */
         if (!dev->run_standalone && dev->vdev->is_streaming)
         {
@@ -3509,7 +3522,7 @@ uvc_events_process(struct uvc_device *dev)
         uvc_buffer_deinit(dev->video_id);
         //join mpp thread
         uvc_control_exit();
-
+        DBG("uvc_events_process:UVC_EVENT_STREAMOFF exit\n");
         return;
     case UVC_EVENT_RESUME:
         LOG_INFO("UVC_EVENT_RESUME: reset ispserver\n");

@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include "uvc_log.h"
+#include "mpi_enc.h"
 
 #if RK_MPP_RANGE_DEBUG_ON
 static char *strtrimr(char *pstr)
@@ -105,18 +106,19 @@ void uvc_encode_exit(struct uvc_encode *e)
     e->fcc = -1;
 }
 
-bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
+bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *info)
 {
     int ret = 0;
     unsigned int fcc;
     int width, height;
     int jpeg_quant;
-    void* hnd = NULL;
+    void *hnd = NULL;
 #if RK_MPP_ENC_TEST_NATIVE
     fcc = TEST_ENC_TPYE;
 #else
 #ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
-    if (!uvc_get_user_run_state(e->video_id) || !uvc_buffer_write_enable(e->video_id)) {
+    if (!uvc_get_user_run_state(e->video_id) || !uvc_buffer_write_enable(e->video_id))
+    {
         return false;
     }
 #endif
@@ -125,8 +127,10 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
 #endif
 
 #if RK_MPP_RANGE_DEBUG_ON
-    if (!access(RK_MPP_RANGE_DEBUG_IN_CHECK, 0)) {
-        if (!e->mpi_data->fp_range_file) {
+    if (!access(RK_MPP_RANGE_DEBUG_IN_CHECK, 0))
+    {
+        if (!e->mpi_data->fp_range_file)
+        {
             e->mpi_data->fp_range_path = fopen(RK_MPP_RANGE_DEBUG_IN_CHECK, "r+b");
             e->mpi_data->range_path = (char *)calloc(1, RANGE_PATH_MAX_LEN);
             fgets(e->mpi_data->range_path, RANGE_PATH_MAX_LEN, e->mpi_data->fp_range_path);
@@ -135,19 +139,26 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
             e->mpi_data->fp_range_file = fopen(e->mpi_data->range_path, "r+b");
             fclose(e->mpi_data->fp_range_path);
             e->mpi_data->fp_range_path = NULL;
-            if (!e->mpi_data->fp_range_file) {
+            if (!e->mpi_data->fp_range_file)
+            {
                 LOG_ERROR("error:no such fp_range file:%s exit\n", e->mpi_data->range_path);
-            } else {
-                LOG_INFO("open fp_range file:%s ok, size=%d\n", e->mpi_data->range_path, size);
-                while (ret != size) {
-                    ret += fread(virt, 1, size - ret, e->mpi_data->fp_range_file);
-                    if(feof(e->mpi_data->fp_range_file))
+            }
+            else
+            {
+                LOG_INFO("open fp_range file:%s ok, size=%d\n", e->mpi_data->range_path, info->size);
+                while (ret != info->size)
+                {
+                    ret += fread(virt, 1, info->size - ret, e->mpi_data->fp_range_file);
+                    if (feof(e->mpi_data->fp_range_file))
                         rewind(e->mpi_data->fp_range_file);
                 }
-                if (strstr(e->mpi_data->range_path, "full")) {
+                if (strstr(e->mpi_data->range_path, "full"))
+                {
                     ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
                     LOG_INFO("change to full range\n");
-                } else {
+                }
+                else
+                {
                     ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
                     LOG_INFO("change to limit range\n");
                 }
@@ -158,49 +169,61 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, int fd, size_t size)
                     LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
             }
             free(e->mpi_data->range_path);
-        } else {
-            while (ret != size) {
-                ret += fread(virt, 1, size - ret, e->mpi_data->fp_range_file);
-                if(feof(e->mpi_data->fp_range_file))
+        }
+        else
+        {
+            while (ret != info->size)
+            {
+                ret += fread(virt, 1, info->size - ret, e->mpi_data->fp_range_file);
+                if (feof(e->mpi_data->fp_range_file))
                     rewind(e->mpi_data->fp_range_file);
             }
         }
-    } else if (e->mpi_data->fp_range_file) {
+    }
+    else if (e->mpi_data->fp_range_file)
+    {
         fclose(e->mpi_data->fp_range_file);
         e->mpi_data->fp_range_file = NULL;
         LOG_INFO("debug fp_range file close\n");
     }
 #endif
 
-    if (e->mpi_data->fp_input) {
-        fwrite(virt, 1, size, e->mpi_data->fp_input);
+    if (e->mpi_data->fp_input)
+    {
+        fwrite(virt, 1, info->size, e->mpi_data->fp_input);
 #if RK_MPP_DYNAMIC_DEBUG_ON
-        if (access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
+        if (access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
+        {
             fclose(e->mpi_data->fp_input);
             e->mpi_data->fp_input = NULL;
             LOG_INFO("debug in file close\n");
         }
-    } else if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0)) {
+    }
+    else if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
+    {
         e->mpi_data->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
-        if (e->mpi_data->fp_input) {
-            fwrite(virt, 1, size, e->mpi_data->fp_input);
+        if (e->mpi_data->fp_input)
+        {
+            fwrite(virt, 1, info->size, e->mpi_data->fp_input);
             LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
         }
 #endif
     }
 
-    switch (fcc) {
+    switch (fcc)
+    {
     case V4L2_PIX_FMT_YUYV:
         if (virt)
             uvc_buffer_write(0, NULL, 0, virt, width * height * 2, fcc, e->video_id);
         break;
     case V4L2_PIX_FMT_MJPEG:
     case V4L2_PIX_FMT_H264:
-        if (fd >= 0 && mpi_enc_test_run(&e->mpi_data, fd, size) == MPP_OK) {
+        if (info->fd >= 0 && mpi_enc_test_run(&e->mpi_data, info) == MPP_OK)
+        {
 #ifdef ENABLE_BUFFER_TIME_DEBUG
-    struct timeval buffer_time;
-    gettimeofday(&buffer_time, NULL);
-    LOG_ERROR("UVC ENCODE BUFFER TIME END:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
+            struct timeval buffer_time;
+            gettimeofday(&buffer_time, NULL);
+            LOG_ERROR("UVC ENCODE BUFFER TIME END:%d.%d (s)", buffer_time.tv_sec, buffer_time.tv_usec);
 #endif
 
 #ifndef RK_MPP_USE_UVC_VIDEO_BUFFER

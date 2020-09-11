@@ -453,7 +453,7 @@ static MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
     return ret;
 }
 
-static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
+static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 {
 #if RK_MPP_USE_ZERO_COPY
     MPP_RET ret;
@@ -539,11 +539,31 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     }
 
     uvc_buf = uvc_buffer_write_get(uvc_enc.video_id);
-    if (!uvc_buf)
+    if (!uvc_buf || uvc_buf->abandon)
     {
-        LOG_ERROR("uvc_buffer_write_get failed\n");
+        LOG_ERROR("uvc_buffer_write_get failed:%d,%d\n", uvc_buf->abandon, uvc_buf->fd);
         goto RET;
     }
+    uvc_buf->pts = info->pts;
+#if UVC_DYNAMIC_DEBUG_USE_TIME
+    if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
+    {
+        int32_t use_time_us, now_time_us;
+        struct timespec now_tm = {0, 0};
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
+        use_time_us = now_time_us - uvc_buf->pts;
+#if ENABLE_SHM_SERVER
+        LOG_INFO("isp->aiserver->ipc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+#endif
+#if USE_ROCKIT
+        LOG_INFO("isp->rockit->uvc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+#endif
+#if USE_RKMEDIA
+        LOG_INFO("isp->rkmedia->uvc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+#endif
+    }
+#endif
 
     outputCommit.size = uvc_buf->drm_buf_size;
     outputCommit.fd = uvc_buf->fd;
@@ -565,8 +585,8 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
     MppBufferInfo inputCommit;
 //    memset(&inputCommit, 0, sizeof(inputCommit));
     inputCommit.type = MPP_BUFFER_TYPE_ION;
-    inputCommit.size = size;
-    inputCommit.fd = fd;
+    inputCommit.size = info->size;
+    inputCommit.fd = info->fd;
     ret = mpp_buffer_import(&buf, &inputCommit);
     if (ret)
     {
@@ -592,7 +612,8 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, int fd, size_t size)
                     }
                     else
                     {
-                        LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d\n", p->h2645_frm_count);
+                        LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d ,H264:%d\n",
+                                  p->h2645_frm_count, (p->type == MPP_VIDEO_CodingAVC));
                     }
                 }
                 p->h2645_frm_count++;
@@ -847,8 +868,8 @@ RET:
         MppBufferInfo inputCommit;
         memset(&inputCommit, 0, sizeof(inputCommit));
         inputCommit.type = MPP_BUFFER_TYPE_ION;
-        inputCommit.size = size;
-        inputCommit.fd = fd;
+        inputCommit.size = info->size;
+        inputCommit.fd = info->fd;
         ret = mpp_buffer_import(&buf, &inputCommit);
         if (ret)
         {
@@ -1006,12 +1027,12 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
 #endif
 }
 
-MPP_RET mpi_enc_test_run(MpiEncTestData **data, int fd, size_t size)
+MPP_RET mpi_enc_test_run(MpiEncTestData **data, MPP_ENC_INFO_DEF *info)
 {
     MPP_RET ret = MPP_OK;
     MpiEncTestData *p = *data;
 
-    ret = test_mpp_run(p, fd, size);
+    ret = test_mpp_run(p, info);
     if (ret)
         LOG_ERROR("test mpp run failed ret %d\n", ret);
     return ret;
@@ -1195,7 +1216,7 @@ static unsigned long get_file_size(const char *filename)
 static void mpp_enc_cfg_default(MpiEncTestData *p)
 {
     if (NULL == p)
-        return -1;
+        return;
 
     //common set
     p->common_cfg.fbc = false;
@@ -2045,7 +2066,7 @@ static int read_mpp_enc_cfg_modify_file(MpiEncTestData *p, bool init)
     int ret = -1;
     unsigned long read_size = 0;
 
-    int modify_fd = fopen(RK_MPP_ENC_CFG_MODIFY_PATH, "rb");
+    FILE *modify_fd = fopen(RK_MPP_ENC_CFG_MODIFY_PATH, "rb");
     unsigned long size = get_file_size(RK_MPP_ENC_CFG_MODIFY_PATH);
     LOG_INFO("get cfg size=%ld\n", size);
     char *cfg = (char *)malloc(size);
@@ -2076,7 +2097,7 @@ static int read_mpp_enc_cfg_modify_file(MpiEncTestData *p, bool init)
 static int check_mpp_enc_cfg_file_init(MpiEncTestData *p)
 {
     int ret = -1;
-    int cmd[128] = {0};
+    char cmd[128] = {0};
     if (NULL == p)
         return -1;
 

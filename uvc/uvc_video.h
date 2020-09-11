@@ -46,6 +46,29 @@ extern "C" {
 #define UVC_BUFFER_NUM 3
 #define YUYV_AS_RAW 0
 
+#define UVC_DYNAMIC_DEBUG_USE_TIME 1 //release version can set to 0
+#define UVC_DYNAMIC_DEBUG_USE_TIME_CHECK "/tmp/uvc_use_time"
+
+#define UVC_DYNAMIC_DEBUG_FPS 1 //release version can set to 0
+#define UVC_DYNAMIC_DEBUG_ISP_FPS_CHECK "/tmp/uvc_isp_fps"
+#define UVC_DYNAMIC_DEBUG_IPC_FPS_CHECK "/tmp/uvc_ipc_fps"
+
+#if UVC_DYNAMIC_DEBUG_FPS
+struct uvc_debug_info_def
+{
+    bool first_frm;
+    bool debug_isp_fps;
+    bool debug_ipc_fps;
+    float fps;
+    int ipc_frm;
+    int isp_frm;
+    struct timeval enter_time;
+    unsigned int stream_on_pts;
+};
+
+extern struct uvc_debug_info_def uvc_debug_info;
+#endif
+
 struct uvc_device;
 
 struct uvc_buffer
@@ -62,6 +85,8 @@ struct uvc_buffer
     unsigned int handle; // for drm handle
 
     int v4l2_fd;
+    bool abandon;
+    unsigned long long int pts;
 };
 
 struct uvc_user
@@ -85,6 +110,8 @@ struct uvc_video
     struct uvc_buffer *buffer_s;
     int drm_fd; // drm fd
     bool can_exit;
+    unsigned long long int last_pts;
+    unsigned long long int now_pts;
 };
 
 int uvc_gadget_pthread_create(int *id);

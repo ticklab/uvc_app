@@ -300,8 +300,14 @@ typedef struct
 #endif
 } MpiEncTestData;
 
+typedef struct MPP_ENC_INFO {
+    int fd;
+    size_t size;
+    RK_U32 pts;
+} MPP_ENC_INFO_DEF;
+
 MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data);
-MPP_RET mpi_enc_test_run(MpiEncTestData **data, int fd, size_t size);
+MPP_RET mpi_enc_test_run(MpiEncTestData **data, MPP_ENC_INFO_DEF *info);
 MPP_RET mpi_enc_test_deinit(MpiEncTestData **data);
 void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int h265);
 void mpi_enc_cmd_config_mjpg(MpiEncTestCmd *cmd, int width, int height);
