@@ -1,6 +1,5 @@
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(CMAKE_CXX_STANDARD 11)
-add_definitions(-fno-rtti)
 add_definitions(-DDBUG)
 PROJECT(uvc_app)
 include(FindPkgConfig)
@@ -33,6 +32,58 @@ set(UVC_APP_DEPENDENT_LIBS
     rockchip_mpp
 )
 
+set(UVC_APP_INC
+    ${CMAKE_CURRENT_SOURCE_DIR}/uvc/
+)
+
+option(ENABLE_AISERVER  "rockchip aiserver" OFF)
+if (${ENABLE_AISERVER})
+    add_definitions(-DUSE_RK_AISERVER)
+    set(SOURCE
+        ${SOURCE}
+        uvc/uvc_ipc.cpp
+       )
+    find_package(Protobuf REQUIRED)
+    if(PROTOBUF_FOUND)
+        message(STATUS "protobuf library found")
+        set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} protobuf)
+        include_directories(${PROTOBUF_INCLUDE_DIRS})
+        include_directories(${CMAKE_CURRENT_BINARY_DIR})
+        protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS
+                              ${CMAKE_CURRENT_SOURCE_DIR}/uvc/uvc_data.proto)
+        set(UVC_APP_INC ${UVC_APP_INC} ${PROTO_HDRS})
+        set(SOURCE ${SOURCE} ${PROTO_SRCS} ${PROTO_HDRS})
+    endif()
+else()
+    add_definitions(-fno-rtti)
+	option(USE_ROCKIT "uvc camera use rockit" OFF)
+	if(USE_ROCKIT)
+		add_definitions(-DUSE_ROCKIT=1)
+		SET(UVC_APP_DEPENDENT_LIBS
+		   ${UVC_APP_DEPENDENT_LIBS}
+		   rockit
+		   )
+		install(FILES conf/uvc.json DESTINATION ../etc/uvc_app/)
+	else()
+		add_definitions(-DUSE_RKMEDIA=1)
+		add_definitions(-DEPTZ_ENABLE=1)
+		include_directories(${ROCKX_HEADER_DIR})
+		set(UVC_APP_DEPENDENT_LIBS
+		    ${UVC_APP_DEPENDENT_LIBS}
+		    easymedia
+		    rockx
+		    rga
+		    ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
+		set(SOURCE
+		   ${SOURCE}
+		   process/eptz_control.cpp
+		   process/zoom_control.cpp
+		   )
+		set(Algorithm_LIBS ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
+		install(FILES ${Algorithm_LIBS} DESTINATION lib)
+	endif()
+endif()
+
 option(DBSERVER_SUPPORT  "enbale dbserver" OFF)
 if (${DBSERVER_SUPPORT})
     add_definitions(-DDBSERVER_SUPPORT)
@@ -49,45 +100,13 @@ endif()
 option(COMPILES_CAMERA "compile:with rkmedia v4l2 flow " OFF)
 option(EPTZ_SUPPORT "uvc support eptz" OFF)
 if(COMPILES_CAMERA)
-
-include_directories(process)
-add_definitions(-DCAMERA_CONTROL)
-set(SOURCE
-   ${SOURCE}
-   process/camera_control.cpp
-   process/camera_pu_control.cpp
-   )
-option(USE_ROCKIT "uvc camera use rockit" OFF)
-if(USE_ROCKIT)
-
-add_definitions(-DUSE_ROCKIT=1)
-SET(UVC_APP_DEPENDENT_LIBS
-   ${UVC_APP_DEPENDENT_LIBS}
-   rockit
-   )
-install(FILES conf/uvc.json DESTINATION ../etc/uvc_app/)
-
-else()
-
-add_definitions(-DUSE_RKMEDIA=1)
-add_definitions(-DEPTZ_ENABLE=1)
-include_directories(${ROCKX_HEADER_DIR})
-set(UVC_APP_DEPENDENT_LIBS
-    ${UVC_APP_DEPENDENT_LIBS}
-    easymedia
-    rockx
-    rga
-    ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
-set(SOURCE
-   ${SOURCE}
-   process/eptz_control.cpp
-   process/zoom_control.cpp
-   )
-set(Algorithm_LIBS ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
-install(FILES ${Algorithm_LIBS} DESTINATION lib)
-
-endif()
-
+	include_directories(process)
+	add_definitions(-DCAMERA_CONTROL)
+	set(SOURCE
+	   ${SOURCE}
+	   process/camera_control.cpp
+	   process/camera_pu_control.cpp
+	   )
 endif()
 
 ADD_EXECUTABLE(uvc_app ${SOURCE})

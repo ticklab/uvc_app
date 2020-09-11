@@ -49,7 +49,8 @@ int drm_open(void)
 {
     int fd;
     fd = open(DRM_DEVICE, O_RDWR);
-    if (fd < 0) {
+    if (fd < 0)
+    {
         LOG_ERROR("open %s failed!\n", DRM_DEVICE);
         return -1;
     }
@@ -66,9 +67,11 @@ static int drm_ioctl(int fd, int req, void *arg)
 {
     int ret;
 
-    do {
+    do
+    {
         ret = ioctl(fd, req, arg);
-    } while (ret == -1 && (errno == EINTR || errno == EAGAIN));
+    }
+    while (ret == -1 && (errno == EINTR || errno == EAGAIN));
 
     return ret;
 }
@@ -98,7 +101,8 @@ int drm_alloc(int fd, size_t len, size_t align, unsigned int *handle, unsigned i
 
 int drm_free(int fd, unsigned int handle)
 {
-    struct drm_mode_destroy_dumb data = {
+    struct drm_mode_destroy_dumb data =
+    {
         .handle = handle,
     };
     return drm_ioctl(fd, DRM_IOCTL_MODE_DESTROY_DUMB, &data);
@@ -114,13 +118,15 @@ void *drm_map_buffer(int fd, unsigned int handle, size_t len)
     dmmd.handle = handle;
 
     ret = drm_ioctl(fd, DRM_IOCTL_MODE_MAP_DUMB, &dmmd);
-    if (ret) {
+    if (ret)
+    {
         LOG_ERROR("map_dumb failed: %s\n", strerror(ret));
         return NULL;
     }
 
     buf = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, dmmd.offset);
-    if (buf == MAP_FAILED) {
+    if (buf == MAP_FAILED)
+    {
         LOG_ERROR("mmap failed: %s\n", strerror(errno));
         return NULL;
     }
@@ -153,10 +159,35 @@ int drm_handle_to_fd(int fd, unsigned int handle, int *map_fd, unsigned int flag
 
     *map_fd = dph.fd;
 
-    if (*map_fd < 0) {
+    if (*map_fd < 0)
+    {
         LOG_ERROR("map ioctl returned negative fd\n");
         return -EINVAL;
     }
 
     return ret;
 }
+
+
+int drm_get_info_from_name(
+    int   fd,
+    unsigned int   name,
+    unsigned int  *handle,
+    int  *size)
+{
+    int  ret = 0;
+    struct drm_gem_open req;
+
+    req.name = name;
+    ret = drm_ioctl(fd, DRM_IOCTL_GEM_OPEN, &req);
+    if (ret < 0)
+    {
+        return ret;
+    }
+
+    *handle = req.handle;
+    *size   = (int)req.size;
+
+    return ret;
+}
+

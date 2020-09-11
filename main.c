@@ -25,7 +25,7 @@ int uvc_app_log_level = LOG_INFO;
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
-#define UVC_VERSION "SDK V1.02"
+#define UVC_VERSION "SDK V1.03"
 
 int main(int argc, char *argv[])
 {
@@ -40,7 +40,7 @@ int main(int argc, char *argv[])
     int y, uv;
     int extra_cnt = 0;
     uint32_t flags = 0;
-#if ENABLE_SHM_SERVER
+#if USE_RK_AISERVER
     int media_set = 0x01;
 #endif
 #if USE_ROCKIT

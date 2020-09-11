@@ -42,6 +42,8 @@ int drm_free(int fd, unsigned int handle);
 void *drm_map_buffer(int fd, unsigned int handle, size_t len);
 void drm_unmap_buffer(void *buf, size_t len);
 int drm_handle_to_fd(int fd, unsigned int handle, int *map_fd, unsigned int flags);
+int drm_get_info_from_name(int fd, unsigned int name, unsigned int *handle, int *size);
+
 
 #ifdef __cplusplus
 }

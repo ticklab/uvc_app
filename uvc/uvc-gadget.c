@@ -55,6 +55,7 @@
 #include "camera_pu_control.h"
 #include "camera_control.h"
 #endif
+#include "uvc_ipc_ext.h"
 
 /* Enable debug prints. */
 //#define ENABLE_BUFFER_DEBUG
@@ -3501,6 +3502,10 @@ uvc_events_process(struct uvc_device *dev)
 
     case UVC_EVENT_STREAMOFF:
         DBG("uvc_events_process:UVC_EVENT_STREAMOFF enter\n");
+#if USE_RK_AISERVER
+        uvc_ipc_event(UVC_IPC_EVENT_STOP, NULL);
+        //sleep(1); //make sure rkispp deint
+#endif
         /* Stop V4L2 streaming... */
         if (!dev->run_standalone && dev->vdev->is_streaming)
         {
@@ -4059,6 +4064,10 @@ uvc_gadget_main(int id)
     uvc_close(udev);
 
     uvc_buffer_deinit(id);
+#if USE_RK_AISERVER
+    uvc_ipc_event(UVC_IPC_EVENT_STOP, NULL);
+#endif
+
     //join mpp thread
     uvc_control_exit();
     set_uvc_control_restart();

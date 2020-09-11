@@ -77,6 +77,10 @@
 #include <rockit/RTMediaBuffer.h>
 #endif
 
+#if USE_RK_AISERVER
+#include "uvc_ipc_ext.h"
+#include "uvc_data.pb.h"
+#endif
 struct Camera_Stream
 {
     int width;
@@ -331,6 +335,42 @@ static void *uvc_camera(void *arg)
 {
     struct Camera_Stream *stream = (struct Camera_Stream *)arg;
     prctl(PR_SET_NAME, "uvc_camera", 0, 0, 0);
+#if USE_RK_AISERVER
+    int needEPTZ = 0;
+    int eptzWidth = 0;
+    int eptzHeight = 0;
+    char *enableEptz = getenv("ENABLE_EPTZ");
+    LOG_INFO("enableEptz=%s", enableEptz);
+    if (enableEptz)
+    {
+        LOG_INFO("%s :uvc eptz use evn setting \n", __FUNCTION__);
+        needEPTZ = atoi(enableEptz);
+    }
+    int need_full_range = 1;
+    char *full_range = getenv("ENABLE_FULL_RANGE");
+    if (full_range)
+    {
+        need_full_range = atoi(full_range);
+        LOG_INFO("uvc full_range use env setting:%d \n", need_full_range);
+    }
+
+    if (needEPTZ)
+        uvc_ipc_event(UVC_IPC_EVENT_ENABLE_ETPTZ, (void *)&needEPTZ);
+
+    CAMERA_INFO camera_info;
+    camera_info.width = stream->width;
+    camera_info.height = stream->height;
+    camera_info.vir_width = stream->width;
+    camera_info.vir_height = stream->height;
+    camera_info.buf_size = stream->width * stream->height * 2;
+    camera_info.range = need_full_range;
+
+    uvc_ipc_event(UVC_IPC_EVENT_CONFIG_CAMERA, (void *)&camera_info);
+    uvc_ipc_event(UVC_IPC_EVENT_START, NULL); //after the camera config
+    //int val = 12; // for test
+    //uvc_ipc_event(UVC_IPC_EVENT_SET_ZOOM, (void *)&val);       // for test
+
+#else
 #if USE_ROCKIT
     int needEPTZ = 0;
     int eptzWidth = 0;
@@ -616,7 +656,7 @@ static void *uvc_camera(void *arg)
     }
     goto record_exit;
 #endif
-
+#endif
 record_exit:
     LOG_INFO("%s exit\n", __func__);
     pthread_rwlock_wrlock(&notelock);
@@ -802,6 +842,10 @@ extern "C" void camera_control_set_eptz(int val){
        val = 1;
      else
        val = 0;
+#if USE_RK_AISERVER
+    uvc_ipc_event(UVC_IPC_EVENT_ENABLE_ETPTZ, (void *)&val);
+#endif
+
 #if USE_ROCKIT
     if (stream_list) {
        if (stream_list->uvc_graph) {
@@ -823,6 +867,9 @@ extern "C" void camera_control_set_zoom(int val)
     #if EPTZ_ENABLE
     set_zoom((float)val/10);
     #endif
+#endif
+#if USE_RK_AISERVER
+    uvc_ipc_event(UVC_IPC_EVENT_SET_ZOOM, (void *)&val);
 #endif
 }
 

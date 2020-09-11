@@ -553,7 +553,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         clock_gettime(CLOCK_MONOTONIC, &now_tm);
         now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
         use_time_us = now_time_us - uvc_buf->pts;
-#if ENABLE_SHM_SERVER
+#if USE_RK_AISERVER
         LOG_INFO("isp->aiserver->ipc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
 #endif
 #if USE_ROCKIT
