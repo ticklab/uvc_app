@@ -82,18 +82,39 @@ extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc,
 
 #define MPP_ENC_CFG_MIN_BPS 2 * 1000
 #define MPP_ENC_CFG_MAX_BPS 98 * 1000 * 1000
+#define MPP_ENC_MJPEG_CFG_MAX_BPS 150 * 1024 * 1024
 #define MPP_ENC_CFG_H264_DEFAULT_PROFILE 100
 #define MPP_ENC_CFG_H264_DEFAULT_LEVEL 40
+#define MPP_ENC_MJPEG_FRC_USE_MPP 0
 
 //**********for simple frc************//
-#define MJPEG_FRC_BPS_MAX 15*1024*1024
-#define MJPEG_FRC_BPS_MIN 10*1024*1024
+#define MJPEG_FRC_BPS_MAX 150*1024*1024
+#define MJPEG_FRC_BPS_MIN 100*1024*1024
+#define MJPEG_FRC_BPS_PER_STEP 1*1024*1024
 
 #define MJPEG_FRC_QUANT_MAX 10
 #define MJPEG_FRC_QUANT_MIN 7
 
 #define MJPEG_FRC_QFACTOR_MAX 99
 #define MJPEG_FRC_QFACTOR_MIN 80
+
+#define MPP_FRC_WAIT_TIME_MS 2
+#define MPP_FRC_WAIT_TIME_US (MPP_FRC_WAIT_TIME_MS * 1000)
+#define MPP_FRC_WAIT_COUNT_MIN (18 / MPP_FRC_WAIT_TIME_MS) // in high resolution, the frame rate is not enough to lower this
+
+#define MPP_FRC_UP_FRM_SET_INIT 1000
+#define MPP_FRC_UP_FRM_SET_MIN  MPP_FRC_UP_FRM_SET_INIT
+#define MPP_FRC_UP_FRM_SET_MAX 0x40000000
+
+#define MPP_FRC_WAIT_COUNT_OFFSET 5 // bit rate control is too low to increase this
+
+enum SIMPLE_FRC_MODE
+{
+    FRC_OFF = 0,
+    FRC_ONLY_LOW,
+    FRC_BOTH_UP_LOW,
+};
+
 //**********************//
 
 typedef struct
@@ -128,22 +149,27 @@ typedef struct
     RK_U32 force_idr_count;
     RK_U32 force_idr_period;
     RK_U32 frc_fps;
-    bool need_frc;
+    enum SIMPLE_FRC_MODE frc_mode;
+    RK_U32 enc_time;
+    RK_U32 try_count;
 } MpiEncCommonCfg;
 
 typedef struct
 {
     RK_U32 change;
-    RK_U32 quant; // 1- 10 default:7
-    MppFrameColorRange range; // full:MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
-    RK_U32 qfactor; // 0-99  priprity option this. set 0 is close this and set use quant
+    RK_U32 frc_quant; //
+    RK_S32 frc_qfactor;  //
+    RK_U32 frc_bps;
 
-    RK_U32 frc_quant; // 1
-    RK_S32 frc_qfactor;  // 2
+    RK_U32 quant; //bit0      1- 10 default:7
+    MppFrameColorRange range; // bit1   full:MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
+    RK_U32 qfactor; // bit2   0-99  priprity option this. set 0 is close this and set use quant
     RK_S32 qfactor_min;  // 3
     RK_S32 qfactor_max;  // 4
     RK_U32 gop;  // 5
     MppEncRcMode rc_mode; // 6
+    RK_U32 bps; // 7
+    RK_U32 framerate; // 8
 } MpiEncMjpegCfg;
 
 typedef struct
@@ -296,6 +322,8 @@ typedef struct
 
     RK_U32 loss_frm;
     RK_U32 continuous_frm;
+    RK_U32 frc_up_frm_set;
+    bool set_frc_low;
 //    pthread_mutex_t destory_mutex;
 #endif
 } MpiEncTestData;

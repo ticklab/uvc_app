@@ -25,7 +25,7 @@ int uvc_app_log_level = LOG_INFO;
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
-#define UVC_VERSION "SDK V1.03"
+#define UVC_VERSION "SDK V1.04"
 
 int main(int argc, char *argv[])
 {

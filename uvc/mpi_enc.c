@@ -409,41 +409,124 @@ static MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
 
     if (set_low)
     {
-        if (!p->mjpeg_cfg.qfactor)
+#if MPP_ENC_MJPEG_FRC_USE_MPP
+        if (p->mjpeg_cfg.rc_mode != MPP_ENC_RC_MODE_FIXQP)
         {
-            last = p->mjpeg_cfg.frc_quant;
-            p->mjpeg_cfg.frc_quant = (p->mjpeg_cfg.frc_quant > MJPEG_FRC_QUANT_MIN ?
-                                      (p->mjpeg_cfg.frc_quant - 1) :
-                                      p->mjpeg_cfg.frc_quant);
-            if (p->mjpeg_cfg.frc_quant != last)
+            last = p->mjpeg_cfg.frc_bps;
+            p->mjpeg_cfg.frc_bps = (p->mjpeg_cfg.frc_bps > MJPEG_FRC_BPS_MIN ?
+                                   (p->mjpeg_cfg.frc_bps - MJPEG_FRC_BPS_PER_STEP) :
+                                    p->mjpeg_cfg.frc_bps);
+            if (p->mjpeg_cfg.frc_bps != last)
                 change = true;
-
         }
-        else
+#endif
+        if (p->mjpeg_cfg.rc_mode == MPP_ENC_RC_MODE_FIXQP)
         {
-            last = p->mjpeg_cfg.frc_qfactor;
-            p->mjpeg_cfg.frc_qfactor = (p->mjpeg_cfg.frc_qfactor > MJPEG_FRC_QFACTOR_MIN ?
-                                        (p->mjpeg_cfg.frc_qfactor - 1) :
-                                        p->mjpeg_cfg.frc_qfactor);
-            if (p->mjpeg_cfg.frc_qfactor != last)
+            if (!p->mjpeg_cfg.qfactor)
+            {
+                last = p->mjpeg_cfg.frc_quant;
+                p->mjpeg_cfg.frc_quant = (p->mjpeg_cfg.frc_quant > MJPEG_FRC_QUANT_MIN ?
+                                         (p->mjpeg_cfg.frc_quant - 1) :
+                                          p->mjpeg_cfg.frc_quant);
+                if (p->mjpeg_cfg.frc_quant != last)
+                    change = true;
+            }
+            else
+            {
+                last = p->mjpeg_cfg.frc_qfactor;
+                p->mjpeg_cfg.frc_qfactor = (p->mjpeg_cfg.frc_qfactor > MJPEG_FRC_QFACTOR_MIN ?
+                                           (p->mjpeg_cfg.frc_qfactor - 1) :
+                                            p->mjpeg_cfg.frc_qfactor);
+                if (p->mjpeg_cfg.frc_qfactor != last)
+                    change = true;
+            }
+        }
+    }
+    else
+    {
+#if MPP_ENC_MJPEG_FRC_USE_MPP
+        if (p->mjpeg_cfg.rc_mode != MPP_ENC_RC_MODE_FIXQP)
+        {
+            last = p->mjpeg_cfg.frc_bps;
+            p->mjpeg_cfg.frc_bps = (p->mjpeg_cfg.frc_bps < MJPEG_FRC_BPS_MAX ?
+                                   (p->mjpeg_cfg.frc_bps + MJPEG_FRC_BPS_PER_STEP) :
+                                    p->mjpeg_cfg.frc_bps);
+            if (p->mjpeg_cfg.frc_bps != last)
                 change = true;
+        }
+#endif
+        if (p->mjpeg_cfg.rc_mode == MPP_ENC_RC_MODE_FIXQP)
+        {
+            if (!p->mjpeg_cfg.qfactor)
+            {
+                last = p->mjpeg_cfg.frc_quant;
+                p->mjpeg_cfg.frc_quant = (p->mjpeg_cfg.frc_quant < p->mjpeg_cfg.quant ?
+                                         (p->mjpeg_cfg.frc_quant + 1) :
+                                          p->mjpeg_cfg.frc_quant);
+                if (p->mjpeg_cfg.frc_quant != last)
+                    change = true;
+            }
+            else
+            {
+                last = p->mjpeg_cfg.frc_qfactor;
+                p->mjpeg_cfg.frc_qfactor = (p->mjpeg_cfg.frc_qfactor < p->mjpeg_cfg.qfactor ?
+                                           (p->mjpeg_cfg.frc_qfactor + 1) :
+                                            p->mjpeg_cfg.frc_qfactor);
+                if (p->mjpeg_cfg.frc_qfactor != last)
+                    change = true;
+            }
         }
     }
 
     if (!change)
         return ret;
-
-    if (!p->mjpeg_cfg.qfactor)
+#if MPP_ENC_MJPEG_FRC_USE_MPP
+    switch (p->mjpeg_cfg.rc_mode)
     {
-        mpp_enc_cfg_set_s32(p->cfg, "jpeg:quant", p->mjpeg_cfg.frc_quant);
-        LOG_INFO("frc_quant change %d to %d\n", last, p->mjpeg_cfg.frc_quant);
+        case MPP_ENC_RC_MODE_FIXQP :
+        {
+            /* do not set bps on fix qp mode */
+        }
+        break;
+        case MPP_ENC_RC_MODE_CBR :
+        {
+            /* CBR mode has narrow bound */
+            mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", p->mjpeg_cfg.frc_bps);
+            mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", p->mjpeg_cfg.frc_bps * 17 / 16);
+            mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", p->mjpeg_cfg.frc_bps * 15 / 16);
+            LOG_INFO("frc_bps %s, change %d to %d\n", set_low ? "set down" : "set up", last, p->mjpeg_cfg.frc_bps);
+        }
+        break;
+        case MPP_ENC_RC_MODE_VBR :
+        {
+            /* CBR mode has wide bound */
+            mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", p->mjpeg_cfg.frc_bps);
+            mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", p->mjpeg_cfg.frc_bps * 17 / 16);
+            mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", p->mjpeg_cfg.frc_bps * 1 / 16);
+            LOG_INFO("frc_bps %s, change %d to %d\n", set_low ? "set down" : "set up", last, p->mjpeg_cfg.frc_bps);
+        }
+        break;
+        default :
+        {
+            LOG_ERROR("unsupport encoder rc mode %d\n", p->mjpeg_cfg.rc_mode);
+            return MPP_NOK;
+        }
+        break;
     }
-    else
+#endif
+    if (p->mjpeg_cfg.rc_mode == MPP_ENC_RC_MODE_FIXQP)
     {
-        mpp_enc_cfg_set_u32(p->cfg, "jpeg:q_factor", p->mjpeg_cfg.frc_qfactor);
-        LOG_INFO("frc_qfactor change %d to %d\n", last, p->mjpeg_cfg.frc_qfactor);
+        if (!p->mjpeg_cfg.qfactor)
+        {
+            mpp_enc_cfg_set_s32(p->cfg, "jpeg:quant", p->mjpeg_cfg.frc_quant);
+            LOG_INFO("frc_quant %s, change %d to %d\n", set_low ? "set down" : "set up", last, p->mjpeg_cfg.frc_quant);
+        }
+        else
+        {
+            mpp_enc_cfg_set_s32(p->cfg, "jpeg:q_factor", p->mjpeg_cfg.frc_qfactor);
+            LOG_INFO("frc_qfactor %s, change %d to %d\n", set_low ? "set down" : "set up", last, p->mjpeg_cfg.frc_qfactor);
+        }
     }
-
     ret = p->mpi->control(p->ctx, MPP_ENC_SET_CFG, p->cfg);
     if (ret)
     {
@@ -464,7 +547,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     RK_S32 i;
     MppBuffer buf = NULL;
     MppBuffer pkt_buf_out = NULL;
-    int try_count = p->common_cfg.frc_fps ? (1000 / p->common_cfg.frc_fps / 2) : 20;
+    int try_count = p->common_cfg.try_count;
     bool get_ok = false;
 
     if (NULL == p)
@@ -501,7 +584,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
             // LOG_ERROR("not get write buff,read too slow.%d,%d\n",
             //      uvc_get_user_run_state(uvc_enc.video_id),uvc_buffer_write_enable(uvc_enc.video_id));
             // return ret;
-            usleep(2000);
+            usleep(MPP_FRC_WAIT_TIME_US);
         }
         else
         {
@@ -515,14 +598,22 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         p->loss_frm ++;
         p->continuous_frm = 0;
 #if RK_MPP_DYNAMIC_DEBUG_ON
-        if (access(RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK, 0)) //no exit and output log
+        if (access(RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK, 0)) //no exist and output log
 #endif
-            LOG_ERROR("not get write buff,read too slow %d.\"touch %s \" can close debug.\n",
+            LOG_ERROR("not get write buff,read too slow %d,%d.\"touch %s \" can close debug.\n",
                       p->loss_frm,
+                      p->frc_up_frm_set,
                       RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK);
-        if (p->loss_frm >= 5 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.need_frc)
+        if (p->loss_frm >= 5 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.frc_mode)
         {
             p->loss_frm = 0;
+            if (p->set_frc_low == false) // punishment mechanism
+                p->frc_up_frm_set = (p->frc_up_frm_set << 1) < MPP_FRC_UP_FRM_SET_MAX ?
+                                     p->frc_up_frm_set <<= 1 : MPP_FRC_UP_FRM_SET_MAX;
+            else //avoid shortterm rapid decline after recovery too slow
+                p->frc_up_frm_set = (p->frc_up_frm_set >> 1) > MPP_FRC_UP_FRM_SET_MIN ?
+                                     p->frc_up_frm_set >>= 1 : MPP_FRC_UP_FRM_SET_INIT;
+            p->set_frc_low = true;
             mpp_mjpeg_simple_frc(p, true);
         }
         return ret;
@@ -530,11 +621,20 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     else
     {
         p->continuous_frm ++;
-        if (p->continuous_frm > 1000)
+        if (p->continuous_frm > p->frc_up_frm_set)
         {
             p->continuous_frm = 0;
             p->loss_frm = ((p->loss_frm > 0) ? (p->loss_frm - 1) : 0);
-            // TODO:can turn up the quant here when loss_frm = 0 or continuous_frm up to more high
+            // done:can turn up the quant here when loss_frm = 0 or continuous_frm up to more high
+            if (p->loss_frm == 0 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.frc_mode == FRC_BOTH_UP_LOW)
+            {
+                p->loss_frm = 2;
+                if (p->set_frc_low == false) // reward mechanism
+                    p->frc_up_frm_set = (p->frc_up_frm_set >> 1) > MPP_FRC_UP_FRM_SET_MIN ?
+                                         p->frc_up_frm_set >>= 1 : MPP_FRC_UP_FRM_SET_INIT;
+                p->set_frc_low = false;
+                mpp_mjpeg_simple_frc(p, false);
+            }
         }
     }
 
@@ -1014,8 +1114,8 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
 
     if (!check_mpp_enc_cfg_file_init(p))
         LOG_INFO("check_mpp_enc_cfg_file ok\n");
-    dump_mpp_enc_cfg(p);
     ret = mpp_enc_cfg_set(p, true);
+    dump_mpp_enc_cfg(p);
     if (ret)
     {
         LOG_ERROR("mpp_enc_cfg_set failed ret %d\n", ret);
@@ -1225,7 +1325,12 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->common_cfg.force_idr_count = RK_MPP_H264_FORCE_IDR_COUNT;
     p->common_cfg.force_idr_period = RK_MPP_H264_FORCE_IDR_PERIOD;
     p->common_cfg.frc_fps = 25; // use frame rate control
-    p->common_cfg.need_frc = true;
+    p->common_cfg.frc_mode = FRC_ONLY_LOW;
+    if (p->type == MPP_VIDEO_CodingMJPEG)
+        p->common_cfg.enc_time = p->width * p->height / 110000;
+    else
+        p->common_cfg.enc_time = p->width * p->height / 330000;
+    p->common_cfg.enc_time = p->common_cfg.enc_time > 80 ? 80 : p->common_cfg.enc_time < 2 ? 2 : p->common_cfg.enc_time;
 
     //mjpeg set
     p->mjpeg_cfg.quant = 7;
@@ -1233,8 +1338,14 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->mjpeg_cfg.range = MPP_FRAME_RANGE_JPEG; //default for full(only full)
     p->mjpeg_cfg.qfactor_min = 1;
     p->mjpeg_cfg.qfactor_max = 99;
+    p->mjpeg_cfg.framerate = 30;
     p->mjpeg_cfg.gop = 30;
-    p->mjpeg_cfg.rc_mode = MPP_ENC_RC_MODE_FIXQP;
+#if MPP_ENC_MJPEG_FRC_USE_MPP
+    p->mjpeg_cfg.rc_mode = MPP_ENC_RC_MODE_CBR;
+#else
+    p->mjpeg_cfg.rc_mode = MPP_ENC_RC_MODE_FIXQP; // not use mpp frc here must be fixqp, do not modify this setting.
+#endif
+    p->mjpeg_cfg.bps = p->width * p->height / 8 * p->mjpeg_cfg.framerate * 3 / 2; // 1080p 11Mbps
 
     //h264 set
     p->h264_cfg.gop = 60;
@@ -1274,19 +1385,23 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
 static void dump_mpp_enc_cfg(MpiEncTestData *p)
 {
     LOG_INFO("### dump_mpp_enc_cfg for common cfg:\n");
-    LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d frc_fps=%d need_frc=%d\n",
+    LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d,frc_fps=%d\n\
+frc_mode=%d,enc_time=%d,try_count=%d,frc_use_mpp=%d\n",
              p->common_cfg.fbc, p->common_cfg.split_mode, p->common_cfg.split_arg,
              p->common_cfg.force_idr_count, p->common_cfg.force_idr_period,
-             p->common_cfg.frc_fps, p->common_cfg.need_frc);
+             p->common_cfg.frc_fps, p->common_cfg.frc_mode,
+             p->common_cfg.enc_time, p->common_cfg.try_count,
+             MPP_ENC_MJPEG_FRC_USE_MPP);
 
     LOG_INFO("###dump_mpp_enc_cfg for mjpeg cfg:\n");
-    LOG_INFO("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d\n",
+    LOG_INFO("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d\n",
              p->mjpeg_cfg.quant, p->mjpeg_cfg.qfactor, p->mjpeg_cfg.range,
              p->mjpeg_cfg.qfactor_min, p->mjpeg_cfg.qfactor_max,
-             p->mjpeg_cfg.gop, p->mjpeg_cfg.rc_mode);
+             p->mjpeg_cfg.gop, p->mjpeg_cfg.rc_mode, p->mjpeg_cfg.bps,
+             p->mjpeg_cfg.framerate);
 
     LOG_INFO("### dump_mpp_enc_cfg for h264 cfg:\n");
-    LOG_INFO("gop=%d,re_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
+    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
 sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,profile=%d \n\
 cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d \n",
              p->h264_cfg.gop, p->h264_cfg.rc_mode, p->h264_cfg.framerate,
@@ -1299,7 +1414,7 @@ cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d \n",
              p->h264_cfg.bps);
 
     LOG_INFO("### dump_mpp_enc_cfg for h265 cfg:\n");
-    LOG_INFO("gop=%d,re_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
+    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
 sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,max_i_qp=%d \n\
 min_i_qp=%d,bps=%d \n",
              p->h265_cfg.gop, p->h265_cfg.rc_mode, p->h265_cfg.framerate,
@@ -1331,6 +1446,11 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
     {
         LOG_ERROR("parse_mpp_enc_cfg mpp_enc_cfg err\n");
         return -1;
+    }
+    cJSON *child_version = cJSON_GetObjectItem(child, "version");
+    if (child_version)
+    {
+        LOG_INFO("parse_mpp_enc_cfg version:%s\n", child_version->valuestring);
     }
 
     cJSON *child_common = cJSON_GetObjectItem(child, "common");
@@ -1386,6 +1506,25 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                                  p->common_cfg.force_idr_period;
                 p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(4);
             }
+            cJSON *child_common_frc_fps = cJSON_GetObjectItem(child_common_param, "frc_fps");
+            if (child_common_frc_fps)
+            {
+                p->common_cfg.frc_fps = child_common_frc_fps->valueint;
+                p->common_cfg.frc_fps = p->common_cfg.frc_fps < 10 ? 10 :
+                p->common_cfg.frc_fps > 60 ? 60 :
+                p->common_cfg.frc_fps;
+                p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
+            }
+            cJSON *child_common_frc_mode = cJSON_GetObjectItem(child_common_param, "frc_mode");
+            if (child_common_frc_mode)
+            {
+                p->common_cfg.frc_mode = child_common_frc_mode->valueint;
+                p->common_cfg.frc_mode = p->common_cfg.frc_mode < FRC_OFF ? FRC_OFF :
+                p->common_cfg.frc_mode > FRC_BOTH_UP_LOW ? FRC_BOTH_UP_LOW :
+                p->common_cfg.frc_mode;
+                p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
+            }
+
             LOG_INFO("common_cfg.change:0x%x\n", p->common_cfg.change);
         }
         else
@@ -1437,6 +1576,61 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                            p->mjpeg_cfg.qfactor > 99 ? 99 :
                                            p->mjpeg_cfg.qfactor;
                     p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                }
+                cJSON *child_mjpeg_qfactor_min = cJSON_GetObjectItem(child_mjpeg_param, "qfactor_min");
+                if (child_mjpeg_qfactor_min)
+                {
+                    p->mjpeg_cfg.qfactor_min = child_mjpeg_qfactor_min->valueint;
+                    p->mjpeg_cfg.qfactor_min = p->mjpeg_cfg.qfactor_min < 0 ? 0 :
+                                               p->mjpeg_cfg.qfactor_min > p->mjpeg_cfg.qfactor ? p->mjpeg_cfg.qfactor :
+                                               p->mjpeg_cfg.qfactor_min;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(3);
+                }
+                cJSON *child_mjpeg_qfactor_max = cJSON_GetObjectItem(child_mjpeg_param, "qfactor_max");
+                if (child_mjpeg_qfactor_max)
+                {
+                    p->mjpeg_cfg.qfactor_max = child_mjpeg_qfactor_max->valueint;
+                    p->mjpeg_cfg.qfactor_max = p->mjpeg_cfg.qfactor_max < p->mjpeg_cfg.qfactor ? p->mjpeg_cfg.qfactor :
+                                               p->mjpeg_cfg.qfactor_max > 99 ? 99 :
+                                               p->mjpeg_cfg.qfactor_max;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(4);
+                }
+                cJSON *child_mjpeg_gop = cJSON_GetObjectItem(child_mjpeg_param, "gop");
+                if (child_mjpeg_gop)
+                {
+                    p->mjpeg_cfg.gop = child_mjpeg_gop->valueint;
+                    p->mjpeg_cfg.gop = p->mjpeg_cfg.gop < 1 ? 1 :
+                                       p->mjpeg_cfg.gop > 100 ? 100 :
+                                       p->mjpeg_cfg.gop;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
+                }
+#if MPP_ENC_MJPEG_FRC_USE_MPP
+                cJSON *child_mjpeg_rc_mode = cJSON_GetObjectItem(child_mjpeg_param, "rc_mode");
+                if (child_mjpeg_rc_mode)
+                {
+                    p->mjpeg_cfg.rc_mode = strstr(child_mjpeg_rc_mode->valuestring, "cbr") ? MPP_ENC_RC_MODE_CBR :
+                                           strstr(child_mjpeg_rc_mode->valuestring, "vbr") ? MPP_ENC_RC_MODE_VBR :
+                                           strstr(child_mjpeg_rc_mode->valuestring, "fixqp") ? MPP_ENC_RC_MODE_FIXQP : MPP_ENC_RC_MODE_CBR;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
+                }
+#endif
+                cJSON *child_mjpeg_bps = cJSON_GetObjectItem(child_mjpeg_param, "bps");
+                if (child_mjpeg_bps)
+                {
+                    p->mjpeg_cfg.bps = child_mjpeg_bps->valueint;
+                    p->mjpeg_cfg.bps = p->mjpeg_cfg.bps < MPP_ENC_CFG_MIN_BPS ? MPP_ENC_CFG_MIN_BPS :
+                                       p->mjpeg_cfg.bps > MPP_ENC_MJPEG_CFG_MAX_BPS ? MPP_ENC_MJPEG_CFG_MAX_BPS :
+                                       p->mjpeg_cfg.bps;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(7);
+                }
+                cJSON *child_mjpeg_framerate = cJSON_GetObjectItem(child_mjpeg_param, "framerate");
+                if (child_mjpeg_framerate)
+                {
+                    p->mjpeg_cfg.framerate = child_mjpeg_framerate->valueint;
+                    p->mjpeg_cfg.framerate = p->mjpeg_cfg.framerate < MPP_ENC_CFG_MIN_FPS ? MPP_ENC_CFG_MIN_FPS :
+                                             p->mjpeg_cfg.framerate > MPP_ENC_CFG_MAX_FPS ? MPP_ENC_CFG_MAX_FPS :
+                                             p->mjpeg_cfg.framerate;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(8);
                 }
 
                 LOG_INFO("mjpeg_cfg.change:0x%x\n", p->mjpeg_cfg.change);
@@ -1824,6 +2018,19 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     {
         mpp_enc_cfg_set_u32(cfg, "split:arg", p->common_cfg.split_arg);
     }
+    if (init || (p->common_cfg.change & BIT(5)))
+    {
+        p->common_cfg.try_count = p->common_cfg.frc_fps ?
+                                 (1000 / p->common_cfg.frc_fps / MPP_FRC_WAIT_TIME_MS + MPP_FRC_WAIT_COUNT_OFFSET) :
+                                  20 + MPP_FRC_WAIT_COUNT_OFFSET;
+        p->common_cfg.try_count = p->common_cfg.try_count > (p->common_cfg.enc_time / MPP_FRC_WAIT_TIME_MS) ?
+                                 (p->common_cfg.try_count - p->common_cfg.enc_time / MPP_FRC_WAIT_TIME_MS) :
+                                  MPP_FRC_WAIT_COUNT_MIN;
+        p->common_cfg.try_count = p->common_cfg.try_count < MPP_FRC_WAIT_COUNT_MIN ?
+                                  MPP_FRC_WAIT_COUNT_MIN : p->common_cfg.try_count;
+    }
+
+    p->frc_up_frm_set = MPP_FRC_UP_FRM_SET_INIT; // when continues_frm up to this num which can turn up the frame rate
 
     mpp_enc_cfg_set_s32(cfg, "codec:type", p->type);
     switch (p->type)
@@ -1848,6 +2055,53 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:gop", p->mjpeg_cfg.gop);
         if (init || (p->mjpeg_cfg.change & BIT(6)))
             mpp_enc_cfg_set_s32(cfg, "rc:mode", p->mjpeg_cfg.rc_mode);
+        if (init || (p->mjpeg_cfg.change & BIT(7)))
+        {
+            switch (rc_mode)
+            {
+                case MPP_ENC_RC_MODE_FIXQP :
+                {
+                    /* do not set bps on fix qp mode */
+                } break;
+                case MPP_ENC_RC_MODE_CBR :
+                {
+                    /* CBR mode has narrow bound */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->mjpeg_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->mjpeg_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->mjpeg_cfg.bps * 15 / 16);
+                    p->mjpeg_cfg.frc_bps = p->mjpeg_cfg.bps;
+                }
+                break;
+                case MPP_ENC_RC_MODE_VBR :
+                {
+                    /* CBR mode has wide bound */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->mjpeg_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->mjpeg_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->mjpeg_cfg.bps * 1 / 16);
+                    p->mjpeg_cfg.frc_bps = p->mjpeg_cfg.bps;
+                }
+                break;
+                default :
+                {
+                    LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+                }
+                break;
+            }
+        }
+        if (init || (p->mjpeg_cfg.change & BIT(8)))
+        {
+            /* setup default parameter */
+            p->fps_in_den = 1;
+            p->fps_in_num = p->mjpeg_cfg.framerate;
+            p->fps_out_den = 1;
+            p->fps_out_num = p->mjpeg_cfg.framerate;
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_num", p->fps_in_num);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_in_denorm", p->fps_in_den);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
+            mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+        }
     }
     break;
     case MPP_VIDEO_CodingAVC :
@@ -1921,31 +2175,31 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         {
             switch (rc_mode)
             {
-            case MPP_ENC_RC_MODE_FIXQP :
-            {
-                /* do not set bps on fix qp mode */
-            } break;
-            case MPP_ENC_RC_MODE_CBR :
-            {
-                /* CBR mode has narrow bound */
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 15 / 16);
-            }
-            break;
-            case MPP_ENC_RC_MODE_VBR :
-            {
-                /* CBR mode has wide bound */
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 16);
-            }
-            break;
-            default :
-            {
-                LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
-            }
-            break;
+                case MPP_ENC_RC_MODE_FIXQP :
+                {
+                    /* do not set bps on fix qp mode */
+                } break;
+                case MPP_ENC_RC_MODE_CBR :
+                {
+                    /* CBR mode has narrow bound */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 15 / 16);
+                }
+                break;
+                case MPP_ENC_RC_MODE_VBR :
+                {
+                    /* CBR mode has wide bound */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 16);
+                }
+                break;
+                default :
+                {
+                    LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+                }
+                break;
             }
         }
     }
@@ -2016,31 +2270,31 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         {
             switch (rc_mode)
             {
-            case MPP_ENC_RC_MODE_FIXQP :
-            {
-                /* do not set bps on fix qp mode */
-            } break;
-            case MPP_ENC_RC_MODE_CBR :
-            {
-                /* CBR mode has narrow bound */
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 15 / 16);
-            }
-            break;
-            case MPP_ENC_RC_MODE_VBR :
-            {
-                /* CBR mode has wide bound */
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
-                mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 16);
-            }
-            break;
-            default :
-            {
-                LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
-            }
-            break;
+                case MPP_ENC_RC_MODE_FIXQP :
+                {
+                    /* do not set bps on fix qp mode */
+                } break;
+                case MPP_ENC_RC_MODE_CBR :
+                {
+                    /* CBR mode has narrow bound */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 15 / 16);
+                }
+                break;
+                case MPP_ENC_RC_MODE_VBR :
+                {
+                    /* CBR mode has wide bound */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 16);
+                }
+                break;
+                default :
+                {
+                    LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+                }
+                break;
             }
         }
     }
@@ -2144,7 +2398,7 @@ void *thread_check_mpp_enc_chenge_loop(void *user)
     while (1)
     {
         last_wd = p->cfg_notify_wd;
-        p->cfg_notify_wd = inotify_add_watch(p->cfg_notify_fd, RK_MPP_ENC_CFG_MODIFY_PATH, IN_MODIFY);//IN_ALL_EVENTS);
+        p->cfg_notify_wd = inotify_add_watch(p->cfg_notify_fd, RK_MPP_ENC_CFG_MODIFY_PATH, IN_MODIFY | IN_DELETE_SELF);//IN_ALL_EVENTS);
         modify = false;
         if (p->cfg_notify_wd != -1)
         {
@@ -2171,6 +2425,11 @@ void *thread_check_mpp_enc_chenge_loop(void *user)
                         {
                             modify = true;
                         }
+                        else if (event->mask == IN_DELETE_SELF)
+                        {
+                            p->cfg_notify_wd = -1;
+                        }
+
                         index += sizeof(struct inotify_event) + event->len;
                     }
 
@@ -2187,8 +2446,8 @@ void *thread_check_mpp_enc_chenge_loop(void *user)
                 LOG_ERROR("error: the enc cfg file is broken.please check.\n");
             else
             {
-                dump_mpp_enc_cfg(p);
                 mpp_ret = mpp_enc_cfg_set(p, false);
+                dump_mpp_enc_cfg(p);
                 if (mpp_ret)
                 {
                     LOG_ERROR("mpp_enc_cfg_set failed ret %d\n", mpp_ret);
