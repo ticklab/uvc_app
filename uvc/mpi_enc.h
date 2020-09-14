@@ -138,9 +138,12 @@ typedef struct
     MppFrameColorRange range; // full:MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
     RK_U32 qfactor; // 0-99  priprity option this. set 0 is close this and set use quant
 
-    RK_U32 frc_quant;
-    RK_U32 frc_qfactor;
-
+    RK_U32 frc_quant; // 1
+    RK_S32 frc_qfactor;  // 2
+    RK_S32 qfactor_min;  // 3
+    RK_S32 qfactor_max;  // 4
+    RK_U32 gop;  // 5
+    MppEncRcMode rc_mode; // 6
 } MpiEncMjpegCfg;
 
 typedef struct

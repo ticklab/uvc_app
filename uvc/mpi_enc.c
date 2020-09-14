@@ -1210,6 +1210,10 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->mjpeg_cfg.quant = 7;
     p->mjpeg_cfg.qfactor = 80; //default set this
     p->mjpeg_cfg.range = MPP_FRAME_RANGE_JPEG; //default for full(only full)
+    p->mjpeg_cfg.qfactor_min = 1;
+    p->mjpeg_cfg.qfactor_max = 99;
+    p->mjpeg_cfg.gop = 30;
+    p->mjpeg_cfg.rc_mode = MPP_ENC_RC_MODE_FIXQP;
 
     //h264 set
     p->h264_cfg.gop = 60;
@@ -1255,7 +1259,10 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              p->common_cfg.frc_fps, p->common_cfg.need_frc);
 
     LOG_INFO("###dump_mpp_enc_cfg for mjpeg cfg:\n");
-    LOG_INFO("quant=%d,q_fator=%d,range=%d\n", p->mjpeg_cfg.quant, p->mjpeg_cfg.qfactor, p->mjpeg_cfg.range);
+    LOG_INFO("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d\n",
+             p->mjpeg_cfg.quant, p->mjpeg_cfg.qfactor, p->mjpeg_cfg.range,
+             p->mjpeg_cfg.qfactor_min, p->mjpeg_cfg.qfactor_max,
+             p->mjpeg_cfg.gop, p->mjpeg_cfg.rc_mode);
 
     LOG_INFO("### dump_mpp_enc_cfg for h264 cfg:\n");
     LOG_INFO("gop=%d,re_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
@@ -1809,10 +1816,17 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         }
         if (p->mjpeg_cfg.qfactor && (init || (p->mjpeg_cfg.change & BIT(2))))
         {
-            mpp_enc_cfg_set_u32(cfg, "jpeg:q_factor", p->mjpeg_cfg.qfactor);
+            mpp_enc_cfg_set_s32(cfg, "jpeg:q_factor", p->mjpeg_cfg.qfactor);
             p->mjpeg_cfg.frc_qfactor = p->mjpeg_cfg.qfactor;
         }
-
+        if (p->mjpeg_cfg.qfactor && (init || (p->mjpeg_cfg.change & BIT(3))))
+            mpp_enc_cfg_set_s32(cfg, "jpeg:qf_min", p->mjpeg_cfg.qfactor_min);
+        if (p->mjpeg_cfg.qfactor && (init || (p->mjpeg_cfg.change & BIT(4))))
+            mpp_enc_cfg_set_s32(cfg, "jpeg:qf_max", p->mjpeg_cfg.qfactor_max);
+        if (init || (p->mjpeg_cfg.change & BIT(5)))
+            mpp_enc_cfg_set_s32(cfg, "rc:gop", p->mjpeg_cfg.gop);
+        if (init || (p->mjpeg_cfg.change & BIT(6)))
+            mpp_enc_cfg_set_s32(cfg, "rc:mode", p->mjpeg_cfg.rc_mode);
     }
     break;
     case MPP_VIDEO_CodingAVC :
