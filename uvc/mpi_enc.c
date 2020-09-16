@@ -1226,6 +1226,10 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
         h265 = atoi(env_h265);
         LOG_INFO("V4L2_PIX_FMT_H264 force use h265 ?:%d \n", h265);
     }
+    if(!access(RK_MPP_ENABLE_UVC_H265, 0)) {
+        h265 = 1;
+        LOG_INFO("tmp: V4L2_PIX_FMT_H264 force use h265!!\n");
+    }
 
     switch (fcc)
     {

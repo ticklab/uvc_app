@@ -66,6 +66,8 @@ extern struct uvc_encode uvc_enc;
 #define RK_MPP_OUT_LEN_DEBUG_CHECK "/tmp/uvc_out_len"
 #define RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK "/tmp/uvc_frm_loss"
 
+#define RK_MPP_ENABLE_UVC_H265 "/tmp/use_encodec_h265"
+
 #define RK_MPP_DEBUG_OUT_FILE "/data/uvc_enc_out.bin"
 #define RK_MPP_DEBUG_IN_FILE "/data/uvc_enc_in.bin"
 
