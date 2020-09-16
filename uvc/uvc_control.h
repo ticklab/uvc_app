@@ -56,20 +56,20 @@ extern "C"
 #define UVC_CONTROL_CHECK_STRAIGHT (1 << 1)
 #define UVC_CONTROL_CAMERA (1 << 2)
 
-    void add_uvc_video();
-    void uvc_control_loop(void);
-    int check_uvc_video_id(void);
-    void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz);
-    void set_uvc_control_stop(void);
-    void set_uvc_control_restart(void);
-    void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps, int format, int eptz));
-    void uvc_control_stop_setcallback(void (*callback)());
-    void uvc_control_init(int width, int height, int fcc, int h265);
-    void uvc_control_exit();
-    int get_uvc_streaming_intf(void);
-    void uvc_control_signal(void);
-    int uvc_control_run(uint32_t flags);
-    void uvc_control_join(uint32_t flags);
+void add_uvc_video();
+int uvc_control_loop(void);
+int check_uvc_video_id(void);
+void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz);
+void set_uvc_control_stop(void);
+void set_uvc_control_restart(void);
+extern void uvc_control_start_setcallback(int (*callback)(int fd, int width, int height, int fps, int format, int eptz));
+void uvc_control_stop_setcallback(void (*callback)());
+void uvc_control_init(int width, int height, int fcc, int h265);
+void uvc_control_exit();
+int get_uvc_streaming_intf(void);
+void uvc_control_signal(void);
+int uvc_control_run(uint32_t flags);
+void uvc_control_join(uint32_t flags);
 
 #ifdef __cplusplus
 }

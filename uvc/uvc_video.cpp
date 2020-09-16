@@ -598,7 +598,7 @@ void uvc_buffer_deinit(int id)
             }
         }
     }
-    while (!l->can_exit)
+    while ( l->uvc_process && !l->can_exit)
     {
         usleep(1000);
     }

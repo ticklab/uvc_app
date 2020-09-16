@@ -3657,6 +3657,8 @@ static void usage(const char *argv0)
 }
 */
 
+extern int app_quit;
+
 int
 uvc_gadget_main(int id)
 {
@@ -4030,6 +4032,11 @@ uvc_gadget_main(int id)
             break;
         }
 
+        if(app_quit) {
+           LOG_ERROR("app quit...\n");
+            break;
+        }
+
         if (FD_ISSET(udev->uvc_fd, &efds))
             uvc_events_process(udev);
         if (FD_ISSET(udev->uvc_fd, &dfds))
@@ -4062,12 +4069,10 @@ uvc_gadget_main(int id)
         v4l2_close(vdev);
 
     uvc_close(udev);
-
     uvc_buffer_deinit(id);
 #if USE_RK_AISERVER
     uvc_ipc_event(UVC_IPC_EVENT_STOP, NULL);
 #endif
-
     //join mpp thread
     uvc_control_exit();
     set_uvc_control_restart();

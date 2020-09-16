@@ -72,6 +72,8 @@ struct uvc_encode uvc_enc;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int uvc_streaming_intf = -1;
 
+bool uvc_encode_init_flag = false;
+
 static pthread_t run_id = 0;
 static bool uvc_restart = false;
 static bool run_flag = true;
@@ -184,14 +186,17 @@ void uvc_control_init(int width, int height, int fcc, int h265)
         LOG_ERROR("%s fail!\n", __func__);
         abort();
     }
+    uvc_encode_init_flag = true;
     pthread_mutex_unlock(&lock);
 }
 
 void uvc_control_exit()
 {
     pthread_mutex_lock(&lock);
-    uvc_encode_exit(&uvc_enc);
+    if(uvc_encode_init_flag)
+      uvc_encode_exit(&uvc_enc);
     memset(&uvc_enc, 0, sizeof(uvc_enc));
+    uvc_encode_init_flag = false;
     pthread_mutex_unlock(&lock);
 }
 
@@ -275,13 +280,14 @@ static void *uvc_control_thread(void *arg)
     pthread_exit(NULL);
 }
 
-void uvc_control_loop(void)
+int uvc_control_loop(void)
 {
     if (uvc_restart)
     {
-        uvc_video_id_exit_all();
-        add_uvc_video();
+        //uvc_video_id_exit_all();
+        //add_uvc_video();
         uvc_restart = false;
+        return 0;
     }
     if (uvc_ctrl[2].stop)
     {
@@ -303,6 +309,7 @@ void uvc_control_loop(void)
         //camera_control_start(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
         uvc_ctrl[2].start = false;
     }
+    return 1;
 }
 
 int uvc_control_run(uint32_t flags)
@@ -377,8 +384,8 @@ void set_uvc_control_restart(void)
 {
     if (uvc_flags & UVC_CONTROL_CAMERA)
     {
-        LOG_INFO("maybe has error for usb uvc ,reboot to recovery now!\n");
-        system("killall -9 uvc_app &");
-        //uvc_restart = true;
+        LOG_INFO("received uvc to exit,restart to recovery now!\n");
+        //system("killall -9 uvc_app &");
+        uvc_restart = true;
     }
 }

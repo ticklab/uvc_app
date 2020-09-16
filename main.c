@@ -3,7 +3,7 @@
 #include "uvc_control.h"
 #include "uvc_video.h"
 #include "uvc_log.h"
-
+#include <signal.h>
 #ifdef CAMERA_CONTROL
 #include "camera_control.h"
 #endif
@@ -26,6 +26,12 @@ int uvc_app_log_level = LOG_INFO;
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
 #define UVC_VERSION "SDK V1.04"
+
+int app_quit = 0;
+void sigterm_handler(int sig) {
+  LOG_INFO("signal %d\n", sig);
+  app_quit = 1;
+}
 
 int main(int argc, char *argv[])
 {
@@ -58,6 +64,7 @@ int main(int argc, char *argv[])
 #ifdef CAMERA_CONTROL
     if (argc != 3)
     {
+        signal(SIGQUIT, sigterm_handler);
         LOG_INFO("uvc_app loop from v4l2.\n");
         camera_control_init();
         uvc_control_start_setcallback(camera_control_start);
@@ -67,13 +74,13 @@ int main(int argc, char *argv[])
         uvc_control_run(UVC_CONTROL_CAMERA);
         while (1)
         {
-            uvc_control_loop();
+            if(0 == uvc_control_loop())
+                break;
             usleep(100000);
         }
         uvc_video_id_exit_all();
         camera_control_deinit();
         LOG_INFO("uvc_app exit.\n");
-        StopAllThread();
         return 0;
     }
 #else

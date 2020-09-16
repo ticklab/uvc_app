@@ -1143,13 +1143,17 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     MPP_RET ret = MPP_OK;
     MpiEncTestData *p = *data;
 #ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    pthread_cancel(p->destory_buf_hd);
-    pthread_join(p->destory_buf_hd, NULL);
-    pthread_mutex_destroy(&p->cond_mutex);
-    pthread_cond_destroy(&p->cond);
+    if (p->destory_buf_hd) {
+        pthread_cancel(p->destory_buf_hd);
+        pthread_join(p->destory_buf_hd, NULL);
+        pthread_mutex_destroy(&p->cond_mutex);
+        pthread_cond_destroy(&p->cond);
+    }
 #endif
-    pthread_cancel(p->check_cfg_change_hd);
-    pthread_join(p->check_cfg_change_hd, NULL);
+    if (p->check_cfg_change_hd) {
+        pthread_cancel(p->check_cfg_change_hd);
+        pthread_join(p->check_cfg_change_hd, NULL);
+    }
     if (p->cfg_notify_fd)
     {
         inotify_rm_watch(p->cfg_notify_fd, p->cfg_notify_wd);
@@ -1157,10 +1161,12 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     }
     if (p->packet)
         mpp_packet_deinit(&p->packet);
-    ret = p->mpi->reset(p->ctx);
-    if (ret)
-    {
-        LOG_ERROR("mpi->reset failed\n");
+    if (p->ctx) {
+       ret = p->mpi->reset(p->ctx);
+       if (ret)
+       {
+          LOG_ERROR("mpi->reset failed\n");
+       }
     }
     if (p->ctx)
     {
