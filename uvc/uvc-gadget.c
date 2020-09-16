@@ -63,7 +63,7 @@ extern void camera_control_set_zoom(int val);
 
 /* Enable debug prints. */
 //#define ENABLE_BUFFER_DEBUG
-#define ENABLE_USB_REQUEST_DEBUG
+//#define ENABLE_USB_REQUEST_DEBUG
 
 #define CLEAR(x)    memset (&(x), 0, sizeof (x))
 #define max(a, b)   (((a) > (b)) ? (a) : (b))
@@ -1825,7 +1825,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                            uint8_t cs, uint8_t entity_id,
                            uint8_t len, struct uvc_request_data *resp)
 {
-    LOG_INFO("req = %d cs = %d entity_id =%d len = %d \n", req, cs, entity_id, len);
+    LOG_DEBUG("req = %d cs = %d entity_id =%d len = %d \n", req, cs, entity_id, len);
     dev->cs = cs;
     dev->entity_id = entity_id;
 
@@ -3117,11 +3117,11 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
     }
     if (resp->length == -EL2HLT)
     {
-        LOG_ERROR("unsupported: req=%02x, cs=%d, entity_id=%d, len=%d\n",
+        LOG_DEBUG("unsupported: req=%02x, cs=%d, entity_id=%d, len=%d\n",
                   req, cs, entity_id, len);
         resp->length = 0;
     }
-    LOG_INFO("control request (req %02x cs %02x)\n", req, cs);
+    LOG_DEBUG("control request (req %02x cs %02x)\n", req, cs);
 }
 
 
@@ -3131,7 +3131,7 @@ uvc_events_process_streaming(struct uvc_device *dev, uint8_t req, uint8_t cs,
 {
     struct uvc_streaming_control *ctrl;
 
-    LOG_INFO("streaming request (req %02x cs %02x)\n", req, cs);
+    LOG_DEBUG("streaming request (req %02x cs %02x)\n", req, cs);
 
     if (cs != UVC_VS_PROBE_CONTROL && cs != UVC_VS_COMMIT_CONTROL)
         return;
@@ -3151,7 +3151,7 @@ uvc_events_process_streaming(struct uvc_device *dev, uint8_t req, uint8_t cs,
             memcpy(ctrl, &dev->probe, sizeof * ctrl);
         else
             memcpy(ctrl, &dev->commit, sizeof * ctrl);
-#if 1
+#if 0
         LOG_INFO("bmHint: %u\n", ctrl->bmHint);
         LOG_INFO("bFormatIndex: %u\n", ctrl->bFormatIndex);
         LOG_INFO("bFrameIndex: %u\n", ctrl->bFrameIndex);
@@ -3251,7 +3251,7 @@ uvc_events_process_control_data(struct uvc_device *dev,
                                 struct uvc_request_data *data)
 {
     unsigned int *val = (unsigned int *)data->data;
-    LOG_INFO(" data = %d, length = %d  , current_cs = %d\n", *val , data->length, dev->cs);
+    LOG_DEBUG(" data = %d, length = %d  , current_cs = %d\n", *val , data->length, dev->cs);
     switch (entity_id)
     {
     case 1:
@@ -3459,7 +3459,7 @@ uvc_events_process_control_data(struct uvc_device *dev,
     default:
         break;
     }
-    LOG_INFO("Control Request data phase (cs %02x  data %d entity %02x)\n", cs, *val, entity_id);
+    LOG_DEBUG("Control Request data phase (cs %02x  data %d entity %02x)\n", cs, *val, entity_id);
     return 0;
 }
 
@@ -3480,19 +3480,19 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
     switch (dev->control)
     {
     case UVC_VS_PROBE_CONTROL:
-        LOG_INFO("setting probe control, length = %d\n", data->length);
+        LOG_DEBUG("setting probe control, length = %d\n", data->length);
         target = &dev->probe;
         break;
 
     case UVC_VS_COMMIT_CONTROL:
-        LOG_INFO("setting commit control, length = %d\n", data->length);
+        LOG_DEBUG("setting commit control, length = %d\n", data->length);
         target = &dev->commit;
         break;
 
     default:
-        LOG_INFO("setting process control, length = %d\n", data->length);
+        LOG_DEBUG("setting process control, length = %d\n", data->length);
 
-        LOG_INFO("cs: %u, entity_id: %u\n", dev->cs, dev->entity_id);
+        LOG_DEBUG("cs: %u, entity_id: %u\n", dev->cs, dev->entity_id);
         ret = uvc_events_process_control_data(dev,
                                               dev->cs,
                                               dev->entity_id, data);
@@ -3505,7 +3505,7 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
     ctrl = (struct uvc_streaming_control *)&data->data;
     if (dev->control == UVC_VS_PROBE_CONTROL)
     {
-#if 1
+#if 0
         LOG_INFO("host probe want ++++vs config:\n");
         LOG_INFO("bmHint: %u\n", ctrl->bmHint);
         LOG_INFO("bFormatIndex: %u\n", ctrl->bFormatIndex);
@@ -3657,17 +3657,17 @@ uvc_events_process(struct uvc_device *dev)
 
     case UVC_EVENT_DISCONNECT:
         dev->uvc_shutdown_requested = 1;
-        LOG_INFO("UVC: Possible USB shutdown requested from "
+        LOG_DEBUG("UVC: Possible USB shutdown requested from "
                  "Host, seen via UVC_EVENT_DISCONNECT \n");
         return;
 
     case UVC_EVENT_SETUP:
-        DBG("uvc_events_process:UVC_EVENT_SETUP \n");
+        LOG_DEBUG("uvc_events_process:UVC_EVENT_SETUP \n");
         uvc_events_process_setup(dev, &uvc_event->req, &resp);
         break;
 
     case UVC_EVENT_DATA:
-        DBG("uvc_events_process:UVC_EVENT_DATA \n");
+        LOG_DEBUG("uvc_events_process:UVC_EVENT_DATA \n");
         ret = uvc_events_process_data(dev, &uvc_event->data);
         if (ret < 0)
             break;
@@ -3675,7 +3675,7 @@ uvc_events_process(struct uvc_device *dev)
         return;
 
     case UVC_EVENT_STREAMON:
-        DBG("uvc_events_process:UVC_EVENT_STREAMON dev->io=%d\n", dev->io);
+        LOG_INFO("uvc_events_process:UVC_EVENT_STREAMON dev->io=%d\n", dev->io);
 #ifdef ENABLE_BUFFER_TIME_DEBUG
     struct timeval buffer_time;
     gettimeofday(&buffer_time, NULL);
@@ -3697,7 +3697,7 @@ uvc_events_process(struct uvc_device *dev)
         return;
 
     case UVC_EVENT_STREAMOFF:
-        DBG("uvc_events_process:UVC_EVENT_STREAMOFF enter\n");
+        LOG_INFO("uvc_events_process:UVC_EVENT_STREAMOFF enter\n");
 #if USE_RK_AISERVER
         uvc_ipc_event(UVC_IPC_EVENT_STOP, NULL);
         //sleep(1); //make sure rkispp deint
