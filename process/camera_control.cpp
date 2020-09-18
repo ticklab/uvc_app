@@ -873,6 +873,24 @@ extern "C" void camera_control_set_zoom(int val)
 #endif
 }
 
+extern "C" void camera_control_set_pan(int val)
+{
+  LOG_INFO("set_pan:%d\n",val);
+  //todo
+}
+
+extern "C" void camera_control_set_tilt(int val)
+{
+  LOG_INFO("set_tilt:%d\n",val);
+  //todo
+}
+
+extern "C" void camera_control_set_roll(int val)
+{
+  LOG_INFO("set_roll:%d\n",val);
+  //todo
+}
+
 extern "C" void camera_control_deinit()
 {
     LOG_INFO("%s!start\n", __func__);

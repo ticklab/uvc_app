@@ -165,7 +165,7 @@ struct uvc_device
     struct uvc_request_data request_error_code;
     unsigned int brightness_val;
     unsigned short contrast_val;
-    unsigned int hue_val;
+    int hue_val;
     unsigned int saturation_val;
     unsigned int sharpness_val;
     unsigned int gamma_val;
@@ -173,6 +173,9 @@ struct uvc_device
     unsigned int gain_val;
     unsigned int hue_auto_val;
     unsigned int zoom_val;
+    int pan_val;
+    int tilt_val;
+    short roll_val;
     unsigned char power_line_frequency_val;
     unsigned char ex_sn_data[MAX_UVC_REQUEST_DATA_LENGTH];
     unsigned char ex_ip_data[MAX_UVC_REQUEST_DATA_LENGTH];//

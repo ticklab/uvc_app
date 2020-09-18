@@ -151,6 +151,18 @@ static int silent = 1;
 #define CT_ZOOM_ABSOLUTE_CONTROL_STEP_SIZE       1
 #define CT_ZOOM_ABSOLUTE_CONTROL_DEFAULT_VAL     10
 
+//PANTILT
+#define CT_PANTILT_ABSOLUTE_CONTROL_MIN_VAL         -36000
+#define CT_PANTILT_ABSOLUTE_CONTROL_MAX_VAL          36000
+#define CT_PANTILT_ABSOLUTE_CONTROL_STEP_SIZE        3600
+#define CT_PANTILT_ABSOLUTE_CONTROL_DEFAULT_VAL      0
+
+//ROLL
+#define CT_ROLL_ABSOLUTE_CONTROL_MIN_VAL         -180
+#define CT_ROLL_ABSOLUTE_CONTROL_MAX_VAL         180
+#define CT_ROLL_ABSOLUTE_CONTROL_STEP_SIZE        1
+#define CT_ROLL_ABSOLUTE_CONTROL_DEFAULT_VAL      0
+
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MIN_VAL         10
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MAX_VAL         50
 #define PU_DIGITAL_MULTIPLIER_CONTROL_STEP_SIZE       1
@@ -1061,6 +1073,12 @@ uvc_open(struct uvc_device **uvc, char *devname)
 
     //zoom
     dev->zoom_val = CT_ZOOM_ABSOLUTE_CONTROL_DEFAULT_VAL;
+    //pan
+    dev->pan_val = CT_PANTILT_ABSOLUTE_CONTROL_DEFAULT_VAL;
+    //tilt
+    dev->tilt_val = CT_PANTILT_ABSOLUTE_CONTROL_DEFAULT_VAL;
+    //roll
+    dev->roll_val = CT_ROLL_ABSOLUTE_CONTROL_DEFAULT_VAL;
 
     char *ver = XU_CAMERA_VERSION_DEFAULT;
     strncpy(dev->ex_sn_data, ver, MAX_UVC_REQUEST_DATA_LENGTH);
@@ -1875,8 +1893,151 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_RES:
-                resp->data[0] = 1;//must be 1
+                resp->data[0] = CT_ZOOM_ABSOLUTE_CONTROL_STEP_SIZE;//must be 1
                 resp->length = 2;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
+        case UVC_CT_PANTILT_ABSOLUTE_CONTROL:
+            switch (req)
+            {
+                LOG_INFO("UVC_CT_PANTILT_ABSOLUTE_CONTROL:req=%d len:%d\n", req,len);
+            case UVC_SET_CUR:
+                //resp->data[0] = 0x0;
+                //resp->data[4] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+               {
+                int a = CT_PANTILT_ABSOLUTE_CONTROL_MIN_VAL;
+                int b = CT_PANTILT_ABSOLUTE_CONTROL_MIN_VAL;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                memcpy(&resp->data, &a,4);
+                memcpy(&resp->data[4], &b,4);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+               }
+            case UVC_GET_MAX:
+               {
+                int c = CT_PANTILT_ABSOLUTE_CONTROL_MAX_VAL;
+                int d = CT_PANTILT_ABSOLUTE_CONTROL_MAX_VAL;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                memcpy(&resp->data, &c,4);
+                memcpy(&resp->data[4], &d,4);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+               }
+            case UVC_GET_CUR:
+               {
+                resp->length = len;
+                memset(resp->data, 0, sizeof(resp->data));
+                memcpy(&resp->data[0], &dev->pan_val,4);
+                memcpy(&resp->data[4], &dev->tilt_val,4);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+               }
+            case UVC_GET_INFO:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x03;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+               {
+                int e = CT_PANTILT_ABSOLUTE_CONTROL_STEP_SIZE;
+                int f = CT_PANTILT_ABSOLUTE_CONTROL_STEP_SIZE;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                memcpy(&resp->data, &e,4);
+                memcpy(&resp->data[4], &f,4);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+               }
+            case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
+        case UVC_CT_ROLL_ABSOLUTE_CONTROL:
+            switch (req)
+            {
+                LOG_INFO("UVC_CT_ROLL_ABSOLUTE_CONTROL:req=%d len:%d\n", req,len);
+            case UVC_SET_CUR:
+                //resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+               {
+                short min = CT_ROLL_ABSOLUTE_CONTROL_MIN_VAL;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                memcpy(&resp->data, &min,
+                        resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1; 
+                break;
+               }
+            case UVC_GET_MAX:
+               {
+                short max = CT_ROLL_ABSOLUTE_CONTROL_MAX_VAL;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len; 
+                memcpy(&resp->data, &max,
+                        resp->length);
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+               }
+            case UVC_GET_CUR:
+                resp->length = len;
+                memcpy(&resp->data[0], &dev->roll_val,
+                       resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = CT_ROLL_ABSOLUTE_CONTROL_STEP_SIZE;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
@@ -3085,7 +3246,6 @@ uvc_events_process_control_data(struct uvc_device *dev,
                                 uint8_t cs, uint8_t entity_id,
                                 struct uvc_request_data *data)
 {
-
     unsigned int *val = (unsigned int *)data->data;
     LOG_INFO(" data = %d, length = %d  , current_cs = %d\n", *val , data->length, dev->cs);
     switch (entity_id)
@@ -3101,6 +3261,38 @@ uvc_events_process_control_data(struct uvc_device *dev,
 #ifdef CAMERA_CONTROL
                 camera_control_set_zoom(dev->zoom_val);
 #endif
+            }
+            break;
+        case UVC_CT_ROLL_ABSOLUTE_CONTROL:
+            if (sizeof(dev->roll_val) >= data->length)
+            {
+                memcpy(&dev->roll_val, data->data, data->length);
+                LOG_INFO("set roll :%d \n", dev->roll_val);
+#ifdef CAMERA_CONTROL
+                camera_control_set_roll(dev->roll_val);
+#endif
+            }
+            break;
+        case UVC_CT_PANTILT_ABSOLUTE_CONTROL:
+            if (sizeof(dev->pan_val) >= (data->length/2)) {
+              int old_pan_val = dev->pan_val;
+              memcpy(&dev->pan_val, &data->data, data->length/2);
+              if (old_pan_val != dev->pan_val) {
+                LOG_INFO("set pan :%d \n", dev->pan_val/CT_PANTILT_ABSOLUTE_CONTROL_STEP_SIZE);
+#ifdef CAMERA_CONTROL
+                camera_control_set_pan(dev->pan_val/CT_PANTILT_ABSOLUTE_CONTROL_STEP_SIZE);
+#endif
+              }
+            }
+            if (sizeof(dev->tilt_val) >= (data->length/2)) {
+               int old_tilt_val = dev->tilt_val;
+               memcpy(&dev->tilt_val, &data->data[4], data->length/2);
+               if (old_tilt_val != dev->tilt_val) {
+                 LOG_INFO("set tilt :%d \n", dev->tilt_val/CT_PANTILT_ABSOLUTE_CONTROL_STEP_SIZE);
+#ifdef CAMERA_CONTROL
+                 camera_control_set_tilt(dev->tilt_val/CT_PANTILT_ABSOLUTE_CONTROL_STEP_SIZE);
+#endif
+               }
             }
             break;
         default:
