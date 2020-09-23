@@ -523,6 +523,7 @@ static int _uvc_buffer_init(struct uvc_video *v)
 
     }
     _uvc_video_set_uvc_process(v, true);
+    v->can_exit = true;
 
 exit:
     pthread_mutex_unlock(&v->buffer_mutex);
@@ -598,10 +599,17 @@ void uvc_buffer_deinit(int id)
             }
         }
     }
-    while ( l->uvc_process && !l->can_exit)
+    int wait_cnt = 0;
+    while (l->uvc_process && !l->can_exit)
     {
+        wait_cnt++;
         usleep(1000);
+        if (wait_cnt > 30) {
+          LOG_INFO("uvc_buffer_deinit timeout 30ms,force exit!\n");
+          break;
+        }
     }
+
     pthread_mutex_lock(&mtx_v);
     _uvc_buffer_deinit(l);
     pthread_mutex_unlock(&mtx_v);
@@ -1163,11 +1171,11 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
         usleep(1000);
         v->idle_cnt++;
         pthread_mutex_lock(&mtx_v);
-        if (v->idle_cnt > 3000)//first mpp data maybe delay more than 100ms
+        if (v->idle_cnt > 60)
         {
             if(!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v)) // onece more check it.
             {
-                LOG_INFO("fill buf timeout, abandon this write buf %d\n", v->buffer_s->fd);
+                LOG_INFO("fill buf timeout 60 ms, abandon this write buf %d\n", v->buffer_s->fd);
                 v->buffer_s->abandon = true;
                 uvc_buffer_pop_front(&v->uvc->write);
             }
