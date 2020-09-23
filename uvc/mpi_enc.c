@@ -638,7 +638,8 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         }
     }
 
-    uvc_buf = uvc_buffer_write_get(uvc_enc.video_id);
+    uvc_user_lock();
+    uvc_buf = uvc_buffer_write_get_nolock(uvc_enc.video_id);
     if (!uvc_buf || uvc_buf->abandon)
     {
         LOG_ERROR("uvc_buffer_write_get failed:%d,%d\n", uvc_buf->abandon, uvc_buf->fd);
@@ -785,7 +786,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
             uvc_buf->size = len;
-            uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
+            uvc_buffer_read_set_nolock(uvc_enc.video_id, uvc_buf);
 #else
             void *ptr = mpp_packet_get_pos(packet);
 #endif
@@ -840,6 +841,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     }//9195 us for 1080p
 
 RET:
+    uvc_user_unlock();
 #ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     pthread_mutex_lock(&p->cond_mutex);
     if (p->destory_info.unfinished == false)

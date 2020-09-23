@@ -358,6 +358,11 @@ MPP_RET mpp_enc_cfg_get_u64(MppEncCfg cfg, const char *name, RK_U64 *val);
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
 struct uvc_buffer *uvc_buffer_write_get(int id);
 void uvc_buffer_read_set(int id, struct uvc_buffer *buf);
+void uvc_user_lock();
+void uvc_user_unlock();
+struct uvc_buffer *uvc_buffer_write_get_nolock(int id);
+void uvc_buffer_read_set_nolock(int id, struct uvc_buffer *buf);
+
 #endif
 #ifdef __cplusplus
 }
