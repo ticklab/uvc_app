@@ -188,6 +188,24 @@ extern "C" int video_record_set_hue_auto(int hue_auto) {
    json_object_put(js);
    return 0;
 }
+
+extern "C" int video_record_set_frequency_mode(int mode) {
+   char *table = TABLE_IMAGE_VIDEO_ADJUSTMEN;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   if (mode == 1)
+     json_object_object_add(js, "sPowerLineFrequencyMode", json_object_new_string("PAL(50HZ)"));
+   else
+     json_object_object_add(js, "sPowerLineFrequencyMode", json_object_new_string("PAL(60HZ)"));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
 #endif
 
 extern "C" void camera_pu_control_init(int type,int def,int min,int max)
@@ -213,7 +231,7 @@ extern "C" int camera_pu_control_set(int type, int value)
             video_record_set_contrast(value);
             break;
         case UVC_PU_HUE_CONTROL:
-            video_record_set_hue(value);
+            //video_record_set_hue(value);
             break;
         case UVC_PU_SATURATION_CONTROL:
             video_record_set_staturation(value);
@@ -222,16 +240,19 @@ extern "C" int camera_pu_control_set(int type, int value)
             video_record_set_sharpness(value);
             break;
         case UVC_PU_GAMMA_CONTROL:
-            video_record_set_gamma(value);
+            //video_record_set_gamma(value);
             break;
         case UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL:
-            video_record_set_white_balance_temperature(value);
+            //video_record_set_white_balance_temperature(value);
             break;
         case UVC_PU_GAIN_CONTROL:
-            video_record_set_gain(value);
+            //video_record_set_gain(value);
             break;
         case UVC_PU_HUE_AUTO_CONTROL:
-            video_record_set_hue_auto(value);
+            //video_record_set_hue_auto(value);
+            break;
+        case UVC_PU_POWER_LINE_FREQUENCY_CONTROL:
+            video_record_set_frequency_mode(value);
             break;
 #endif
       default:

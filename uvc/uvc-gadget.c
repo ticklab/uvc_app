@@ -121,9 +121,9 @@ static int silent = 1;
 #define PU_SATURATION_DEFAULT_VAL   50
 
 #define PU_SHARPNESS_MIN_VAL        0
-#define PU_SHARPNESS_MAX_VAL        5
+#define PU_SHARPNESS_MAX_VAL        100
 #define PU_SHARPNESS_STEP_SIZE      1
-#define PU_SHARPNESS_DEFAULT_VAL    2
+#define PU_SHARPNESS_DEFAULT_VAL    50
 
 #define PU_GAMMA_MIN_VAL            1
 #define PU_GAMMA_MAX_VAL            500
