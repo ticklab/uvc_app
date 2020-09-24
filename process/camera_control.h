@@ -54,6 +54,15 @@ extern "C"
                                             void *extra_data, size_t extra_size);
     void camera_control_set_eptz(int val);
 
+#define CAMERA_CONTROL_PAN_TILT_ZOOM_DEBUG 1
+#if CAMERA_CONTROL_PAN_TILT_ZOOM_DEBUG
+#define CAMERA_CONTROL_PAN_LEFT_DEBUG_CHECK "/tmp/uvc_pan_left"
+#define CAMERA_CONTROL_PAN_RIGHT_DEBUG_CHECK "/tmp/uvc_pan_right"
+#define CAMERA_CONTROL_PAN_RANDOM_DEBUG_CHECK "/tmp/uvc_pan_random"
+#define CAMERA_CONTROL_TILT_RANDOM_DEBUG_CHECK "/tmp/uvc_tilt_random"
+#define CAMERA_CONTROL_ZOOM_RANDOM_DEBUG_CHECK "/tmp/uvc_zoom_random"
+#endif
+
 #ifdef __cplusplus
 }
 #endif

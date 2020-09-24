@@ -426,7 +426,37 @@ static void *uvc_camera(void *arg)
     stream->uvc_graph->openUVC();
     stream->uvc_graph->enableEPTZ(needEPTZ);
     while (stream->pthread_run) {
+#if CAMERA_CONTROL_PAN_TILT_ZOOM_DEBUG
+        char check_test[20] = {0};
+        int test_val;
+        sleep(1);
+        if (!access(CAMERA_CONTROL_PAN_LEFT_DEBUG_CHECK, 0)) {
+            sprintf(check_test, "rm %s", CAMERA_CONTROL_PAN_LEFT_DEBUG_CHECK);
+            system(check_test);
+            camera_control_set_pan(-1);
+        } else if (!access(CAMERA_CONTROL_PAN_RIGHT_DEBUG_CHECK, 0)) {
+            sprintf(check_test, "rm %s", CAMERA_CONTROL_PAN_RIGHT_DEBUG_CHECK);
+            system(check_test);
+            camera_control_set_pan(1);
+        } else if (!access(CAMERA_CONTROL_PAN_RANDOM_DEBUG_CHECK, 0)) {
+            sprintf(check_test, "rm %s", CAMERA_CONTROL_PAN_RANDOM_DEBUG_CHECK);
+            system(check_test);
+            test_val = (random() % 21) - 10;
+            camera_control_set_pan(test_val);
+        } else if (!access(CAMERA_CONTROL_TILT_RANDOM_DEBUG_CHECK, 0)) {
+            sprintf(check_test, "rm %s", CAMERA_CONTROL_TILT_RANDOM_DEBUG_CHECK);
+            system(check_test);
+            test_val = (random() % 21) - 10;
+            camera_control_set_tilt(test_val);
+        } else if (!access(CAMERA_CONTROL_ZOOM_RANDOM_DEBUG_CHECK, 0)) {
+            sprintf(check_test, "rm %s", CAMERA_CONTROL_ZOOM_RANDOM_DEBUG_CHECK);
+            system(check_test);
+            test_val = ((random() % 5) + 1) * 10;
+            camera_control_set_zoom(test_val);
+        }
+#else
         camera_control_wait(stream);
+#endif
     }
     goto record_exit;
 #endif
@@ -833,6 +863,7 @@ extern "C" void camera_control_set_eptz(int val){
 
 extern "C" void camera_control_set_zoom(int val)
 {
+    LOG_INFO("set_zoom:%d\n",val);
 #if USE_ROCKIT
     if (stream_list) {
        if (stream_list->uvc_graph) {
@@ -851,20 +882,33 @@ extern "C" void camera_control_set_zoom(int val)
 
 extern "C" void camera_control_set_pan(int val)
 {
-  LOG_INFO("set_pan:%d\n",val);
-  //todo
+    LOG_INFO("set_pan:%d\n",val);
+#if USE_ROCKIT
+    if (stream_list) {
+        if (stream_list->uvc_graph) {
+            stream_list->uvc_graph->setEptz(RT_EPTZ_PAN, val);
+        }
+    }
+#endif
 }
 
 extern "C" void camera_control_set_tilt(int val)
 {
-  LOG_INFO("set_tilt:%d\n",val);
-  //todo
+    LOG_INFO("set_tilt:%d\n",val);
+#if USE_ROCKIT
+    if (stream_list) {
+        if (stream_list->uvc_graph) {
+            stream_list->uvc_graph->setEptz(RT_EPTZ_TILT, val);
+        }
+    }
+#endif
+
 }
 
 extern "C" void camera_control_set_roll(int val)
 {
-  LOG_INFO("set_roll:%d\n",val);
-  //todo
+    LOG_INFO("set_roll:%d\n",val);
+    //todo
 }
 
 extern "C" void camera_control_deinit()
