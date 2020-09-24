@@ -55,7 +55,11 @@
 #include "camera_pu_control.h"
 #include "camera_control.h"
 #endif
+#if USE_RK_AISERVER
 #include "uvc_ipc_ext.h"
+#endif
+extern void camera_control_set_eptz(int val);
+extern void camera_control_set_zoom(int val);
 
 /* Enable debug prints. */
 //#define ENABLE_BUFFER_DEBUG

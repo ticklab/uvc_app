@@ -76,6 +76,16 @@
 #include <rockit/RTUVCGraph.h>
 #include <rockit/RTMediaBuffer.h>
 #endif
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+extern void uvc_read_camera_buffer(void *cam_buf, struct MPP_ENC_INFO *info,
+                                   void *extra_data, size_t extra_size);
+#ifdef __cplusplus
+}
+#endif
 
 #if USE_RK_AISERVER
 #include "uvc_ipc_ext.h"
@@ -92,6 +102,7 @@ struct Camera_Stream
     pthread_cond_t record_cond;
 #if USE_ROCKIT
     RTUVCGraph *uvc_graph;
+    volatile int pthread_run;
 #endif
 #if USE_RKMEDIA
     std::shared_ptr<easymedia::Flow> input;
@@ -225,7 +236,9 @@ bool do_uvc(easymedia::Flow *f, easymedia::MediaBufferVector &input_vector)
     }
     return true;
 }
+#endif
 
+#if (USE_RKMEDIA || USE_ROCKIT)
 static void camera_control_wait(struct Camera_Stream *stream)
 {
     pthread_mutex_lock(&stream->record_mutex);
@@ -233,7 +246,6 @@ static void camera_control_wait(struct Camera_Stream *stream)
         pthread_cond_wait(&stream->record_cond, &stream->record_mutex);
     pthread_mutex_unlock(&stream->record_mutex);
 }
-
 #endif
 
 #if USE_ROCKIT
@@ -312,9 +324,10 @@ void video_record_signal(struct Camera_Stream *stream)
 {
     pthread_mutex_lock(&stream->record_mutex);
 #if USE_ROCKIT
-    stream->uvc_graph->stop();
+    stream->uvc_graph->closeUVC();
+    LOG_INFO("closeUVC ok\n");
 #endif
-#if USE_RKMEDIA
+#if USE_ROCKIT || USE_RKMEDIA
     stream->pthread_run = 0;
     pthread_cond_signal(&stream->record_cond);
 #endif
@@ -378,8 +391,11 @@ static void *uvc_camera(void *arg)
     char* enableEptz = getenv("ENABLE_EPTZ");
     printf("enableEptz=%s", enableEptz);
     if (enableEptz){
-      printf("%s :uvc eptz use evn setting \n",__FUNCTION__);
-      needEPTZ = atoi(enableEptz);
+        LOG_INFO("uvc eptz use evn setting \n");
+        needEPTZ = atoi(enableEptz);
+    } else if (stream->eptz){
+        LOG_INFO("uvc eptz use xu setting:%d\n", stream->eptz);
+        needEPTZ = stream->eptz;
     }
     int need_full_range = 1;
     char* full_range = getenv("ENABLE_FULL_RANGE");
@@ -389,47 +405,11 @@ static void *uvc_camera(void *arg)
     }
 
     if (needEPTZ) {
-        eptzWidth = stream->width;
-        eptzHeight = stream->height;
-        if (eptzWidth > 1920 || eptzHeight > 1080) {
-            needEPTZ = 0;
-            printf("%s :needEPTZ, not support this width(>1920) and height(>1080) \n");
-        } else if (eptzWidth == 1920) {
-            char* max_width = getenv("CAMERA_MAX_WIDTH");
-            char* max_height = getenv("CAMERA_MAX_HEIGHT");
-	    if(max_width && max_height){
-               int tmp_width = atoi(max_width);
-               int tmp_height = atoi(max_height);
-               LOG_INFO("needEPTZ, camera max resolutio [%d %d] \n", tmp_width, tmp_height);
-               if(tmp_width > 1920 && tmp_height > 1080){
-                    stream->width = tmp_width;
-                    stream->height = tmp_height;
-               }else{
-                    needEPTZ = 0;
-                    LOG_ERROR("needEPTZ, but camera max resolutio not support! error \n");
-               }
-            }else{
-               stream->width = 2560;
-               stream->height = 1440;
-            }
-        } else if(eptzWidth <= 1280 && eptzWidth > 120) {
-            stream->width = eptzWidth * 1.5;
-            stream->height = eptzHeight * 1.5;
-        } else {
-            needEPTZ = 0;
-            printf("%s :needEPTZ, match fail \n");
-        }
-        if(needEPTZ)
-            printf("%s :needEPTZ uvc width:%d,height:%d \n",
-                    __func__, stream->width, stream->height);
-    }
-
-    if (needEPTZ) {
         stream->uvc_graph = new RTUVCGraph("eptz");
     } else {
         stream->uvc_graph = new RTUVCGraph("uvc");
     }
-    stream->uvc_graph->enableEPTZ(needEPTZ);
+
     stream->uvc_graph->observeUVCOutputStream(&emitted_buffer_to_uvc);
     RtMetaData cameraParams;
     cameraParams.setInt32("opt_width",        stream->width);
@@ -442,22 +422,13 @@ static void *uvc_camera(void *arg)
        cameraParams.setInt32("opt_quantization", V4L2_QUANTIZATION_LIM_RANGE);
     }
     stream->uvc_graph->updateCameraParams(&cameraParams);
-    if (needEPTZ) {
-        RtMetaData eptzParams;
-        int32_t virWidth = RT_ALIGN(eptzWidth, 16);
-        int32_t virHeight = RT_ALIGN(eptzHeight, 16);
-        eptzParams.setInt32("opt_width",       stream->width);
-        eptzParams.setInt32("opt_height",      stream->height);
-        eptzParams.setInt32("opt_clip_width",  eptzWidth);
-        eptzParams.setInt32("opt_clip_height", eptzHeight);
-        eptzParams.setInt32("node_buff_size",  virWidth * virHeight * 2);
-        stream->uvc_graph->updateEPTZParams(&eptzParams);
-    }
-
     stream->uvc_graph->prepare();
-    stream->uvc_graph->start();
-
-    stream->uvc_graph->waitUntilDone();
+    stream->uvc_graph->openUVC();
+    stream->uvc_graph->enableEPTZ(needEPTZ);
+    while (stream->pthread_run) {
+        camera_control_wait(stream);
+    }
+    goto record_exit;
 #endif
 #if USE_RKMEDIA
     int needEPTZ = 0;
@@ -751,6 +722,11 @@ extern "C" int camera_control_start(int id, int width, int height, int fps, int 
     }
     pthread_mutex_init(&stream->record_mutex, NULL);
     pthread_cond_init(&stream->record_cond, NULL);
+
+#if USE_ROCKIT
+    stream->pthread_run = 1;
+#endif
+
 #if USE_RKMEDIA
     stream->pthread_run = 1;
     stream->input = NULL;
