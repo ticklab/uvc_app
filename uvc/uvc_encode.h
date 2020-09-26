@@ -50,6 +50,7 @@ struct uvc_encode
     MpiEncTestData *mpi_data;
     void *extra_data;
     size_t extra_size;
+    long long int loss_frm;
 };
 
 int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265);

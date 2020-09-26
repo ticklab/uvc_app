@@ -37,6 +37,7 @@
 #include <ctype.h>
 #include "uvc_log.h"
 #include "mpi_enc.h"
+#include "yuv.h"
 
 #if RK_MPP_RANGE_DEBUG_ON
 static char *strtrimr(char *pstr)
@@ -86,6 +87,7 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h2
     e->width = width;
     e->height = height;
     e->fcc = fcc;
+    e->loss_frm = 0;
     mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc, h265);
     //mpi_enc_cmd_config_mjpg(&e->mpi_cmd, width, height);
     if(fcc == V4L2_PIX_FMT_YUYV)
@@ -113,6 +115,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
     int width, height;
     int jpeg_quant;
     void *hnd = NULL;
+
 #if RK_MPP_ENC_TEST_NATIVE
     fcc = TEST_ENC_TPYE;
 #else
@@ -127,94 +130,160 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
 #endif
 
 #if RK_MPP_RANGE_DEBUG_ON
-    if (!access(RK_MPP_RANGE_DEBUG_IN_CHECK, 0))
+    if(fcc != V4L2_PIX_FMT_YUYV)
     {
-        if (!e->mpi_data->fp_range_file)
+        if (!access(RK_MPP_RANGE_DEBUG_IN_CHECK, 0))
         {
-            e->mpi_data->fp_range_path = fopen(RK_MPP_RANGE_DEBUG_IN_CHECK, "r+b");
-            e->mpi_data->range_path = (char *)calloc(1, RANGE_PATH_MAX_LEN);
-            fgets(e->mpi_data->range_path, RANGE_PATH_MAX_LEN, e->mpi_data->fp_range_path);
-            e->mpi_data->range_path = strtrim(e->mpi_data->range_path);
-            e->mpi_data->range_path = strrmlb(e->mpi_data->range_path);
-            e->mpi_data->fp_range_file = fopen(e->mpi_data->range_path, "r+b");
-            fclose(e->mpi_data->fp_range_path);
-            e->mpi_data->fp_range_path = NULL;
             if (!e->mpi_data->fp_range_file)
             {
-                LOG_ERROR("error:no such fp_range file:%s exit\n", e->mpi_data->range_path);
+                e->mpi_data->fp_range_path = fopen(RK_MPP_RANGE_DEBUG_IN_CHECK, "r+b");
+                e->mpi_data->range_path = (char *)calloc(1, RANGE_PATH_MAX_LEN);
+                fgets(e->mpi_data->range_path, RANGE_PATH_MAX_LEN, e->mpi_data->fp_range_path);
+                e->mpi_data->range_path = strtrim(e->mpi_data->range_path);
+                e->mpi_data->range_path = strrmlb(e->mpi_data->range_path);
+                e->mpi_data->fp_range_file = fopen(e->mpi_data->range_path, "r+b");
+                fclose(e->mpi_data->fp_range_path);
+                e->mpi_data->fp_range_path = NULL;
+                if (!e->mpi_data->fp_range_file)
+                {
+                    LOG_ERROR("error:no such fp_range file:%s exit\n", e->mpi_data->range_path);
+                }
+                else
+                {
+                    LOG_INFO("open fp_range file:%s ok, size=%d\n", e->mpi_data->range_path, info->size);
+                    while (ret != info->size)
+                    {
+                        ret += fread(virt, 1, info->size - ret, e->mpi_data->fp_range_file);
+                        if (feof(e->mpi_data->fp_range_file))
+                            rewind(e->mpi_data->fp_range_file);
+                    }
+                    if (strstr(e->mpi_data->range_path, "full"))
+                    {
+                        ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
+                        LOG_INFO("change to full range\n");
+                    }
+                    else
+                    {
+                        ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
+                        LOG_INFO("change to limit range\n");
+                    }
+                    if (ret)
+                        LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
+                    ret = e->mpi_data->mpi->control(e->mpi_data->ctx, MPP_ENC_SET_CFG, e->mpi_data->cfg);
+                    if (ret)
+                        LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
+                }
+                free(e->mpi_data->range_path);
             }
             else
             {
-                LOG_INFO("open fp_range file:%s ok, size=%d\n", e->mpi_data->range_path, info->size);
                 while (ret != info->size)
                 {
                     ret += fread(virt, 1, info->size - ret, e->mpi_data->fp_range_file);
                     if (feof(e->mpi_data->fp_range_file))
                         rewind(e->mpi_data->fp_range_file);
                 }
-                if (strstr(e->mpi_data->range_path, "full"))
-                {
-                    ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_JPEG);
-                    LOG_INFO("change to full range\n");
-                }
-                else
-                {
-                    ret = mpp_enc_cfg_set_s32(e->mpi_data->cfg, "prep:range", MPP_FRAME_RANGE_UNSPECIFIED);
-                    LOG_INFO("change to limit range\n");
-                }
-                if (ret)
-                    LOG_ERROR("mpi control enc set prep:range failed ret %d\n", ret);
-                ret = e->mpi_data->mpi->control(e->mpi_data->ctx, MPP_ENC_SET_CFG, e->mpi_data->cfg);
-                if (ret)
-                    LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
             }
-            free(e->mpi_data->range_path);
         }
-        else
+        else if (e->mpi_data->fp_range_file)
         {
-            while (ret != info->size)
-            {
-                ret += fread(virt, 1, info->size - ret, e->mpi_data->fp_range_file);
-                if (feof(e->mpi_data->fp_range_file))
-                    rewind(e->mpi_data->fp_range_file);
-            }
+            fclose(e->mpi_data->fp_range_file);
+            e->mpi_data->fp_range_file = NULL;
+            LOG_INFO("debug fp_range file close\n");
         }
-    }
-    else if (e->mpi_data->fp_range_file)
-    {
-        fclose(e->mpi_data->fp_range_file);
-        e->mpi_data->fp_range_file = NULL;
-        LOG_INFO("debug fp_range file close\n");
     }
 #endif
 
-    if (e->mpi_data->fp_input)
+    if(fcc != V4L2_PIX_FMT_YUYV)
     {
-        fwrite(virt, 1, info->size, e->mpi_data->fp_input);
-#if RK_MPP_DYNAMIC_DEBUG_ON
-        if (access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
-        {
-            fclose(e->mpi_data->fp_input);
-            e->mpi_data->fp_input = NULL;
-            LOG_INFO("debug in file close\n");
-        }
-    }
-    else if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
-    {
-        e->mpi_data->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
         if (e->mpi_data->fp_input)
         {
             fwrite(virt, 1, info->size, e->mpi_data->fp_input);
-            LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
+#if RK_MPP_DYNAMIC_DEBUG_ON
+            if (access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
+            {
+                fclose(e->mpi_data->fp_input);
+                e->mpi_data->fp_input = NULL;
+                LOG_INFO("debug in file close\n");
+            }
         }
+        else if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
+        {
+            e->mpi_data->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
+            if (e->mpi_data->fp_input)
+            {
+                fwrite(virt, 1, info->size, e->mpi_data->fp_input);
+                LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
+            }
 #endif
+        }
     }
-
     switch (fcc)
     {
     case V4L2_PIX_FMT_YUYV:
-        if (virt)
-            uvc_buffer_write(0, NULL, 0, virt, width * height * 2, fcc, e->video_id);
+        if (virt) {
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+           int try_count = 25;
+           bool get_ok = false;
+           while (try_count--)
+           {
+               if ((!uvc_get_user_run_state(e->video_id) || !uvc_buffer_write_enable(e->video_id)))
+               {
+                   usleep(MPP_FRC_WAIT_TIME_US);
+               }
+               else
+               {
+                   get_ok = true;
+                   break;
+               }
+           }
+
+           if (get_ok) {
+               uvc_user_lock();
+               struct uvc_buffer *buffer = uvc_buffer_write_get_nolock(e->video_id);
+               if (!buffer || buffer->abandon)
+               {
+                   LOG_ERROR("uvc_buffer_write_get failed:%d,%d\n", buffer->abandon, buffer->fd);
+                   uvc_user_unlock();
+                   return true;
+               }
+               buffer->pts = info->pts;
+#if UVC_DYNAMIC_DEBUG_USE_TIME
+               if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
+               {
+                   int32_t use_time_us, now_time_us;
+                   struct timespec now_tm = {0, 0};
+                   clock_gettime(CLOCK_MONOTONIC, &now_tm);
+                   now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
+                   use_time_us = now_time_us - buffer->pts;
+#if USE_RK_AISERVER
+                   LOG_INFO("isp->aiserver->ipc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+#endif
+#if USE_ROCKIT
+                   LOG_INFO("isp->rockit->uvc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+#endif
+#if USE_RKMEDIA
+                   LOG_INFO("isp->rkmedia->uvc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+#endif
+               }
+#endif
+
+               NV12_to_YUYV(width, height, virt, buffer->buffer);
+               uvc_buffer_read_set_nolock(e->video_id, buffer);
+               uvc_user_unlock();
+           } else {
+               e->loss_frm ++;
+#if RK_MPP_DYNAMIC_DEBUG_ON
+               if (access(RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK, 0) && (e->loss_frm % 100 == 1)) //no exist and output log
+#endif
+                   LOG_ERROR("not get write buff,read too slow %lld.\"touch %s \" can close debug.\n",
+                              e->loss_frm,
+                              RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK);
+           }
+#else
+               uvc_buffer_write(0, NULL, 0, virt, width * height * 2, fcc, e->video_id);
+#endif
+        }
         break;
     case V4L2_PIX_FMT_MJPEG:
     case V4L2_PIX_FMT_H264:
