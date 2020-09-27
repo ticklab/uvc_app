@@ -48,111 +48,69 @@
 #include "uvc_control.h"
 #include "uvc_log.h"
 
-static bool find_video;
+extern int app_quit;
 
-static void video_uevent(const struct _uevent *event)
+static void handle_uvc_event(struct uevent *uevent)
 {
-    const char dev_name[] = "DEVNAME=";
-    char *tmp = NULL;
-    char *act = event->strs[0] + 7;
-    int i, id;
-
-    for (i = 3; i < event->size; i++) {
-        tmp = event->strs[i];
-        /* search "DEVNAME=" */
-        if (!strncmp(dev_name, tmp, strlen(dev_name)))
-            break;
-    }
-
-    if (i < event->size) {
-        tmp = strchr(tmp, '=') + 1;
-
-        if (sscanf((char *)&tmp[strlen("video")], "%d", &id) < 1) {
-            LOG_ERROR("failed to parse video id\n");
-            return;
-        }
-
-        if (!strcmp(act, "add")) {
-            LOG_INFO("add video...\n");
-            uvc_control_signal();
-            find_video = true;
-            //video_record_addvideo(id, 1920, 1080, 30);
-        } else {
-            LOG_INFO("delete video...\n");
-            find_video = false;
-            //video_record_deletevideo(id);
-        }
-    }
-}
-
-int read_sysfs_string(const char *filename, char *str)
-{
-	int ret = 0;
-	FILE  *sysfsfp;
-
-	sysfsfp = fopen(filename, "r");
-	if (!sysfsfp) {
-		ret = -errno;
-		goto error_free;
-	}
-
-	errno = 0;
-	if (fscanf(sysfsfp, "%s\n", str) != 1) {
-		ret = errno ? -errno : -ENODATA;
-		if (fclose(sysfsfp))
-			perror("read_sysfs_string(): Failed to close dir");
-
-		goto error_free;
-	}
-    LOG_INFO("read_sysfs_string:file:%s,str:%s\n",filename,str);
-	if (fclose(sysfsfp))
-		ret = -errno;
-
-error_free:
-	return ret;
-}
-
-/*
- * e.g uevent info
- * ACTION=change
- * DEVPATH=/devices/11050000.i2c/i2c-0/0-0012/cvr_uevent/gsensor
- * SUBSYSTEM=cvr_uevent
- * CVR_DEV_NAME=gsensor
- * CVR_DEV_TYPE=2
- */
-static const char udc_path[] = {"/sys/devices/virtual/android_usb/android0/state"};
-
-static void parse_event(const struct _uevent *event)
-{
-    char *sysfs = NULL;
-    char tmp[64];
-    int ret;
-
-    if (event->size <= 0)
+    if (strcmp(uevent->subsystem,"android_usb"))
         return;
 
-    sysfs = event->strs[2] + 10;
-    if (!strcmp(sysfs, "video4linux")) {
-        video_uevent(event);
-    } else if (!strcmp(sysfs, "udc")) {
-        ret = read_sysfs_string(udc_path, tmp);
-        if (ret < 0) {
-            LOG_ERROR("[ERR] failed to get sysfs\n");
-        }
-        if (memcmp(tmp, "CONFIGURED", sizeof("CONFIGURED")))
-            uvc_control_signal();
+    if (!strcmp(uevent->usb_state,"DISCONNECTED")) {
+        LOG_INFO("udc disconnected\n");
+        app_quit = 1;
+    } else if (!strcmp(uevent->usb_state,"CONNECTED")) {
+        LOG_INFO("udc connected\n");
+    } else if (!strcmp(uevent->usb_state,"CONFIGURED")) {
+        LOG_INFO("udc configured\n");
+    } else {
+        LOG_INFO("unknow usb event\n");
     }
+}
+
+static void parse_event(const char *msg, struct uevent *uevent)
+{
+    uevent->action = "";
+    uevent->path = "";
+    uevent->subsystem = "";
+    uevent->usb_state = "";
+    uevent->device_name = "";
+
+    while(*msg) {
+        if(!strncmp(msg, "ACTION=", 7)) {
+            msg += 7;
+            uevent->action = msg;
+        } else if(!strncmp(msg, "DEVPATH=", 8)) {
+            msg += 8;
+            uevent->path = msg;
+        } else if(!strncmp(msg, "SUBSYSTEM=", 10)) {
+            msg += 10;
+            uevent->subsystem = msg;
+        } else if(!strncmp(msg, "USB_STATE=", 10)) {
+            msg += 10;
+            uevent->usb_state = msg;
+        } else if(!strncmp(msg, "DEVNAME=", 8)) {
+            msg += 8;
+            uevent->device_name = msg;
+        }
+        /* advance to after the next \0 */
+        while(*msg++)
+            ;
+    }
+
+    LOG_INFO("event { '%s', '%s', '%s', '%s', '%s' }\n",
+         uevent->action, uevent->path, uevent->subsystem, uevent->usb_state, uevent->device_name);
+    handle_uvc_event(uevent);
 }
 
 static void *event_monitor_thread(void *arg)
 {
     int sockfd;
     int i, j, len;
-    char buf[512];
+    char buf[1024 + 2];
     struct iovec iov;
     struct msghdr msg;
     struct sockaddr_nl sa;
-    struct _uevent event;
+    struct uevent uevent;
     uint32_t flags = *(uint32_t *)arg;
 
     prctl(PR_SET_NAME, "event_monitor", 0, 0, 0);
@@ -180,25 +138,17 @@ static void *event_monitor_thread(void *arg)
         goto err_event_monitor;
     }
 
-    find_video = false;
     while (1) {
-        event.size = 0;
         len = recvmsg(sockfd, &msg, 0);
         if (len < 0) {
             LOG_ERROR("receive error\n");
         } else if (len < 32 || len > sizeof(buf)) {
             LOG_INFO("invalid message");
         } else {
-            for (i = 0, j = 0; i < len; i++) {
-                if (*(buf + i) == '\0' && (i + 1) != len) {
-                    event.strs[j++] = buf + i + 1;
-                    event.size = j;
-                }
-            }
+            buf[len] = '\0';
+            buf[len + 1] = '\0';
+            parse_event(buf, &uevent);
         }
-        parse_event(&event);
-        if ((flags & UVC_CONTROL_LOOP_ONCE) && find_video)
-            break;
     }
 
 err_event_monitor:
@@ -212,4 +162,3 @@ int uevent_monitor_run(uint32_t flags)
 
     return pthread_create(&tid, NULL, event_monitor_thread, &flags);
 }
-

@@ -37,9 +37,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-struct _uevent {
-    char *strs[30];
-    int size;
+struct uevent {
+    const char *action;
+    const char *path;
+    const char *subsystem;
+    const char *usb_state;
+    const char *device_name;
 };
 
 int uevent_monitor_run(uint32_t flags);
