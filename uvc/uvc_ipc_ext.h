@@ -32,6 +32,7 @@ struct CAMERA_INFO
 };
 
 extern void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data);
+extern void uvc_ipc_reconnect(void);
 
 
 #ifdef __cplusplus

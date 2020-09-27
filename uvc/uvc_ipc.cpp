@@ -50,7 +50,7 @@ extern "C" void uvc_ipc_reinit()
 extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
 {
 //    LOG_INFO("enter uvc_ipc_event event:%s\n", shm_meg_name[event - 1].c_str());
-    //pthread_mutex_lock(&uvc_ipc_info.mutex);
+    pthread_mutex_lock(&uvc_ipc_info.mutex);
     if (uvc_ipc_info.start == false) //now only start onece
     {
         uvc_ipc_init();
@@ -127,10 +127,25 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
         LOG_INFO("no support such uvc_ipc_event event:%d\n", event);
         break;
     }
-//    pthread_mutex_unlock(&uvc_ipc_info.mutex);
+    pthread_mutex_unlock(&uvc_ipc_info.mutex);
     if (event != UVC_IPC_EVENT_RET_TRANSPORT_BUF)
         LOG_INFO("exit uvc_ipc_event event:%s\n", shm_meg_name[event - 1].c_str());
 
+}
+
+extern "C" void uvc_ipc_reconnect(void)//(struct UVC_IPC_INFO *info)
+{
+    if (uvc_ipc_info.shm_control && uvc_ipc_info.stop == false) {
+        LOG_INFO("aiserver died, uvc reconnect to aiserver and send last info\n");
+        uvc_ipc_info.shm_control->stopRecvMessage(); //clear the recv data
+        uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_STOP, NULL);
+        uvc_ipc_info.shm_control->ShmUVCDrmRelease();
+        uvc_ipc_info.shm_control->startRecvMessage();
+        uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_CONFIG_CAMERA, &uvc_ipc_info.camera);
+        uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_START, NULL);
+    } else {
+        LOG_INFO("aiserver died, uvc status is stop,no need do anything\n");
+    }
 }
 
 void ProcessRecvUVCMessage(void *opaque)
@@ -514,7 +529,8 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
 #if UVC_IPC_DYNAMIC_DEBUG_ON
     recv_state = UVC_IPC_STATE_RECV_ENC_EXIT;
 #endif
-    uvc_ipc_event(UVC_IPC_EVENT_RET_TRANSPORT_BUF, (void *)&send_info);
+    //uvc_ipc_event(UVC_IPC_EVENT_RET_TRANSPORT_BUF, (void *)&send_info); //not call uvc_ipc_event here,it will be dead lock
+    uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_TRANSPORT_BUF, (void *)&send_info);
 #if UVC_IPC_DYNAMIC_DEBUG_ON
     recv_state = UVC_IPC_STATE_RECV_EXIT;
 #endif
@@ -568,6 +584,7 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         message.SerializeToString(&sendbuf);
         message.ParseFromString(sendbuf);
         LOG_INFO("send uvc eptz:%d \n", *enable);
+        uvc_ipc_info.enable_eptz = *enable;
     }
     break;
     case MSG_UVC_SET_ZOOM:
@@ -584,6 +601,7 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         message.SerializeToString(&sendbuf);
         message.ParseFromString(sendbuf);
         LOG_INFO("send uvc zoom:%f \n", zoom);
+        uvc_ipc_info.zoom = *int_zoom;
     }
     break;
     case MSG_UVC_TRANSPORT_BUF:
@@ -644,6 +662,7 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         LOG_INFO("send uvc config camera. \
 width:%d,height:%d,vir_width=%d,vir_height=%d,buf_size=%d,range=%d\n",
                  info->width, info->height, info->vir_width, info->vir_height, info->buf_size, info->range);
+        memcpy(&uvc_ipc_info.camera, info, sizeof(struct CAMERA_INFO));
     }
     break;
     default :

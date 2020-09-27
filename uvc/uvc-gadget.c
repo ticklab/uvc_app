@@ -4230,7 +4230,9 @@ uvc_gadget_main(int id)
 
         if(app_quit) {
            LOG_ERROR("app quit...\n");
-            break;
+           uvc_ipc_reconnect();
+           app_quit = 0;
+           // break;
         }
 
         if (FD_ISSET(udev->uvc_fd, &efds))

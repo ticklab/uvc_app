@@ -200,6 +200,7 @@ struct UVC_IPC_INFO
     bool history[2];
     int enable_eptz;
     int zoom;
+    struct CAMERA_INFO camera;
 };
 
 } // namespace ShmControl
