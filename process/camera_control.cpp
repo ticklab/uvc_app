@@ -890,6 +890,10 @@ extern "C" void camera_control_set_pan(int val)
         }
     }
 #endif
+#if USE_RK_AISERVER
+    uvc_ipc_event(UVC_IPC_EVENT_SET_EPTZ_PAN, (void *)&val);
+#endif
+
 }
 
 extern "C" void camera_control_set_tilt(int val)
@@ -901,6 +905,9 @@ extern "C" void camera_control_set_tilt(int val)
             stream_list->uvc_graph->setEptz(RT_EPTZ_TILT, val);
         }
     }
+#endif
+#if USE_RK_AISERVER
+    uvc_ipc_event(UVC_IPC_EVENT_SET_EPTZ_TILT, (void *)&val);
 #endif
 
 }

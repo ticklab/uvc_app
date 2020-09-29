@@ -67,6 +67,21 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
             LOG_INFO("history eptz:%d\n", uvc_ipc_info.enable_eptz);
             uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_ENABLE_ETPTZ, (void *)&uvc_ipc_info.enable_eptz);
             uvc_ipc_info.history[0] = false;
+            uvc_ipc_info.history[2] = false;
+            uvc_ipc_info.history[3] = false;
+        } else {
+            if (uvc_ipc_info.history[2] == true)
+            {
+                LOG_INFO("history eptz_pan:%d\n", uvc_ipc_info.zoom);
+                uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_ZOOM, (void *)&uvc_ipc_info.zoom);
+                uvc_ipc_info.history[2] = false;
+            }
+            if (uvc_ipc_info.history[3] == true)
+            {
+                LOG_INFO("history eptz_tilt:%d\n", uvc_ipc_info.zoom);
+                uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_ZOOM, (void *)&uvc_ipc_info.zoom);
+                uvc_ipc_info.history[3] = false;
+            }
         }
         if (uvc_ipc_info.history[1] == true)
         {
@@ -74,6 +89,8 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
             uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_ZOOM, (void *)&uvc_ipc_info.zoom);
             uvc_ipc_info.history[1] = false;
         }
+
+
         break;
     case UVC_IPC_EVENT_STOP:
         if (!uvc_ipc_info.stop)
@@ -122,6 +139,36 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
         break;
     case UVC_IPC_EVENT_CONFIG_CAMERA:
         uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_CONFIG_CAMERA, data);
+        break;
+    case MSG_UVC_SET_EPTZ_PAN:
+#if UVC_STREAM_OFF_NOT_SEND_SETTING
+        if (uvc_ipc_info.stop)
+        {
+            int *val = (int *)data;
+            uvc_ipc_info.eptz_pan = *val;
+            uvc_ipc_info.history[0] = false;
+            uvc_ipc_info.history[2] = true;
+            LOG_INFO("eptz_pan can't set %d now, UVC_IPC_EVENT_STOP yet! wait for next start effect!\n",
+                      uvc_ipc_info.eptz_pan);
+        }
+        else
+#endif
+            uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_EPTZ_PAN, data);
+        break;
+    case MSG_UVC_SET_EPTZ_TILT:
+#if UVC_STREAM_OFF_NOT_SEND_SETTING
+        if (uvc_ipc_info.stop)
+        {
+            int *val = (int *)data;
+            uvc_ipc_info.eptz_tilt = *val;
+            uvc_ipc_info.history[0] = false;
+            uvc_ipc_info.history[3] = true;
+            LOG_INFO("eptz_tilt can't set %d now, UVC_IPC_EVENT_STOP yet! wait for next start effect!\n",
+                      uvc_ipc_info.eptz_tilt);
+        }
+        else
+#endif
+            uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_EPTZ_TILT, data);
         break;
     default:
         LOG_INFO("no support such uvc_ipc_event event:%d\n", event);
@@ -663,6 +710,44 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
 width:%d,height:%d,vir_width=%d,vir_height=%d,buf_size=%d,range=%d\n",
                  info->width, info->height, info->vir_width, info->vir_height, info->buf_size, info->range);
         memcpy(&uvc_ipc_info.camera, info, sizeof(struct CAMERA_INFO));
+    }
+    break;
+    case MSG_UVC_SET_EPTZ_PAN:
+    {
+        UVCMessage message;
+        MethodParams *method_param = new MethodParams;
+        int *pan;
+        if (data == NULL)
+            *pan = 0;
+        else
+            pan = (int *)data;
+        method_param->set_i32_p(*pan);
+        message.set_allocated_method_params(method_param);
+        message.set_msg_type(event);
+        message.set_msg_name("uvcbuffer");
+        message.SerializeToString(&sendbuf);
+        message.ParseFromString(sendbuf);
+        LOG_INFO("send uvc eptz pan:%d \n", *pan);
+        uvc_ipc_info.eptz_pan = *pan;
+    }
+    break;
+    case MSG_UVC_SET_EPTZ_TILT:
+    {
+        UVCMessage message;
+        MethodParams *method_param = new MethodParams;
+        int *tilt;
+        if (data == NULL)
+            *tilt = 0;
+        else
+            tilt = (int *)data;
+        method_param->set_i32_p(*tilt);
+        message.set_allocated_method_params(method_param);
+        message.set_msg_type(event);
+        message.set_msg_name("uvcbuffer");
+        message.SerializeToString(&sendbuf);
+        message.ParseFromString(sendbuf);
+        LOG_INFO("send uvc eptz tilt:%d \n", *tilt);
+        uvc_ipc_info.eptz_tilt = *tilt;
     }
     break;
     default :

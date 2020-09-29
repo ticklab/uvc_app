@@ -4230,9 +4230,12 @@ uvc_gadget_main(int id)
 
         if(app_quit) {
            LOG_ERROR("app quit...\n");
+#if USE_RK_AISERVER
            uvc_ipc_reconnect();
+#else
+           break;
+#endif
            app_quit = 0;
-           // break;
         }
 
         if (FD_ISSET(udev->uvc_fd, &efds))

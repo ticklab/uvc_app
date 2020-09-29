@@ -93,6 +93,8 @@ enum ShmUVCMessageType
     MSG_UVC_SET_ZOOM      = 4,
     MSG_UVC_TRANSPORT_BUF = 5,
     MSG_UVC_CONFIG_CAMERA = 6,
+    MSG_UVC_SET_EPTZ_PAN = 7,
+    MSG_UVC_SET_EPTZ_TILT = 8,
 };
 
 enum UVC_IPC_RECV_STATE
@@ -117,6 +119,7 @@ string shm_meg_name[] = {
     "uvc_set_zoom",
     "uvc_buf",
     "uvc_cfg_camera",
+    "uvc_set_eptz",
 };
 
 struct SendBufferInfo
@@ -197,9 +200,11 @@ struct UVC_IPC_INFO
     pthread_mutex_t mutex;
     bool start;
     bool stop;
-    bool history[2];
+    bool history[4];
     int enable_eptz;
     int zoom;
+    int eptz_pan;
+    int eptz_tilt;
     struct CAMERA_INFO camera;
 };
 
