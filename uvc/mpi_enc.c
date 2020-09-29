@@ -1175,6 +1175,10 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         mpp_destroy(p->ctx);
         p->ctx = NULL;
     }
+    if (p->cfg) {
+        mpp_enc_cfg_deinit(p->cfg);
+        p->cfg = NULL;
+    }
 
 #if 0
     if (p->frm_buf)
