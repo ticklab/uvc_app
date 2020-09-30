@@ -30,7 +30,7 @@ int uvc_app_log_level = LOG_INFO;
 int app_quit = 0;
 void sigterm_handler(int sig) {
   LOG_INFO("signal %d\n", sig);
-  app_quit = 1;
+  app_quit = sig;
 }
 
 int main(int argc, char *argv[])

@@ -4229,13 +4229,16 @@ uvc_gadget_main(int id)
         }
 
         if(app_quit) {
-           LOG_ERROR("app quit...\n");
+           LOG_ERROR("app quit=%d...\n",app_quit);
+           if(3 == app_quit){
 #if USE_RK_AISERVER
-           uvc_ipc_reconnect();
+             uvc_ipc_reconnect();
 #else
-           break;
+             break;
 #endif
-           app_quit = 0;
+             app_quit = 0;
+           } else
+             break;
         }
 
         if (FD_ISSET(udev->uvc_fd, &efds))
