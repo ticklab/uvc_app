@@ -221,11 +221,11 @@ struct uvc_device
     struct v4l2_buffer_info *vbuf_info;
     int abandon_count;
     enum USB_STATE usb_state;
-    unsigned long long int first_usb_get_ready_pts;
-    unsigned long long int first_usb_get_ok_pts;
-    unsigned long long int first_usb_send_ok_pts;
-    unsigned long long int first_cmd_pts;
-    unsigned long long int stream_on_pts;
+    unsigned int first_usb_get_ready_pts;
+    unsigned int first_usb_get_ok_pts;
+    unsigned int first_usb_send_ok_pts;
+    unsigned int first_cmd_pts;
+    unsigned int stream_on_pts;
 };
 
 

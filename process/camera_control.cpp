@@ -348,6 +348,7 @@ static void *uvc_camera(void *arg)
 {
     struct Camera_Stream *stream = (struct Camera_Stream *)arg;
     prctl(PR_SET_NAME, "uvc_camera", 0, 0, 0);
+#if 0
 #if USE_RK_AISERVER
     int needEPTZ = 0;
     int eptzWidth = 0;
@@ -382,7 +383,7 @@ static void *uvc_camera(void *arg)
     uvc_ipc_event(UVC_IPC_EVENT_START, NULL); //after the camera config
     //int val = 12; // for test
     //uvc_ipc_event(UVC_IPC_EVENT_SET_ZOOM, (void *)&val);       // for test
-
+#endif
 #else
 #if USE_ROCKIT
     int needEPTZ = 0;

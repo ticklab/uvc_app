@@ -110,8 +110,8 @@ struct uvc_video
     struct uvc_buffer *buffer_s;
     int drm_fd; // drm fd
     bool can_exit;
-    unsigned long long int last_pts;
-    unsigned long long int now_pts;
+    unsigned int last_pts;
+    unsigned int now_pts;
 };
 
 int uvc_gadget_pthread_create(int *id);

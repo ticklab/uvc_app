@@ -291,9 +291,10 @@ int uvc_control_loop(void)
     }
     if (uvc_ctrl[2].stop)
     {
+#ifndef USE_RK_AISERVER
         if (camera_stop_callback)
             camera_stop_callback();
-
+#endif
         uvc_ctrl[2].stop = false;
     }
 
@@ -301,11 +302,13 @@ int uvc_control_loop(void)
     {
         LOG_INFO("%s: video_id:%d, width:%d,height:%d,fps:%d,format:%d,eptz:%d !\n", __func__,
                  uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].format, uvc_ctrl[2].eptz);
+#ifndef USE_RK_AISERVER
         if (camera_start_callback)
         {
             LOG_INFO("%s  camera_start_callback start!\n", __func__);
             camera_start_callback(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps, uvc_ctrl[2].format, uvc_ctrl[2].eptz);
         }
+#endif
         //camera_control_start(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
         uvc_ctrl[2].start = false;
     }
