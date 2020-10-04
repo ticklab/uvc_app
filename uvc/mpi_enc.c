@@ -642,7 +642,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     uvc_buf = uvc_buffer_write_get_nolock(uvc_enc.video_id);
     if (!uvc_buf || uvc_buf->abandon)
     {
-        LOG_ERROR("uvc_buffer_write_get failed:%d,%d\n", uvc_buf->abandon, uvc_buf->fd);
+        LOG_ERROR("uvc_buffer_write_get failed(buf: %p)\n", uvc_buf);
         goto RET;
     }
     uvc_buf->pts = info->pts;
