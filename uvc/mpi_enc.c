@@ -28,6 +28,11 @@ static void mpp_enc_cfg_default(MpiEncTestData *p);
 static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init);
 static void dump_mpp_enc_cfg(MpiEncTestData *p);
 static int read_mpp_enc_cfg_modify_file(MpiEncTestData *p, bool init);
+#if MPP_ENC_ROI_ENABLE
+static int mpp_roi_config(MpiEncTestData *p, EncROIRegion *regions, int region_cnt);
+static int mpp_roi_enable_set(MpiEncTestData *p, int enable);
+static int mpp_roi_enable_get(MpiEncTestData *p);
+#endif
 
 #if 0
 static OptionInfo mpi_enc_cmd[] =
@@ -721,7 +726,13 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
             }
         }
     }
-
+#if MPP_ENC_ROI_ENABLE
+    if (mpp_roi_enable_get(p)) {
+        MppMeta meta = NULL;
+        meta = mpp_frame_get_meta(frame);
+        mpp_meta_set_ptr(meta, KEY_ROI_DATA, (void*)&p->roi_cfg);
+    }
+#endif
     ret = mpi->poll(ctx, MPP_PORT_INPUT, MPP_POLL_BLOCK);
     if (ret)
     {
@@ -1180,6 +1191,12 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         p->cfg = NULL;
     }
 
+#if MPP_ENC_ROI_ENABLE
+    if (p->roi_cfg.regions) {
+        free(p->roi_cfg.regions);
+        p->roi_cfg.regions = NULL;
+    }
+#endif
 #if 0
     if (p->frm_buf)
     {
@@ -1333,7 +1350,9 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
 {
     if (NULL == p)
         return;
-
+#if MPP_ENC_ROI_ENABLE
+    p->roi_enable = 0;
+#endif
     //common set
     p->common_cfg.fbc = false;
     p->common_cfg.split_mode = 0;
@@ -1400,6 +1419,12 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
 
 static void dump_mpp_enc_cfg(MpiEncTestData *p)
 {
+
+#if MPP_ENC_ROI_ENABLE
+    LOG_INFO("### dump_mpp_enc_cfg for roi cfg:\n");
+    LOG_INFO("roi_enable=%d\n", p->roi_enable);
+#endif
+
     LOG_INFO("### dump_mpp_enc_cfg for common cfg:\n");
     LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d,frc_fps=%d\n\
 frc_mode=%d,enc_time=%d,try_count=%d,frc_use_mpp=%d\n",
@@ -1680,7 +1705,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                 {
                     p->h264_cfg.gop = child_h264_gop->valueint;
                     p->h264_cfg.gop = p->h264_cfg.gop < 1 ? 1 :
-                                      p->h264_cfg.gop > 100 ? 100 :
+                                      p->h264_cfg.gop > 1000 ? 1000 :
                                       p->h264_cfg.gop;
                     p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
                 }
@@ -1688,6 +1713,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                 if (child_h264_rc_mode)
                 {
                     p->h264_cfg.rc_mode = strstr(child_h264_rc_mode->valuestring, "cbr") ? MPP_ENC_RC_MODE_CBR :
+                                          strstr(child_h264_rc_mode->valuestring, "avbr") ? MPP_ENC_RC_MODE_AVBR :
                                           strstr(child_h264_rc_mode->valuestring, "vbr") ? MPP_ENC_RC_MODE_VBR :
                                           strstr(child_h264_rc_mode->valuestring, "fixqp") ? MPP_ENC_RC_MODE_FIXQP : MPP_ENC_RC_MODE_CBR;
                     p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
@@ -1859,7 +1885,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                 {
                     p->h265_cfg.gop = child_h265_gop->valueint;
                     p->h265_cfg.gop = p->h265_cfg.gop < 1 ? 1 :
-                                      p->h265_cfg.gop > 100 ? 100 :
+                                      p->h265_cfg.gop > 1000 ? 1000 :
                                       p->h265_cfg.gop;
                     p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(0);
                 }
@@ -1867,6 +1893,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                 if (child_h265_rc_mode)
                 {
                     p->h265_cfg.rc_mode = strstr(child_h265_rc_mode->valuestring, "cbr") ? MPP_ENC_RC_MODE_CBR :
+                                          strstr(child_h265_rc_mode->valuestring, "avbr") ? MPP_ENC_RC_MODE_AVBR :
                                           strstr(child_h265_rc_mode->valuestring, "vbr") ? MPP_ENC_RC_MODE_VBR :
                                           strstr(child_h265_rc_mode->valuestring, "fixqp") ? MPP_ENC_RC_MODE_FIXQP : MPP_ENC_RC_MODE_CBR;
                     p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
@@ -1992,7 +2019,6 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     MppApi *mpi;
     MppCtx ctx;
     MppEncCfg cfg;
-    MppEncRcMode rc_mode = MPP_ENC_RC_MODE_CBR;
 
     if (NULL == p)
         return MPP_ERR_NULL_PTR;
@@ -2073,7 +2099,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:mode", p->mjpeg_cfg.rc_mode);
         if (init || (p->mjpeg_cfg.change & BIT(7)))
         {
-            switch (rc_mode)
+            switch (p->mjpeg_cfg.rc_mode)
             {
                 case MPP_ENC_RC_MODE_FIXQP :
                 {
@@ -2099,7 +2125,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
                 break;
                 default :
                 {
-                    LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+                    LOG_ERROR("unsupport encoder rc mode %d\n", p->mjpeg_cfg.rc_mode);
                 }
                 break;
             }
@@ -2189,7 +2215,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 
         if (init || (p->h264_cfg.change & BIT(15)))
         {
-            switch (rc_mode)
+            switch (p->h264_cfg.rc_mode)
             {
                 case MPP_ENC_RC_MODE_FIXQP :
                 {
@@ -2205,15 +2231,23 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
                 break;
                 case MPP_ENC_RC_MODE_VBR :
                 {
-                    /* CBR mode has wide bound */
+                    /* VBR mode has wide bound */
                     mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
                     mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
                     mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 16);
                 }
                 break;
+                case MPP_ENC_RC_MODE_AVBR :
+                {
+                    /* AVBR mode min is mean the silence bps, do not too low */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 4);
+                }
+                break;
                 default :
                 {
-                    LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+                    LOG_ERROR("unsupport encoder rc mode %d\n", p->h264_cfg.rc_mode);
                 }
                 break;
             }
@@ -2284,7 +2318,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "h265:qp_min_i", p->h265_cfg.qp.min_i_qp);
         if (init || (p->h265_cfg.change & BIT(12)))
         {
-            switch (rc_mode)
+            switch (p->h265_cfg.rc_mode)
             {
                 case MPP_ENC_RC_MODE_FIXQP :
                 {
@@ -2306,9 +2340,17 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
                     mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 16);
                 }
                 break;
+                case MPP_ENC_RC_MODE_AVBR :
+                {
+                    /* AVBR mode min is mean the silence bps, do not too low */
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 4);
+                }
+                break;
                 default :
                 {
-                    LOG_ERROR("unsupport encoder rc mode %d\n", rc_mode);
+                    LOG_ERROR("unsupport encoder rc mode %d\n", p->h265_cfg.rc_mode);
                 }
                 break;
             }
@@ -2327,6 +2369,37 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
         goto RET;
     }
+
+#if MPP_ENC_ROI_ENABLE
+    mpp_env_get_u32("roi_enable", &p->roi_enable, 0);
+#if 0 // test //
+    EncROIRegion *region = (EncROIRegion *)malloc(2 * sizeof(EncROIRegion));
+    /* calculated in pixels */
+    region[0].x = 0;
+    region[0].y = 0;
+    region[0].w = 640;
+    region[0].h = 360;
+    region[0].intra = 0;      /* flag of forced intra macroblock */
+    region[0].quality = 1;   /* qp of macroblock */
+    region[0].abs_qp_en = 1; /*absolute qp set*/
+    region[0].area_map_en = 1;
+    region[0].qp_area_idx = 0; /*the value more large  and the priority more high*/
+
+    region[1].x = 1000;
+    region[1].y = 600;
+    region[1].w = 200;
+    region[1].h = 100;
+    region[1].intra = 0;      /* flag of forced intra macroblock */
+    region[1].quality = 1;   /* qp of macroblock */
+    region[1].abs_qp_en = 1;
+    region[1].area_map_en = 1;
+    region[1].qp_area_idx = 0;
+
+    mpp_roi_config(p, region, 2);
+    free(region);
+#endif
+#endif
+
 RET:
     return ret;
 }
@@ -2498,4 +2571,80 @@ void *thread_check_mpp_enc_chenge_loop(void *user)
 #endif
     }
 }
+
+#if MPP_ENC_ROI_ENABLE
+static int mpp_roi_enable_set(MpiEncTestData *p, int enable)
+{
+    p->roi_enable = enable;
+}
+
+static int mpp_roi_enable_get(MpiEncTestData *p)
+{
+    return p->roi_enable;
+}
+
+static int mpp_roi_config(MpiEncTestData *p, EncROIRegion *regions, int region_cnt)
+{
+    if (!regions || region_cnt == 0) {
+        p->roi_number = 0;
+        if (p->roi_cfg.regions) {
+            free(p->roi_cfg.regions);
+            p->roi_cfg.regions = NULL;
+        }
+        LOG_INFO("disable roi function\n");
+        return 0;
+    }
+    int msize = region_cnt * sizeof(MppEncROIRegion);
+    MppEncROIRegion *region = (MppEncROIRegion *)malloc(msize);
+    if (!region) {
+        return -1;
+    }
+    for (int i = 0; i < region_cnt; i++) {
+      if ((regions[i].x % 16) || (regions[i].y % 16) ||
+          (regions[i].w % 16) || (regions[i].h % 16)) {
+          LOG_WARN("WARN: MPP Encoder: region parameter should be an integer multiple of 16\n");
+          LOG_WARN("WARN: MPP Encoder: reset region[%d] frome <%d,%d,%d,%d> to <%d,%d,%d,%d>\n",
+                    i, regions[i].x, regions[i].y, regions[i].w, regions[i].h,
+                    UPALIGNTO16(regions[i].x), UPALIGNTO16(regions[i].y),
+                    UPALIGNTO16(regions[i].w), UPALIGNTO16(regions[i].h));
+          regions[i].x = UPALIGNTO16(regions[i].x);
+          regions[i].y = UPALIGNTO16(regions[i].y);
+          regions[i].w = UPALIGNTO16(regions[i].w);
+          regions[i].h = UPALIGNTO16(regions[i].h);
+      }
+      LOG_DEBUG("MPP Encoder: roi region[%d]:<%d,%d,%d,%d>\n",
+                 i, regions[i].x, regions[i].y, regions[i].w, regions[i].h);
+      LOG_DEBUG("MPP Encoder: roi region[%d].intra=%d,\n", i, regions[i].intra);
+      LOG_DEBUG("MPP Encoder: roi region[%d].quality=%d,\n", i, regions[i].quality);
+      LOG_DEBUG("MPP Encoder: roi region[%d].abs_qp_en=%d,\n", i, regions[i].abs_qp_en);
+      LOG_DEBUG("MPP Encoder: roi region[%d].qp_area_idx=%d,\n", i, regions[i].qp_area_idx);
+      LOG_DEBUG("MPP Encoder: roi region[%d].area_map_en=%d,\n", i, regions[i].area_map_en);
+      assert(regions[i].x < 8192);
+      assert(regions[i].y < 8192);
+      assert(regions[i].w < 8192);
+      assert(regions[i].h < 8192);
+      assert(regions[i].x < 8192);
+      assert(regions[i].intra <= 1);
+      assert(regions[i].abs_qp_en <= 1);
+      assert(regions[i].qp_area_idx <= 7);
+      assert(regions[i].area_map_en <= 1);
+      VALUE_SCOPE_CHECK(regions[i].quality, -48, 51);
+      region[i].x = regions[i].x;
+      region[i].y = regions[i].y;
+      region[i].w = regions[i].w;
+      region[i].h = regions[i].h;
+      region[i].intra = regions[i].intra;
+      region[i].quality = regions[i].quality;
+      region[i].abs_qp_en = regions[i].abs_qp_en;
+      region[i].qp_area_idx = regions[i].qp_area_idx;
+      region[i].area_map_en = regions[i].area_map_en;
+    }
+    p->roi_cfg.number = region_cnt;
+    if (p->roi_cfg.regions)
+        free(p->roi_cfg.regions);
+    p->roi_cfg.regions = region;
+    //mpp_meta_set_ptr(meta, KEY_ROI_DATA, (void*)&p->roi_cfg);
+    return 0;
+}
+#endif
 

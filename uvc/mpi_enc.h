@@ -110,6 +110,25 @@ extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc,
 
 #define MPP_FRC_WAIT_COUNT_OFFSET 5 // bit rate control is too low to increase this
 
+//***************ROI*********************//
+#define MPP_ENC_ROI_ENABLE 1
+#define UPALIGNTO(value, align) ((value + align - 1) & (~(align - 1)))
+#define UPALIGNTO16(value) UPALIGNTO(value, 16)
+#define VALUE_SCOPE_CHECK(X, MIN, MAX) assert((X >= MIN) && (X <= MAX))
+
+typedef struct  {
+    uint16_t x;            /**< horizontal position of top left corner */
+    uint16_t y;            /**< vertical position of top left corner */
+    uint16_t w;            /**< width of ROI rectangle */
+    uint16_t h;            /**< height of ROI rectangle */
+    uint16_t intra;        /**< flag of forced intra macroblock */
+    int16_t quality;      /**<  qp of macroblock */
+    uint16_t qp_area_idx;  /**< qp min max area select*/
+    uint8_t  area_map_en;  /**< enable area map */
+    uint8_t  abs_qp_en;    /**< absolute qp enable flag*/
+} EncROIRegion;
+
+
 enum SIMPLE_FRC_MODE
 {
     FRC_OFF = 0,
@@ -246,9 +265,12 @@ typedef struct
     MppEncOSDPltCfg osd_plt_cfg;
     MppEncOSDPlt     osd_plt;
     MppEncOSDData    osd_data;
-    MppEncROIRegion roi_region[3];
+#if MPP_ENC_ROI_ENABLE
+    RK_U32 roi_enable;
+    RK_U32 roi_number;
+    MppEncROIRegion *roi_region;
     MppEncROICfg     roi_cfg;
-
+#endif
     // input / output
     MppBuffer frm_buf;
     MppEncSeiMode sei_mode;
@@ -283,7 +305,6 @@ typedef struct
     RK_U32 split_arg;
 
     RK_U32 user_data_enable;
-    RK_U32 roi_enable;
 
     // rate control runtime parameter
     RK_S32 gop;
