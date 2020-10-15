@@ -495,7 +495,7 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
             has_map = true;
 
 #if RK_MPP_DYNAMIC_DEBUG_ON
-            if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
+            if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0) || yuv_encode)
             {
                 if (!iter->second.buf)
                 {
@@ -520,7 +520,7 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
             return;
         }
 #if RK_MPP_DYNAMIC_DEBUG_ON
-        if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
+        if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0) || yuv_encode)
         {
             buf = (char *)drm_map_buffer(drmFd, handle, buf_size);
         }
@@ -700,15 +700,16 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         streamInfo->set_vir_height(info->vir_height);
         streamInfo->set_buf_size(info->buf_size);
         streamInfo->set_range(info->range);
-
+        yuv_encode = info->yuv_encode;
         message.set_allocated_stream_info(streamInfo);
         message.set_msg_type(event);
         message.set_msg_name("uvcbuffer");
         message.SerializeToString(&sendbuf);
         message.ParseFromString(sendbuf);
         LOG_INFO("send uvc config camera. \
-width:%d,height:%d,vir_width=%d,vir_height=%d,buf_size=%d,range=%d\n",
-                 info->width, info->height, info->vir_width, info->vir_height, info->buf_size, info->range);
+width:%d,height:%d,vir_width=%d,vir_height=%d,buf_size=%d,range=%d,yuv=%d\n",
+                 info->width, info->height, info->vir_width, info->vir_height,
+                 info->buf_size, info->range, yuv_encode);
         memcpy(&uvc_ipc_info.camera, info, sizeof(struct CAMERA_INFO));
     }
     break;

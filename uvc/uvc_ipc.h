@@ -192,6 +192,7 @@ private:
     int32_t               norecv_count;
     int32_t               norecv_err_count;
     int32_t               abandon_count;
+    int                   yuv_encode;
 };
 
 struct UVC_IPC_INFO

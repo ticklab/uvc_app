@@ -31,6 +31,7 @@ struct CAMERA_INFO
     int vir_height;
     int buf_size;
     int range;
+    int yuv_encode;
 };
 
 extern void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data);

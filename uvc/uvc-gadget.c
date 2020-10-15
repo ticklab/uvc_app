@@ -3573,6 +3573,7 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
         camera_info.vir_height = dev->height;
         camera_info.buf_size = dev->width * dev->height * 2;
         camera_info.range = need_full_range;
+        camera_info.yuv_encode = (dev->fcc == V4L2_PIX_FMT_YUYV);
 
         uvc_ipc_event(UVC_IPC_EVENT_CONFIG_CAMERA, (void *)&camera_info);
 #endif
@@ -3738,7 +3739,7 @@ uvc_events_process(struct uvc_device *dev)
         camera_info.vir_height = dev->height;
         camera_info.buf_size = dev->width * dev->height * 2;
         camera_info.range = need_full_range;
-
+        camera_info.yuv_encode = (dev->fcc == V4L2_PIX_FMT_YUYV);
         uvc_ipc_event(UVC_IPC_EVENT_CONFIG_CAMERA, (void *)&camera_info);
         uvc_ipc_event(UVC_IPC_EVENT_START, NULL); //after the camera config
         //int val = 12; // for test
