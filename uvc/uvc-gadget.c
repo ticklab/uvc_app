@@ -114,8 +114,8 @@ static int silent = 1;
 #define PU_CONTRAST_STEP_SIZE       1
 #define PU_CONTRAST_DEFAULT_VAL     50
 
-#define PU_HUE_MIN_VAL              -100
-#define PU_HUE_MAX_VAL              100
+#define PU_HUE_MIN_VAL              0
+#define PU_HUE_MAX_VAL              255
 #define PU_HUE_STEP_SIZE            1
 #define PU_HUE_DEFAULT_VAL          0
 
@@ -136,17 +136,14 @@ static int silent = 1;
 
 #define PU_WHITE_BALANCE_TEMPERATURE_MIN_VAL        2800
 #define PU_WHITE_BALANCE_TEMPERATURE_MAX_VAL        6500
-#define PU_WHITE_BALANCE_TEMPERATURE_STEP_SIZE      100
-#define PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL    4000
+#define PU_WHITE_BALANCE_TEMPERATURE_STEP_SIZE      37
+#define PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL    4650
 
 #define PU_GAIN_MIN_VAL             0
 #define PU_GAIN_MAX_VAL             5
 #define PU_GAIN_STEP_SIZE           1
 #define PU_GAIN_DEFAULT_VAL         1
 
-#define PU_HUE_AUTO_MIN_VAL         -100
-#define PU_HUE_AUTO_MAX_VAL         100
-#define PU_HUE_AUTO_STEP_SIZE       1
 #define PU_HUE_AUTO_DEFAULT_VAL     0
 
 //ZOOM
@@ -1056,13 +1053,17 @@ uvc_open(struct uvc_device **uvc, char *devname)
     dev->white_balance_temperature_val = camera_pu_control_get(UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL
                                          , PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL);
 
+    camera_pu_control_init(UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL, 1, 0, 1);
+    dev->white_balance_temperature_auto_val = camera_pu_control_get(UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL
+                                         , 1);
+
     camera_pu_control_init(UVC_PU_GAIN_CONTROL, PU_GAIN_DEFAULT_VAL
                            , PU_GAIN_MIN_VAL, PU_GAIN_MAX_VAL);
     dev->gain_val = camera_pu_control_get(UVC_PU_GAIN_CONTROL, PU_GAIN_DEFAULT_VAL);
 
-    camera_pu_control_init(UVC_PU_HUE_AUTO_CONTROL, PU_HUE_AUTO_DEFAULT_VAL
-                           , PU_HUE_AUTO_MIN_VAL, PU_HUE_AUTO_MAX_VAL);
-    dev->hue_auto_val = camera_pu_control_get(UVC_PU_HUE_AUTO_CONTROL, PU_HUE_AUTO_DEFAULT_VAL);
+    camera_pu_control_init(UVC_PU_HUE_AUTO_CONTROL, 1
+                           , 0, 1);
+    dev->hue_auto_val = camera_pu_control_get(UVC_PU_HUE_AUTO_CONTROL, 1);
 #else
     dev->brightness_val = PU_BRIGHTNESS_DEFAULT_VAL;
     dev->contrast_val = PU_CONTRAST_DEFAULT_VAL;
@@ -1071,8 +1072,9 @@ uvc_open(struct uvc_device **uvc, char *devname)
     dev->sharpness_val = PU_SHARPNESS_DEFAULT_VAL;
     dev->gamma_val = PU_GAMMA_DEFAULT_VAL;
     dev->white_balance_temperature_val = PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL;
+    dev->white_balance_temperature_auto_val = 1;
     dev->gain_val = PU_GAIN_DEFAULT_VAL;
-    dev->hue_auto_val = PU_HUE_AUTO_DEFAULT_VAL;
+    dev->hue_auto_val = 1;
 #endif
     dev->power_line_frequency_val = V4L2_CID_POWER_LINE_FREQUENCY_50HZ;
 
@@ -2572,23 +2574,30 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             switch (req)
             {
             case UVC_SET_CUR:
-                resp->data[0] = 0x0;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_MIN:
-                resp->data[0] = PU_WHITE_BALANCE_TEMPERATURE_MIN_VAL;
+                {
+                int wbt_min= PU_WHITE_BALANCE_TEMPERATURE_MIN_VAL;
                 resp->length = 2;
+                memcpy(&resp->data[0], &wbt_min,
+                       resp->length);
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
+                }
             case UVC_GET_MAX:
-                resp->data[0] = PU_WHITE_BALANCE_TEMPERATURE_MAX_VAL;
+               {
+                int wbt_max = PU_WHITE_BALANCE_TEMPERATURE_MAX_VAL;
                 resp->length = 2;
+                memcpy(&resp->data[0], &wbt_max,
+                       resp->length);
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
+               }
             case UVC_GET_CUR:
                 resp->length = 2;
                 memcpy(&resp->data[0], &dev->white_balance_temperature_val,
@@ -2603,16 +2612,57 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_DEF:
-                resp->data[0] = PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL;
+                {
+                int wbt_def = PU_WHITE_BALANCE_TEMPERATURE_DEFAULT_VAL;
                 resp->length = 2;
+                memcpy(&resp->data[0], &wbt_def,
+                       resp->length);
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
+                }
             case UVC_GET_RES:
-                resp->data[0] = PU_WHITE_BALANCE_TEMPERATURE_STEP_SIZE;
+                {
+                int wbt_res = PU_WHITE_BALANCE_TEMPERATURE_STEP_SIZE;
                 resp->length = 2;
+                memcpy(&resp->data[0], &wbt_res,
+                       resp->length);
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
+                break;
+                }
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
+        case UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL:
+            switch (req)
+            {
+            case UVC_SET_CUR:
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                resp->length = 1;
+                resp->data[0] = dev->white_balance_temperature_auto_val;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                break;
+            case UVC_GET_DEF:
+                resp->data[0] = 1;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
                 break;
             default:
                 resp->length = -EL2HLT;
@@ -2678,27 +2728,14 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             switch (req)
             {
             case UVC_SET_CUR:
-                resp->data[0] = 0x0;
+                resp->data[0] = 1;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
-            case UVC_GET_MIN:
-                resp->data[0] = PU_HUE_AUTO_MIN_VAL;
-                resp->length = 2;
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_MAX:
-                resp->data[0] = PU_HUE_AUTO_MAX_VAL;
-                resp->length = 2;
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
             case UVC_GET_CUR:
-                resp->length = 2;
-                memcpy(&resp->data[0], &dev->hue_auto_val,
-                       resp->length);
+                resp->length = 1;
+                resp->data[0] = dev->hue_auto_val;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
@@ -2709,14 +2746,8 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_DEF:
-                resp->data[0] = PU_HUE_AUTO_DEFAULT_VAL;
-                resp->length = 2;
-                dev->request_error_code.data[0] = 0x00;
-                dev->request_error_code.length = 1;
-                break;
-            case UVC_GET_RES:
-                resp->data[0] = PU_HUE_AUTO_STEP_SIZE;
-                resp->length = 2;
+                resp->data[0] = 1;
+                resp->length = 1;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
@@ -3373,9 +3404,19 @@ uvc_events_process_control_data(struct uvc_device *dev,
             break;
         case UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL:
             /* 0:auto, 1:Daylight 2:fluocrescence 3:cloudysky 4:tungsten */
+           LOG_INFO("UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL: 0x%02x 0x%02x\n",
+                         data->data[0], data->data[1]); 
             if (sizeof(dev->white_balance_temperature_val) >= data->length)
             {
                 memcpy(&dev->white_balance_temperature_val, data->data, data->length);
+            }
+            break;
+        case UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL:
+            LOG_INFO("UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL: 0x%02x\n",
+                         data->data[0]);
+            if (sizeof(dev->white_balance_temperature_auto_val) >= data->length)
+            {
+                memcpy(&dev->white_balance_temperature_auto_val, data->data, data->length);
             }
             break;
         case UVC_PU_GAIN_CONTROL:

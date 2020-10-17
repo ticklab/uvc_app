@@ -170,6 +170,7 @@ struct uvc_device
     unsigned int sharpness_val;
     unsigned int gamma_val;
     unsigned int white_balance_temperature_val;
+    unsigned int white_balance_temperature_auto_val;
     unsigned int gain_val;
     unsigned int hue_auto_val;
     unsigned int zoom_val;

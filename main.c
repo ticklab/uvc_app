@@ -22,10 +22,11 @@ enum {
 int enable_minilog = 0;
 #define LOG_TAG "uvc_app"
 int uvc_app_log_level = LOG_INFO;
+#define UVC_LOG_DYNAMIC_DEBUG "/tmp/uvc_log_debug"
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
-#define UVC_VERSION "SDK V1.08"
+#define UVC_VERSION "SDK V1.09"
 
 int app_quit = 0;
 void sigterm_handler(int sig) {
@@ -60,6 +61,10 @@ int main(int argc, char *argv[])
     enable_minilog = 1;
     __minilog_log_init(argv[0], NULL, false, true, argv[0],"1.0.0");
 #endif
+   if (!access(UVC_LOG_DYNAMIC_DEBUG, 0))
+   {
+     uvc_app_log_level = LOG_DEBUG;
+   }
 #if (RK_MPP_ENC_TEST_NATIVE == 0)
 #ifdef CAMERA_CONTROL
     if (argc != 3)

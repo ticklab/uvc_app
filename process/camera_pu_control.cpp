@@ -145,7 +145,7 @@ extern "C" int video_record_set_gamma(int gamma) {
 }
 
 extern "C" int video_record_set_white_balance_temperature(int balance) {
-   char *table = TABLE_IMAGE_ADJUSTMENT;
+   char *table = TABLE_IMAGE_WHITE_BLANCE;
    struct json_object *js = NULL;
    js = json_object_new_object();
    if (NULL == js)
@@ -153,7 +153,28 @@ extern "C" int video_record_set_white_balance_temperature(int balance) {
         LOG_DEBUG("+++new json object failed.\n");
         return -1;
    }
-   json_object_object_add(js, "iWhiteBalanceTemperature", json_object_new_int(balance));
+   //[2800,6500]->[0,100]
+   int bg_level = (balance - 2800)/((6500 - 2800)/100);
+   LOG_INFO("iWhiteBalanceRed is %d",bg_level);
+   json_object_object_add(js, "iWhiteBalanceRed", json_object_new_int(bg_level));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_white_balance_temperature_auto(int balance) {
+   char *table = TABLE_IMAGE_WHITE_BLANCE;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   if (balance == 1)
+     json_object_object_add(js, "sWhiteBlanceStyle", json_object_new_string("autoWhiteBalance1"));
+   else
+     json_object_object_add(js, "sWhiteBlanceStyle", json_object_new_string("manualWhiteBalance"));
    dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
    return 0;
@@ -243,7 +264,10 @@ extern "C" int camera_pu_control_set(int type, int value)
             //video_record_set_gamma(value);
             break;
         case UVC_PU_WHITE_BALANCE_TEMPERATURE_CONTROL:
-            //video_record_set_white_balance_temperature(value);
+            video_record_set_white_balance_temperature(value);
+            break;
+        case UVC_PU_WHITE_BALANCE_TEMPERATURE_AUTO_CONTROL:
+            video_record_set_white_balance_temperature_auto(value);
             break;
         case UVC_PU_GAIN_CONTROL:
             //video_record_set_gain(value);
