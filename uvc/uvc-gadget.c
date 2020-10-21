@@ -115,9 +115,9 @@ static int silent = 1;
 #define PU_CONTRAST_DEFAULT_VAL     50
 
 #define PU_HUE_MIN_VAL              0
-#define PU_HUE_MAX_VAL              255
+#define PU_HUE_MAX_VAL              100
 #define PU_HUE_STEP_SIZE            1
-#define PU_HUE_DEFAULT_VAL          0
+#define PU_HUE_DEFAULT_VAL          50
 
 #define PU_SATURATION_MIN_VAL       0
 #define PU_SATURATION_MAX_VAL       100

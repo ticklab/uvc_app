@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.8.0 FATAL_ERROR)
 set(CMAKE_CXX_STANDARD 11)
 add_definitions(-DDBUG)
+add_definitions(-g)
 PROJECT(uvc_app)
 include(FindPkgConfig)
 pkg_check_modules (JSON-C REQUIRED IMPORTED_TARGET json-c)

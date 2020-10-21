@@ -172,7 +172,7 @@ extern "C" int video_record_set_white_balance_temperature_auto(int balance) {
         return -1;
    }
    if (balance == 1)
-     json_object_object_add(js, "sWhiteBlanceStyle", json_object_new_string("autoWhiteBalance1"));
+     json_object_object_add(js, "sWhiteBlanceStyle", json_object_new_string("autoWhiteBalance"));
    else
      json_object_object_add(js, "sWhiteBlanceStyle", json_object_new_string("manualWhiteBalance"));
    dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
@@ -252,7 +252,7 @@ extern "C" int camera_pu_control_set(int type, int value)
             video_record_set_contrast(value);
             break;
         case UVC_PU_HUE_CONTROL:
-            //video_record_set_hue(value);
+            video_record_set_hue(value);
             break;
         case UVC_PU_SATURATION_CONTROL:
             video_record_set_staturation(value);
