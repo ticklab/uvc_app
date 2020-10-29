@@ -113,7 +113,6 @@ endif()
 ADD_EXECUTABLE(uvc_app ${SOURCE})
 target_link_libraries(uvc_app ${UVC_APP_DEPENDENT_LIBS} PkgConfig::JSON-C)
 
-install(TARGETS rkuvc DESTINATION lib)
 install(DIRECTORY ./uvc DESTINATION include
         FILES_MATCHING PATTERN "*.h")
 
