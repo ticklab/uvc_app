@@ -47,7 +47,7 @@ if (${ENABLE_AISERVER})
     find_package(Protobuf REQUIRED)
     if(PROTOBUF_FOUND)
         message(STATUS "protobuf library found")
-        set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} protobuf)
+        set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} protobuf-lite)
         include_directories(${PROTOBUF_INCLUDE_DIRS})
         include_directories(${CMAKE_CURRENT_BINARY_DIR})
         protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS
