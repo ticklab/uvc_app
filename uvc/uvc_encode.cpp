@@ -243,7 +243,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
                struct uvc_buffer *buffer = uvc_buffer_write_get_nolock(e->video_id);
                if (!buffer || buffer->abandon)
                {
-                   LOG_ERROR("uvc_buffer_write_get failed:%d,%d\n", buffer->abandon, buffer->fd);
+                   LOG_ERROR("uvc_buffer_write_get failed:%p\n", buffer);
                    uvc_user_unlock();
                    return true;
                }
