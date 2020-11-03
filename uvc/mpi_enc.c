@@ -1270,6 +1270,9 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
             cmd->type = MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingAVC;//MPP_VIDEO_CodingHEVC
         break;
     }
+    case V4L2_PIX_FMT_H265:
+        cmd->type = MPP_VIDEO_CodingHEVC;
+        break;
     default:
         LOG_INFO("%s: not support fcc: %d\n", __func__, fcc);
         break;

@@ -26,7 +26,7 @@ int uvc_app_log_level = LOG_INFO;
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
-#define UVC_VERSION "SDK V1.10"
+#define UVC_VERSION "SDK V1.20"
 
 int app_quit = 0;
 void sigterm_handler(int sig) {

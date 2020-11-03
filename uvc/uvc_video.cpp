@@ -780,6 +780,7 @@ static void _uvc_buffer_write(struct uvc_video *v,
                     //size += sizeof(stamp);
                     break;
                 case V4L2_PIX_FMT_H264:
+                case V4L2_PIX_FMT_H265:
                     if (extra_data && extra_size > 0)
                         memcpy(buffer->buffer, extra_data, extra_size);
                     if (extra_size >= 0)

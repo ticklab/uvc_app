@@ -287,6 +287,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
         break;
     case V4L2_PIX_FMT_MJPEG:
     case V4L2_PIX_FMT_H264:
+    case V4L2_PIX_FMT_H265:
         if (info->fd >= 0 && mpi_enc_test_run(&e->mpi_data, info) == MPP_OK)
         {
 #ifdef ENABLE_BUFFER_TIME_DEBUG
