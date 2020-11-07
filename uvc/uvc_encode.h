@@ -46,6 +46,7 @@ struct uvc_encode
     int height;
     int video_id;
     int fcc;
+    unsigned int fps;
     MpiEncTestCmd mpi_cmd;
     MpiEncTestData *mpi_data;
     void *extra_data;
@@ -53,7 +54,7 @@ struct uvc_encode
     long long int loss_frm;
 };
 
-int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265);
+int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265, unsigned int fps);
 void uvc_encode_exit(struct uvc_encode *e);
 bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *info);
 

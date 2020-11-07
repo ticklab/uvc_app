@@ -77,9 +77,9 @@ static char *strrmlb(char *pstr)
 }
 #endif
 
-int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265)
+int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265, unsigned int fps)
 {
-    LOG_INFO("%s: width = %d, height = %d, fcc = %d, h265= %d\n", __func__, width, height,fcc,h265);
+    LOG_INFO("%s: width = %d, height = %d, fcc = %d, h265 = %d, fps = %d\n", __func__, width, height,fcc,h265,fps);
     memset(e, 0, sizeof(*e));
     e->video_id = -1;
     e->width = -1;
@@ -87,8 +87,9 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h2
     e->width = width;
     e->height = height;
     e->fcc = fcc;
+    e->fps = fps;
     e->loss_frm = 0;
-    mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc, h265);
+    mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc, h265, fps);
     //mpi_enc_cmd_config_mjpg(&e->mpi_cmd, width, height);
     if(fcc == V4L2_PIX_FMT_YUYV)
         return 0;
@@ -209,7 +210,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
         }
         else if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
         {
-            e->mpi_data->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
+            e->mpi_data->fp_input = fopen(e->mpi_data->streamin_save_dir, "w+b");
             if (e->mpi_data->fp_input)
             {
                 fwrite(virt, 1, info->size, e->mpi_data->fp_input);

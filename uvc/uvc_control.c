@@ -134,7 +134,7 @@ int check_uvc_video_id(void)
 
     uvc_ctrl[0].id = -1;
     uvc_ctrl[1].id = -1;
-    for (i = 0; i < 30; i++)
+    for (i = 0; i < 50; i++)
     {
         snprintf(cmd, sizeof(cmd), "/sys/class/video4linux/video%d/name", i);
         if (access(cmd, F_OK))
@@ -177,11 +177,11 @@ void add_uvc_video()
         uvc_video_id_add(uvc_ctrl[1].id);
 }
 
-void uvc_control_init(int width, int height, int fcc, int h265)
+void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps)
 {
     pthread_mutex_lock(&lock);
     memset(&uvc_enc, 0, sizeof(uvc_enc));
-    if (uvc_encode_init(&uvc_enc, width, height, fcc, h265))
+    if (uvc_encode_init(&uvc_enc, width, height, fcc, h265, fps))
     {
         LOG_ERROR("%s fail!\n", __func__);
         abort();

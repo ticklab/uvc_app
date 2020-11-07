@@ -68,19 +68,19 @@ extern struct uvc_encode uvc_enc;
 
 #define RK_MPP_ENABLE_UVC_H265 "/tmp/use_encodec_h265"
 
-#define RK_MPP_DEBUG_OUT_FILE "/data/uvc_enc_out.bin"
-#define RK_MPP_DEBUG_IN_FILE "/data/uvc_enc_in.bin"
+#define RK_MPP_DEBUG_OUT_FILE "/uvc_enc_out.bin"
+#define RK_MPP_DEBUG_IN_FILE "/uvc_enc_in.bin"
 
 #define RK_MPP_ENC_CFG_ORIGINAL_PATH "/etc/mpp_enc_cfg.conf"
 #define RK_MPP_ENC_CFG_MODIFY_PATH "/data/mpp_enc_cfg.conf"
 //#define DEBUG_OUTPUT 1
 #if RK_MPP_ENC_TEST_NATIVE
 extern struct uvc_encode uvc_enc;
-extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265);
+extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265, unsigned int fps);
 #define TEST_ENC_TPYE V4L2_PIX_FMT_H264 //V4L2_PIX_FMT_MJPEG
 #endif
-#define MPP_ENC_CFG_MIN_FPS 1
-#define MPP_ENC_CFG_MAX_FPS 60
+#define MPP_ENC_CFG_MIN_FPS 0 // 0 means use host set fps
+#define MPP_ENC_CFG_MAX_FPS 100
 
 #define MPP_ENC_CFG_MIN_BPS 2 * 1000
 #define MPP_ENC_CFG_MAX_BPS 98 * 1000 * 1000
@@ -95,14 +95,15 @@ extern int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc,
 #define MJPEG_FRC_BPS_PER_STEP 1*1024*1024
 
 #define MJPEG_FRC_QUANT_MAX 10
-#define MJPEG_FRC_QUANT_MIN 7
+#define MJPEG_FRC_QUANT_MIN 6
 
 #define MJPEG_FRC_QFACTOR_MAX 99
-#define MJPEG_FRC_QFACTOR_MIN 80
+#define MJPEG_FRC_QFACTOR_MIN 70
 
 #define MPP_FRC_WAIT_TIME_MS 2
 #define MPP_FRC_WAIT_TIME_US (MPP_FRC_WAIT_TIME_MS * 1000)
 #define MPP_FRC_WAIT_COUNT_MIN (18 / MPP_FRC_WAIT_TIME_MS) // in high resolution, the frame rate is not enough to lower this
+#define MPP_MJPEG_HIGH_FPS_FRC_WAIT_COUNT_MIN (6 / MPP_FRC_WAIT_TIME_MS) // in high resolution, the frame rate is not enough to lower this
 
 #define MPP_FRC_UP_FRM_SET_INIT 1000
 #define MPP_FRC_UP_FRM_SET_MIN  MPP_FRC_UP_FRM_SET_INIT
@@ -146,7 +147,7 @@ typedef struct
     MppFrameFormat  format;
     RK_U32          debug;
     RK_U32          num_frames;
-
+    RK_U32          fps;
     RK_U32          have_output;
 } MpiEncTestCmd;
 typedef struct
@@ -161,6 +162,7 @@ typedef struct
 } MpiEncQqCfg;
 /********************do not change the order below*******************/
 #define MPP_ENC_CFG_CHANGE_BIT(x) (1 << x)
+#define MPP_STREAM_SAVE_DIR_LEN 32
 typedef struct
 {
     RK_U32 change;
@@ -252,6 +254,8 @@ typedef struct
     // src and dst
     FILE *fp_input;
     FILE *fp_output;
+    char streamin_save_dir[MPP_STREAM_SAVE_DIR_LEN];
+    char streamout_save_dir[MPP_STREAM_SAVE_DIR_LEN];
 
     // base flow context
     MppCtx ctx;
@@ -308,6 +312,7 @@ typedef struct
 
     // rate control runtime parameter
     RK_S32 gop;
+    RK_U32 fps;
     RK_S32 fps_in_flex;
     RK_S32 fps_in_den;
     RK_S32 fps_in_num;
@@ -360,7 +365,7 @@ typedef struct MPP_ENC_INFO {
 MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data);
 MPP_RET mpi_enc_test_run(MpiEncTestData **data, MPP_ENC_INFO_DEF *info);
 MPP_RET mpi_enc_test_deinit(MpiEncTestData **data);
-void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int h265);
+void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int h265, unsigned int fps);
 void mpi_enc_cmd_config_mjpg(MpiEncTestCmd *cmd, int width, int height);
 void mpi_enc_cmd_config_h264(MpiEncTestCmd *cmd, int width, int height);
 void mpi_enc_set_format(MppFrameFormat format);

@@ -1746,7 +1746,7 @@ uvc_handle_streamon_event(struct uvc_device *dev)
         dev->is_streaming = 1;
     }
 
-    uvc_control_init(dev->width, dev->height, dev->fcc, dev->xu_h265);
+    uvc_control_init(dev->width, dev->height, dev->fcc, dev->xu_h265, dev->fps);
 
     set_uvc_control_start(dev->video_id, dev->width, dev->height,
                           dev->fps, dev->fcc, dev->eptz_flag);

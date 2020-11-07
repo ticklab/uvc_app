@@ -95,34 +95,10 @@ static MPP_RET test_ctx_init(MpiEncTestData **data, MpiEncTestCmd *cmd)
     p->ver_stride   = cmd->height;//MPP_ALIGN(cmd->height, 16);
     p->fmt          = cmd->format;
     p->type         = cmd->type;
+    p->fps         = cmd->fps;
     if (cmd->type == MPP_VIDEO_CodingMJPEG)
         cmd->num_frames = 1;
     p->num_frames   = cmd->num_frames;
-
-    mpi_get_env_u32("uvc_enc_out", &cmd->have_output, 0);
-
-    if (cmd->have_output || !access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
-    {
-        p->fp_output = fopen(RK_MPP_DEBUG_OUT_FILE, "w+b");
-        if (NULL == p->fp_output)
-        {
-            LOG_ERROR("failed to open output file %s\n", RK_MPP_DEBUG_OUT_FILE);
-            ret = MPP_ERR_OPEN_FILE;
-        }
-        LOG_INFO("debug out file open\n");
-    }
-
-    if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
-    {
-        p->fp_input = fopen(RK_MPP_DEBUG_IN_FILE, "w+b");
-        if (NULL == p->fp_input)
-        {
-            LOG_ERROR("failed to open in file %s\n", RK_MPP_DEBUG_IN_FILE);
-            ret = MPP_ERR_OPEN_FILE;
-        }
-        LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
-    }
-
     // update resource parameter
     if (p->fmt <= MPP_FMT_YUV420SP_VU)
         p->frame_size = MPP_ALIGN(cmd->width, 16) * MPP_ALIGN(cmd->height, 16) * 2;
@@ -541,6 +517,37 @@ static MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
     return ret;
 }
 
+static bool mjpeg_is_high_solution(MpiEncTestData *p)
+{
+    bool ret = false;
+    if (p->type != MPP_VIDEO_CodingMJPEG)
+        return ret;
+    if ((p->height > 1440 && p->fps > 15) ||
+        (p->height > 1080 && p->fps > 25) ||
+        (p->height > 720 && p->fps > 30)) //if need use frc_fps to control rate,do change here p->fps to p->common_cfg.frc_fps 
+        ret = true;
+    return ret;
+}
+
+static void mpp_try_count_set(MpiEncTestData *p)
+{
+    if (p->common_cfg.frc_fps == 0)
+        p->common_cfg.frc_fps = p->fps;
+    p->common_cfg.try_count = p->common_cfg.frc_fps ?
+                             (1000 / p->common_cfg.frc_fps / MPP_FRC_WAIT_TIME_MS + MPP_FRC_WAIT_COUNT_OFFSET) :
+                              20 + MPP_FRC_WAIT_COUNT_OFFSET;
+    p->common_cfg.try_count = p->common_cfg.try_count > (p->common_cfg.enc_time / MPP_FRC_WAIT_TIME_MS) ?
+                             (p->common_cfg.try_count - p->common_cfg.enc_time / MPP_FRC_WAIT_TIME_MS) :
+                              MPP_FRC_WAIT_COUNT_MIN;
+    if (mjpeg_is_high_solution(p) == true)
+        p->common_cfg.try_count = (p->common_cfg.try_count - 1) <
+                                   MPP_MJPEG_HIGH_FPS_FRC_WAIT_COUNT_MIN ?
+                                   MPP_MJPEG_HIGH_FPS_FRC_WAIT_COUNT_MIN : p->common_cfg.try_count - 1;
+    else
+        p->common_cfg.try_count = p->common_cfg.try_count < MPP_FRC_WAIT_COUNT_MIN ?
+                                  MPP_FRC_WAIT_COUNT_MIN : p->common_cfg.try_count;
+}
+
 static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 {
 #if RK_MPP_USE_ZERO_COPY
@@ -818,7 +825,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
             }
             else if (!access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
             {
-                p->fp_output = fopen(RK_MPP_DEBUG_OUT_FILE, "w+b");
+                p->fp_output = fopen(p->streamout_save_dir, "w+b");
                 if (p->fp_output)
                 {
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
@@ -1030,7 +1037,7 @@ RET:
             }
             else if (!access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
             {
-                p->fp_output = fopen(RK_MPP_DEBUG_OUT_FILE, "w+b");
+                p->fp_output = fopen(p->streamout_save_dir, "w+b");
                 if (p->fp_output)
                 {
                     fwrite(ptr, 1, len, p->fp_output);
@@ -1138,6 +1145,29 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
 #ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     pthread_create(&p->destory_buf_hd, NULL, thread_destory_mpp_buf, p);
 #endif
+
+    mpi_get_env_u32("uvc_enc_out", &cmd->have_output, 0);
+
+    if (cmd->have_output || !access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
+    {
+        p->fp_output = fopen(p->streamout_save_dir, "w+b");
+        if (NULL == p->fp_output)
+        {
+            LOG_ERROR("failed to open output file %s\n", p->streamout_save_dir);
+        }
+        LOG_INFO("debug out file open\n");
+    }
+
+    if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
+    {
+        p->fp_input = fopen(p->streamin_save_dir, "w+b");
+        if (NULL == p->fp_input)
+        {
+            LOG_ERROR("failed to open in file %s\n", p->streamin_save_dir);
+        }
+        LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
+    }
+    return ret;
 }
 
 MPP_RET mpi_enc_test_run(MpiEncTestData **data, MPP_ENC_INFO_DEF *info)
@@ -1236,12 +1266,13 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     return ret;
 }
 
-void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int h265)
+void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int h265, unsigned int fps)
 {
     memset((void *)cmd, 0, sizeof(*cmd));
     cmd->width = width;
     cmd->height = height;
     cmd->format = g_format;
+    cmd->fps = fps;
 
     char *env_h265 = getenv("ENABLE_UVC_H265");
     if (env_h265)
@@ -1362,7 +1393,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->common_cfg.split_arg = 0;
     p->common_cfg.force_idr_count = RK_MPP_H264_FORCE_IDR_COUNT;
     p->common_cfg.force_idr_period = RK_MPP_H264_FORCE_IDR_PERIOD;
-    p->common_cfg.frc_fps = 25; // use frame rate control
+    p->common_cfg.frc_fps = p->fps; // use frame rate control
     p->common_cfg.frc_mode = FRC_ONLY_LOW;
     if (p->type == MPP_VIDEO_CodingMJPEG)
         p->common_cfg.enc_time = p->width * p->height / 110000;
@@ -1376,7 +1407,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->mjpeg_cfg.range = MPP_FRAME_RANGE_JPEG; //default for full(only full)
     p->mjpeg_cfg.qfactor_min = 1;
     p->mjpeg_cfg.qfactor_max = 99;
-    p->mjpeg_cfg.framerate = 30;
+    p->mjpeg_cfg.framerate = 0; // use host set
     p->mjpeg_cfg.gop = 30;
 #if MPP_ENC_MJPEG_FRC_USE_MPP
     p->mjpeg_cfg.rc_mode = MPP_ENC_RC_MODE_CBR;
@@ -1388,7 +1419,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     //h264 set
     p->h264_cfg.gop = 60;
     p->h264_cfg.rc_mode = MPP_ENC_RC_MODE_CBR;
-    p->h264_cfg.framerate = 30;
+    p->h264_cfg.framerate = 0; // use host set
     p->h264_cfg.range = MPP_FRAME_RANGE_JPEG; //default for full
     p->h264_cfg.head_each_idr = true;
     p->h264_cfg.sei = MPP_ENC_SEI_MODE_DISABLE;
@@ -1406,7 +1437,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     //h265 set
     p->h265_cfg.gop = 60;
     p->h265_cfg.rc_mode = MPP_ENC_RC_MODE_CBR;
-    p->h265_cfg.framerate = 30;
+    p->h265_cfg.framerate = 0; // use host set
     p->h265_cfg.range = MPP_FRAME_RANGE_JPEG; //default for full
     p->h265_cfg.head_each_idr = true;
     p->h265_cfg.sei = MPP_ENC_SEI_MODE_DISABLE;
@@ -1429,13 +1460,15 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
 #endif
 
     LOG_INFO("### dump_mpp_enc_cfg for common cfg:\n");
-    LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d,frc_fps=%d\n\
-frc_mode=%d,enc_time=%d,try_count=%d,frc_use_mpp=%d\n",
+    LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d,frc_fps=%d\n"
+             "frc_mode=%d,enc_time=%d,try_count=%d,frc_use_mpp=%d,fps:%d\n"
+             "p->streamin_save_dir=%s,p->streamout_save_dir=%s\n",
              p->common_cfg.fbc, p->common_cfg.split_mode, p->common_cfg.split_arg,
              p->common_cfg.force_idr_count, p->common_cfg.force_idr_period,
              p->common_cfg.frc_fps, p->common_cfg.frc_mode,
              p->common_cfg.enc_time, p->common_cfg.try_count,
-             MPP_ENC_MJPEG_FRC_USE_MPP);
+             MPP_ENC_MJPEG_FRC_USE_MPP, p->fps,
+             p->streamin_save_dir, p->streamout_save_dir);
 
     LOG_INFO("###dump_mpp_enc_cfg for mjpeg cfg:\n");
     LOG_INFO("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d\n",
@@ -1445,9 +1478,9 @@ frc_mode=%d,enc_time=%d,try_count=%d,frc_use_mpp=%d\n",
              p->mjpeg_cfg.framerate);
 
     LOG_INFO("### dump_mpp_enc_cfg for h264 cfg:\n");
-    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
-sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,profile=%d \n\
-cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d \n",
+    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
+             "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,profile=%d \n"
+             "cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d \n",
              p->h264_cfg.gop, p->h264_cfg.rc_mode, p->h264_cfg.framerate,
              p->h264_cfg.range, p->h264_cfg.head_each_idr,
              p->h264_cfg.sei, p->h264_cfg.qp.init,
@@ -1458,9 +1491,9 @@ cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d \n",
              p->h264_cfg.bps);
 
     LOG_INFO("### dump_mpp_enc_cfg for h265 cfg:\n");
-    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n\
-sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,max_i_qp=%d \n\
-min_i_qp=%d,bps=%d \n",
+    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
+             "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,max_i_qp=%d \n"
+             "min_i_qp=%d,bps=%d \n",
              p->h265_cfg.gop, p->h265_cfg.rc_mode, p->h265_cfg.framerate,
              p->h265_cfg.range, p->h265_cfg.head_each_idr,
              p->h265_cfg.sei, p->h265_cfg.qp.init,
@@ -1554,8 +1587,8 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
             if (child_common_frc_fps)
             {
                 p->common_cfg.frc_fps = child_common_frc_fps->valueint;
-                p->common_cfg.frc_fps = p->common_cfg.frc_fps < 10 ? 10 :
-                p->common_cfg.frc_fps > 60 ? 60 :
+                p->common_cfg.frc_fps = p->common_cfg.frc_fps < 0 ? 0 :
+                p->common_cfg.frc_fps > 100 ? 100 :
                 p->common_cfg.frc_fps;
                 p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
             }
@@ -1567,6 +1600,37 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                 p->common_cfg.frc_mode > FRC_BOTH_UP_LOW ? FRC_BOTH_UP_LOW :
                 p->common_cfg.frc_mode;
                 p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
+            }
+            cJSON *child_common_stream_save_dir = cJSON_GetObjectItem(child_common_param, "stream_save_dir");
+            if (child_common_stream_save_dir)
+            {
+                if (strlen(child_common_stream_save_dir->valuestring) >
+                    (MPP_STREAM_SAVE_DIR_LEN - strlen(RK_MPP_DEBUG_OUT_FILE) - 1))
+                {
+                    LOG_ERROR("stream_save_dir:%s, the name too long\n",
+                               child_common_stream_save_dir->valuestring);
+                    sprintf(p->streamin_save_dir,"/data%s",
+                            RK_MPP_DEBUG_IN_FILE);
+                    sprintf(p->streamout_save_dir,"/data%s",
+                            RK_MPP_DEBUG_OUT_FILE);
+                }
+                else
+                {
+                    sprintf(p->streamin_save_dir,"/%s%s",
+                            child_common_stream_save_dir->valuestring,
+                            RK_MPP_DEBUG_IN_FILE);
+                    sprintf(p->streamout_save_dir,"/%s%s",
+                            child_common_stream_save_dir->valuestring,
+                            RK_MPP_DEBUG_OUT_FILE);
+                }
+                //p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(7); //no need
+            }
+            else
+            {
+                    sprintf(p->streamin_save_dir,"/data%s",
+                            RK_MPP_DEBUG_IN_FILE);
+                    sprintf(p->streamout_save_dir,"/data%s",
+                            RK_MPP_DEBUG_OUT_FILE);
             }
 
             LOG_INFO("common_cfg.change:0x%x\n", p->common_cfg.change);
@@ -2065,14 +2129,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     }
     if (init || (p->common_cfg.change & BIT(5)))
     {
-        p->common_cfg.try_count = p->common_cfg.frc_fps ?
-                                 (1000 / p->common_cfg.frc_fps / MPP_FRC_WAIT_TIME_MS + MPP_FRC_WAIT_COUNT_OFFSET) :
-                                  20 + MPP_FRC_WAIT_COUNT_OFFSET;
-        p->common_cfg.try_count = p->common_cfg.try_count > (p->common_cfg.enc_time / MPP_FRC_WAIT_TIME_MS) ?
-                                 (p->common_cfg.try_count - p->common_cfg.enc_time / MPP_FRC_WAIT_TIME_MS) :
-                                  MPP_FRC_WAIT_COUNT_MIN;
-        p->common_cfg.try_count = p->common_cfg.try_count < MPP_FRC_WAIT_COUNT_MIN ?
-                                  MPP_FRC_WAIT_COUNT_MIN : p->common_cfg.try_count;
+        mpp_try_count_set(p);
     }
 
     p->frc_up_frm_set = MPP_FRC_UP_FRM_SET_INIT; // when continues_frm up to this num which can turn up the frame rate
@@ -2136,6 +2193,17 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         if (init || (p->mjpeg_cfg.change & BIT(8)))
         {
             /* setup default parameter */
+            if (p->mjpeg_cfg.framerate)
+            {
+                LOG_ERROR("warnning!!!mjpeg_cfg fps set %d to %d, if not want to change fps "
+                          "do not set framerate at file of mpp_enc_cfg.conf \n",
+                           p->fps, p->mjpeg_cfg.framerate);
+                p->fps = p->mjpeg_cfg.framerate;
+            }
+            else
+            {
+                p->mjpeg_cfg.framerate = p->fps;
+            }
             p->fps_in_den = 1;
             p->fps_in_num = p->mjpeg_cfg.framerate;
             p->fps_out_den = 1;
@@ -2157,6 +2225,17 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h264_cfg.rc_mode);
         if (init || (p->h264_cfg.change & BIT(2)))
         {
+            if (p->h264_cfg.framerate)
+            {
+                LOG_ERROR("warnning!!!h264_cfg fps set %d to %d, if not want to change fps "
+                          "do not set framerate at file of mpp_enc_cfg.conf \n",
+                           p->fps, p->h264_cfg.framerate);
+                p->fps = p->h264_cfg.framerate;
+            }
+            else
+            {
+                p->h264_cfg.framerate = p->fps;
+            }
             /* setup default parameter */
             p->fps_in_den = 1;
             p->fps_in_num = p->h264_cfg.framerate;
@@ -2268,6 +2347,17 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h265_cfg.rc_mode);
         if (init || (p->h265_cfg.change & BIT(2)))
         {
+            if (p->h265_cfg.framerate)
+            {
+                LOG_ERROR("warnning!!!h265_cfg fps set %d to %d, if not want to change fps "
+                          "do not set framerate at file of mpp_enc_cfg.conf \n",
+                           p->fps, p->h265_cfg.framerate);
+                p->fps = p->h265_cfg.framerate;
+            }
+            else
+            {
+                p->h265_cfg.framerate = p->fps;
+            }
             /* setup default parameter */
             p->fps_in_den = 1;
             p->fps_in_num = p->h265_cfg.framerate;
