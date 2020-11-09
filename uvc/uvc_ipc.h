@@ -80,7 +80,7 @@ using namespace shmc;
 
 #define UVC_SENDBUFF_USE_INIT_ALLOC 1
 #define UVC_STREAM_OFF_NOT_SEND_SETTING 1
-#define UVC_ABANDON_FRM_COUNT 2
+#define UVC_ABANDON_FRM_COUNT 0
 
 namespace ShmControl
 {
