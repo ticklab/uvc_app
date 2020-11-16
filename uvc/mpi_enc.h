@@ -73,6 +73,9 @@ extern struct uvc_encode uvc_enc;
 
 #define RK_MPP_ENC_CFG_ORIGINAL_PATH "/etc/mpp_enc_cfg.conf"
 #define RK_MPP_ENC_CFG_MODIFY_PATH "/data/mpp_enc_cfg.conf"
+
+#define RK_MPP_MJPEG_FPS_CONTROL 1
+
 //#define DEBUG_OUTPUT 1
 #if RK_MPP_ENC_TEST_NATIVE
 extern struct uvc_encode uvc_enc;
@@ -193,6 +196,7 @@ typedef struct
     MppEncRcMode rc_mode; // 6
     RK_U32 bps; // 7
     RK_U32 framerate; // 8
+    RK_U32 enc_mode; //enc_mode no have change bit   0:mean auto select 1:close the mjpeg_frc 2: use mjpeg_frc
 } MpiEncMjpegCfg;
 
 typedef struct
@@ -236,6 +240,11 @@ typedef struct DestoryNode
     bool unfinished;
     RK_U32 count;
 } MppDestoryInfo;
+
+
+#if RK_MPP_MJPEG_FPS_CONTROL
+#define MJPEG_FPS_CONTROL_V2 1
+#endif
 
 typedef struct
 {
@@ -352,6 +361,10 @@ typedef struct
     RK_U32 continuous_frm;
     RK_U32 frc_up_frm_set;
     bool set_frc_low;
+    bool fps_ctr_enable;
+#if RK_MPP_MJPEG_FPS_CONTROL
+    void *fps_handle;
+#endif
 //    pthread_mutex_t destory_mutex;
 #endif
 } MpiEncTestData;

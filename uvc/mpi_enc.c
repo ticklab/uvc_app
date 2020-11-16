@@ -34,6 +34,12 @@ static int mpp_roi_enable_set(MpiEncTestData *p, int enable);
 static int mpp_roi_enable_get(MpiEncTestData *p);
 #endif
 
+#if RK_MPP_MJPEG_FPS_CONTROL
+extern MPP_RET mpp_mjpeg_fps_init(MpiEncTestData *p);
+extern void mpp_mjpeg_fps_deinit(MpiEncTestData *p);
+extern bool mpp_mjpeg_encode_data_set(void *fps_handle, void *data, size_t len);
+#endif
+
 #if 0
 static OptionInfo mpi_enc_cmd[] =
 {
@@ -382,7 +388,7 @@ void *thread_destory_mpp_buf(void *user)
 }
 
 #endif
-static MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
+MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
 {
     MPP_RET ret = MPP_OK;
     bool change = false;
@@ -517,19 +523,29 @@ static MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
     return ret;
 }
 
-static bool mjpeg_is_high_solution(MpiEncTestData *p)
+bool mjpeg_is_high_solution(MpiEncTestData *p)
 {
     bool ret = false;
     if (p->type != MPP_VIDEO_CodingMJPEG)
         return ret;
-    if ((p->height > 1440 && p->fps > 15) ||
-        (p->height > 1080 && p->fps > 25) ||
-        (p->height > 720 && p->fps > 30)) //if need use frc_fps to control rate,do change here p->fps to p->common_cfg.frc_fps 
+#if 1
+    if ((p->height > 1440 && p->fps  > 15) ||
+        (p->height > 1080 && p->fps  > 25) ||
+        (p->height > 720 && p->fps > 30)) {
         ret = true;
+    }
+#else //if need use frc_fps to control rate,do this
+    p->fps = p->common_cfg.frc_fps;
+    if ((p->height > 1440 && p->fps  > 15) ||
+        (p->height > 1080 && p->fps  > 25) ||
+        (p->height > 720 && p->fps > 30)) {//if need use frc_fps to control rate,do change here p->fps to p->common_cfg.frc_fps
+        ret = true;
+    }
+#endif
     return ret;
 }
 
-static void mpp_try_count_set(MpiEncTestData *p)
+void mpp_try_count_set(MpiEncTestData *p)
 {
     if (p->common_cfg.frc_fps == 0)
         p->common_cfg.frc_fps = p->fps;
@@ -548,373 +564,8 @@ static void mpp_try_count_set(MpiEncTestData *p)
                                   MPP_FRC_WAIT_COUNT_MIN : p->common_cfg.try_count;
 }
 
-static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
+static MPP_RET mpp_enc_need_extra_buf(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 {
-#if RK_MPP_USE_ZERO_COPY
-    MPP_RET ret;
-    MppApi *mpi;
-    MppCtx ctx;
-    MppPacket packet = NULL;
-    MppFrame frame = NULL;
-    RK_S32 i;
-    MppBuffer buf = NULL;
-    MppBuffer pkt_buf_out = NULL;
-    int try_count = p->common_cfg.try_count;
-    bool get_ok = false;
-
-    if (NULL == p)
-        return MPP_ERR_NULL_PTR;
-
-    mpi = p->mpi;
-    ctx = p->ctx;
-
-    ret = mpp_frame_init(&frame);
-    if (ret)
-    {
-        printf("mpp_frame_init failed\n");
-        goto RET;
-    }
-
-    mpp_frame_set_width(frame, p->width);
-    mpp_frame_set_height(frame, p->height);
-    mpp_frame_set_hor_stride(frame, p->hor_stride);
-    mpp_frame_set_ver_stride(frame, p->ver_stride);
-    mpp_frame_set_fmt(frame, p->fmt);
-
-    MppTask task = NULL;
-    RK_S32 index = i++;
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
-    struct uvc_buffer *uvc_buf;
-    MppBufferInfo outputCommit;
-//   memset(&outputCommit, 0, sizeof(outputCommit));
-    outputCommit.type = MPP_BUFFER_TYPE_DRM;
-
-#if UVC_SEND_BUF_WHEN_ENC_READY
-    if (p->frame_count >= UVC_BUFFER_NUM)
-#endif
-    {
-        while (try_count--)
-        {
-            if ((!uvc_get_user_run_state(uvc_enc.video_id) || !uvc_buffer_write_enable(uvc_enc.video_id)))
-            {
-                // LOG_ERROR("not get write buff,read too slow.%d,%d\n",
-                //      uvc_get_user_run_state(uvc_enc.video_id),uvc_buffer_write_enable(uvc_enc.video_id));
-                // return ret;
-                usleep(MPP_FRC_WAIT_TIME_US);
-            }
-            else
-            {
-                get_ok = true;
-                break;
-            }
-        }
-    }
-#if UVC_SEND_BUF_WHEN_ENC_READY
-    else
-    {
-        get_ok = true;
-    }
-#endif
-
-    if (!get_ok)
-    {
-        p->loss_frm ++;
-        p->continuous_frm = 0;
-#if RK_MPP_DYNAMIC_DEBUG_ON
-        if (access(RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK, 0)) //no exist and output log
-#endif
-            LOG_ERROR("not get write buff,read too slow %d,%d.\"touch %s \" can close debug.\n",
-                      p->loss_frm,
-                      p->frc_up_frm_set,
-                      RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK);
-        if (p->loss_frm >= 5 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.frc_mode)
-        {
-            p->loss_frm = 0;
-            if (p->set_frc_low == false) // punishment mechanism
-                p->frc_up_frm_set = (p->frc_up_frm_set << 1) < MPP_FRC_UP_FRM_SET_MAX ?
-                                     p->frc_up_frm_set <<= 1 : MPP_FRC_UP_FRM_SET_MAX;
-            else //avoid shortterm rapid decline after recovery too slow
-                p->frc_up_frm_set = (p->frc_up_frm_set >> 1) > MPP_FRC_UP_FRM_SET_MIN ?
-                                     p->frc_up_frm_set >>= 1 : MPP_FRC_UP_FRM_SET_INIT;
-            p->set_frc_low = true;
-            mpp_mjpeg_simple_frc(p, true);
-        }
-        return ret;
-    }
-    else
-    {
-        p->continuous_frm ++;
-        if (p->continuous_frm > p->frc_up_frm_set)
-        {
-            p->continuous_frm = 0;
-            p->loss_frm = ((p->loss_frm > 0) ? (p->loss_frm - 1) : 0);
-            // done:can turn up the quant here when loss_frm = 0 or continuous_frm up to more high
-            if (p->loss_frm == 0 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.frc_mode == FRC_BOTH_UP_LOW)
-            {
-                p->loss_frm = 2;
-                if (p->set_frc_low == false) // reward mechanism
-                    p->frc_up_frm_set = (p->frc_up_frm_set >> 1) > MPP_FRC_UP_FRM_SET_MIN ?
-                                         p->frc_up_frm_set >>= 1 : MPP_FRC_UP_FRM_SET_INIT;
-                p->set_frc_low = false;
-                mpp_mjpeg_simple_frc(p, false);
-            }
-        }
-    }
-
-   // uvc_user_lock();
-    uvc_buf = uvc_buffer_write_get(uvc_enc.video_id);
-    if (!uvc_buf || uvc_buf->abandon)
-    {
-        LOG_ERROR("uvc_buffer_write_get failed(buf: %p)\n", uvc_buf);
-        goto RET;
-    }
-
-    uvc_buf->pts = info->pts;
-    uvc_buf->seq = info->seq;
-#if UVC_DYNAMIC_DEBUG_USE_TIME
-    if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
-    {
-        int32_t use_time_us, now_time_us;
-        struct timespec now_tm = {0, 0};
-        clock_gettime(CLOCK_MONOTONIC, &now_tm);
-        now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
-        use_time_us = now_time_us - uvc_buf->pts;
-#if USE_RK_AISERVER
-        LOG_INFO("isp->aiserver->ipc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
-#endif
-#if USE_ROCKIT
-        LOG_INFO("isp->rockit->uvc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
-#endif
-#if USE_RKMEDIA
-        LOG_INFO("isp->rkmedia->uvc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
-#endif
-    }
-#endif
-
-    outputCommit.size = uvc_buf->drm_buf_size;
-    outputCommit.fd = uvc_buf->fd;
-    ret = mpp_buffer_import(&pkt_buf_out, &outputCommit);
-    if (ret)
-    {
-        LOG_ERROR("import output picture buffer failed\n");
-        goto RET;
-    }
-#else
-    pkt_buf_out = p->pkt_buf;
-#endif
-    mpp_packet_init_with_buffer(&packet, pkt_buf_out);
-    mpp_packet_set_length(packet, 0);
-
-#if 0
-    mpp_frame_set_buffer(frame, p->frm_buf);
-#else
-    MppBufferInfo inputCommit;
-//    memset(&inputCommit, 0, sizeof(inputCommit));
-    inputCommit.type = MPP_BUFFER_TYPE_ION;
-    inputCommit.size = info->size;
-    inputCommit.fd = info->fd;
-    ret = mpp_buffer_import(&buf, &inputCommit);
-    if (ret)
-    {
-        LOG_ERROR("import input picture buffer failed\n");
-        goto RET;
-    }
-    mpp_frame_set_buffer(frame, buf);
-#endif
-    if (p->enc_version == 1)
-    {
-        //no need to get the sps/pps in addition
-        if (p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC)  //force set idr when begin enc
-        {
-            if (p->h2645_frm_count < (p->common_cfg.force_idr_count * p->common_cfg.force_idr_period))
-            {
-                if ((p->h2645_frm_count % p->common_cfg.force_idr_period) == 0)
-                {
-                    ret = mpi->control(ctx, MPP_ENC_SET_IDR_FRAME, NULL);
-                    if (ret)
-                    {
-                        LOG_INFO("mpi force idr frame control failed\n");
-                        goto RET;
-                    }
-                    else
-                    {
-                        LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d ,H264:%d\n",
-                                  p->h2645_frm_count, (p->type == MPP_VIDEO_CodingAVC));
-                    }
-                }
-                p->h2645_frm_count++;
-            }
-        }
-    }
-#if MPP_ENC_ROI_ENABLE
-    if (mpp_roi_enable_get(p)) {
-        MppMeta meta = NULL;
-        meta = mpp_frame_get_meta(frame);
-        mpp_meta_set_ptr(meta, KEY_ROI_DATA, (void*)&p->roi_cfg);
-    }
-#endif
-    ret = mpi->poll(ctx, MPP_PORT_INPUT, MPP_POLL_BLOCK);
-    if (ret)
-    {
-        LOG_ERROR("mpp task input poll failed ret %d\n", ret);
-        goto RET;
-    }
-
-    ret = mpi->dequeue(ctx, MPP_PORT_INPUT, &task);
-    if (ret || NULL == task)
-    {
-        LOG_ERROR("mpp task input dequeue failed ret %d task %p\n", ret, task);
-        goto RET;
-    }
-
-    mpp_task_meta_set_frame(task, KEY_INPUT_FRAME,  frame);
-    mpp_task_meta_set_packet(task, KEY_OUTPUT_PACKET, packet);
-    //800us+
-
-    ret = mpi->enqueue(ctx, MPP_PORT_INPUT, task);
-    if (ret)
-    {
-        LOG_ERROR("mpp task input enqueue failed\n");
-        goto RET;
-    }
-    //800us+
-#if 1
-    ret = mpi->poll(ctx, MPP_PORT_OUTPUT, MPP_POLL_BLOCK);
-    if (ret)
-    {
-        LOG_ERROR("mpp task output poll failed ret %d\n", ret);
-        goto RET;
-    }//9028 us for 1080p
-#else
-    do
-    {
-        ret = mpi->poll(ctx, MPP_PORT_OUTPUT, MPP_POLL_NON_BLOCK);
-        usleep(100);
-    }
-    while (ret);//8882 us for 1080p
-#endif
-
-    ret = mpi->dequeue(ctx, MPP_PORT_OUTPUT, &task);
-    if (ret || NULL == task)
-    {
-        LOG_ERROR("mpp task output dequeue failed ret %d task %p\n", ret, task);
-        goto RET;
-    }
-
-    if (task)
-    {
-        MppFrame packet_out = NULL;
-        mpp_task_meta_get_packet(task, KEY_OUTPUT_PACKET, &packet_out);
-        assert(packet_out == packet);
-        if (packet)
-        {
-            // write packet to file here
-            size_t len = mpp_packet_get_length(packet);
-#if RK_MPP_DYNAMIC_DEBUG_ON
-            if (!access(RK_MPP_OUT_LEN_DEBUG_CHECK, 0))
-                LOG_INFO("out_len=%d\n", len);
-#endif
-
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
-            uvc_buf->size = len;
-            uvc_buf->frame_count = p->frame_count;
-            uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
-#else
-            void *ptr = mpp_packet_get_pos(packet);
-#endif
-            if (p->fp_output)
-            {
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
-                fwrite(uvc_buf->buffer, 1, len, p->fp_output);
-#else
-                fwrite(ptr, 1, len, p->fp_output);
-#endif
-#if RK_MPP_DYNAMIC_DEBUG_ON
-                if (access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
-                {
-                    fclose(p->fp_output);
-                    p->fp_output = NULL;
-                    LOG_INFO("debug out file close\n");
-                }
-            }
-            else if (!access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
-            {
-                p->fp_output = fopen(p->streamout_save_dir, "w+b");
-                if (p->fp_output)
-                {
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
-                    fwrite(uvc_buf->buffer, 1, len, p->fp_output);
-#else
-                    fwrite(ptr, 1, len, p->fp_output);
-#endif
-                    LOG_INFO("debug out file open\n");
-                }
-#endif
-            }
-#ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
-            p->enc_data = ptr;
-            p->enc_len = len;
-#endif
-            mpp_packet_deinit(&packet);
-        }
-        //9175 us for 1080p
-        p->frame_count++;
-    }
-    /*
-            if(p->frame_count % 100 == 0) {
-              LOG_INFO("outlen=%d\n", uvc_buf->size);
-            }
-    */
-    ret = mpi->enqueue(ctx, MPP_PORT_OUTPUT, task);
-    if (ret)
-    {
-        LOG_ERROR("mpp task output enqueue failed\n");
-        goto RET;
-    }//9195 us for 1080p
-
-RET:
-  //  uvc_user_unlock();
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    pthread_mutex_lock(&p->cond_mutex);
-    if (p->destory_info.unfinished == false)
-    {
-        p->destory_info.unfinished = true;
-        p->destory_info.destory_frame = frame;
-        p->destory_info.destory_buf = buf;
-        p->destory_info.destory_pkt_buf_out = pkt_buf_out;
-        //if (p->frame_count % 100 != 0) //for test
-        pthread_cond_signal(&p->cond);
-    }
-    else
-    {
-        //pthread_cond_signal(&p->cond);
-        do_destory_mpp_buf(p);
-        LOG_INFO("not go here normal,count=%d,frm=%d\n", p->destory_info.count, p->frame_count);
-#endif
-        if (frame)
-        {
-            mpp_frame_deinit(&frame);
-            frame = NULL;
-        }
-        if (buf)
-        {
-            mpp_buffer_put(buf);
-            buf = NULL;
-        }
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
-        if (pkt_buf_out)
-        {
-            mpp_buffer_put(pkt_buf_out);
-            pkt_buf_out = NULL;
-        }
-#endif
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    }
-    pthread_mutex_unlock(&p->cond_mutex);
-#endif
-
-    return ret;
-#else
     MPP_RET ret;
     MppApi *mpi;
     MppCtx ctx;
@@ -1076,6 +727,415 @@ RET:
         buf = NULL;
     }
     return ret;
+}
+
+
+static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
+{
+#if RK_MPP_USE_ZERO_COPY
+    MPP_RET ret;
+    MppApi *mpi;
+    MppCtx ctx;
+    MppPacket packet = NULL;
+    MppFrame frame = NULL;
+    RK_S32 i;
+    MppBuffer buf = NULL;
+    MppBuffer pkt_buf_out = NULL;
+    int try_count = p->common_cfg.try_count;
+    bool get_ok = false;
+    int32_t use_time_us, now_time_us, last_time_us;
+    struct timespec now_tm = {0, 0};
+
+    if (NULL == p)
+        return MPP_ERR_NULL_PTR;
+
+    mpi = p->mpi;
+    ctx = p->ctx;
+
+    ret = mpp_frame_init(&frame);
+    if (ret)
+    {
+        printf("mpp_frame_init failed\n");
+        goto RET;
+    }
+
+    mpp_frame_set_width(frame, p->width);
+    mpp_frame_set_height(frame, p->height);
+    mpp_frame_set_hor_stride(frame, p->hor_stride);
+    mpp_frame_set_ver_stride(frame, p->ver_stride);
+    mpp_frame_set_fmt(frame, p->fmt);
+
+    MppTask task = NULL;
+    RK_S32 index = i++;
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+    struct uvc_buffer *uvc_buf;
+    MppBufferInfo outputCommit;
+//   memset(&outputCommit, 0, sizeof(outputCommit));
+    outputCommit.type = MPP_BUFFER_TYPE_DRM;
+
+#if UVC_SEND_BUF_WHEN_ENC_READY
+    if (p->frame_count >= UVC_BUFFER_NUM)
+#endif
+    {
+        while (try_count--)
+        {
+            if ((!uvc_get_user_run_state(uvc_enc.video_id) || !uvc_buffer_write_enable(uvc_enc.video_id)))
+            {
+                // LOG_ERROR("not get write buff,read too slow.%d,%d\n",
+                //      uvc_get_user_run_state(uvc_enc.video_id),uvc_buffer_write_enable(uvc_enc.video_id));
+                // return ret;
+                usleep(MPP_FRC_WAIT_TIME_US);
+            }
+            else
+            {
+                get_ok = true;
+                break;
+            }
+        }
+    }
+#if UVC_SEND_BUF_WHEN_ENC_READY
+    else
+    {
+        get_ok = true;
+    }
+#endif
+
+    if (!get_ok)
+    {
+        p->loss_frm ++;
+        p->continuous_frm = 0;
+#if RK_MPP_DYNAMIC_DEBUG_ON
+        if (access(RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK, 0)) //no exist and output log
+#endif
+            LOG_ERROR("not get write buff,read too slow %d,%d.\"touch %s \" can close debug.\n",
+                      p->loss_frm,
+                      p->frc_up_frm_set,
+                      RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK);
+        if (p->loss_frm >= 5 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.frc_mode)
+        {
+            p->loss_frm = 0;
+            if (p->set_frc_low == false) // punishment mechanism
+                p->frc_up_frm_set = (p->frc_up_frm_set << 1) < MPP_FRC_UP_FRM_SET_MAX ?
+                                     p->frc_up_frm_set <<= 1 : MPP_FRC_UP_FRM_SET_MAX;
+            else //avoid shortterm rapid decline after recovery too slow
+                p->frc_up_frm_set = (p->frc_up_frm_set >> 1) > MPP_FRC_UP_FRM_SET_MIN ?
+                                     p->frc_up_frm_set >>= 1 : MPP_FRC_UP_FRM_SET_INIT;
+            p->set_frc_low = true;
+            mpp_mjpeg_simple_frc(p, true);
+        }
+        return ret;
+    }
+    else
+    {
+        p->continuous_frm ++;
+        if (p->continuous_frm > p->frc_up_frm_set)
+        {
+            p->continuous_frm = 0;
+            p->loss_frm = ((p->loss_frm > 0) ? (p->loss_frm - 1) : 0);
+            // done:can turn up the quant here when loss_frm = 0 or continuous_frm up to more high
+            if (p->loss_frm == 0 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.frc_mode == FRC_BOTH_UP_LOW)
+            {
+                p->loss_frm = 2;
+                if (p->set_frc_low == false) // reward mechanism
+                    p->frc_up_frm_set = (p->frc_up_frm_set >> 1) > MPP_FRC_UP_FRM_SET_MIN ?
+                                         p->frc_up_frm_set >>= 1 : MPP_FRC_UP_FRM_SET_INIT;
+                p->set_frc_low = false;
+                mpp_mjpeg_simple_frc(p, false);
+            }
+        }
+    }
+
+   // uvc_user_lock();
+    uvc_buf = uvc_buffer_write_get(uvc_enc.video_id);
+    if (!uvc_buf || uvc_buf->abandon)
+    {
+        LOG_ERROR("uvc_buffer_write_get failed(buf: %p)\n", uvc_buf);
+        goto RET;
+    }
+
+    uvc_buf->pts = info->pts;
+    uvc_buf->seq = info->seq;
+    clock_gettime(CLOCK_MONOTONIC, &now_tm);
+    now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
+
+#if UVC_DYNAMIC_DEBUG_USE_TIME
+    if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
+    {
+        use_time_us = now_time_us - uvc_buf->pts;
+#if USE_RK_AISERVER
+        LOG_INFO("isp->aiserver->ipc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
+#endif
+#if USE_ROCKIT
+        LOG_INFO("isp->rockit->uvc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
+#endif
+#if USE_RKMEDIA
+        LOG_INFO("isp->rkmedia->uvc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
+#endif
+    }
+#endif
+
+    outputCommit.size = uvc_buf->drm_buf_size;
+    outputCommit.fd = uvc_buf->fd;
+    ret = mpp_buffer_import(&pkt_buf_out, &outputCommit);
+    if (ret)
+    {
+        LOG_ERROR("import output picture buffer failed\n");
+        goto RET;
+    }
+#else
+    pkt_buf_out = p->pkt_buf;
+#endif
+    mpp_packet_init_with_buffer(&packet, pkt_buf_out);
+    mpp_packet_set_length(packet, 0);
+
+#if 0
+    mpp_frame_set_buffer(frame, p->frm_buf);
+#else
+    MppBufferInfo inputCommit;
+//    memset(&inputCommit, 0, sizeof(inputCommit));
+    inputCommit.type = MPP_BUFFER_TYPE_ION;
+    inputCommit.size = info->size;
+    inputCommit.fd = info->fd;
+    ret = mpp_buffer_import(&buf, &inputCommit);
+    if (ret)
+    {
+        LOG_ERROR("import input picture buffer failed\n");
+        goto RET;
+    }
+    mpp_frame_set_buffer(frame, buf);
+#endif
+    if (p->enc_version == 1)
+    {
+        //no need to get the sps/pps in addition
+        if (p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC)  //force set idr when begin enc
+        {
+            if (p->h2645_frm_count < (p->common_cfg.force_idr_count * p->common_cfg.force_idr_period))
+            {
+                if ((p->h2645_frm_count % p->common_cfg.force_idr_period) == 0)
+                {
+                    ret = mpi->control(ctx, MPP_ENC_SET_IDR_FRAME, NULL);
+                    if (ret)
+                    {
+                        LOG_INFO("mpi force idr frame control failed\n");
+                        goto RET;
+                    }
+                    else
+                    {
+                        LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d ,H264:%d\n",
+                                  p->h2645_frm_count, (p->type == MPP_VIDEO_CodingAVC));
+                    }
+                }
+                p->h2645_frm_count++;
+            }
+        }
+    }
+#if MPP_ENC_ROI_ENABLE
+    if (mpp_roi_enable_get(p)) {
+        MppMeta meta = NULL;
+        meta = mpp_frame_get_meta(frame);
+        mpp_meta_set_ptr(meta, KEY_ROI_DATA, (void*)&p->roi_cfg);
+    }
+#endif
+    ret = mpi->poll(ctx, MPP_PORT_INPUT, MPP_POLL_BLOCK);
+    if (ret)
+    {
+        LOG_ERROR("mpp task input poll failed ret %d\n", ret);
+        goto RET;
+    }
+
+    ret = mpi->dequeue(ctx, MPP_PORT_INPUT, &task);
+    if (ret || NULL == task)
+    {
+        LOG_ERROR("mpp task input dequeue failed ret %d task %p\n", ret, task);
+        goto RET;
+    }
+
+    mpp_task_meta_set_frame(task, KEY_INPUT_FRAME,  frame);
+    mpp_task_meta_set_packet(task, KEY_OUTPUT_PACKET, packet);
+    //800us+
+
+    ret = mpi->enqueue(ctx, MPP_PORT_INPUT, task);
+    if (ret)
+    {
+        LOG_ERROR("mpp task input enqueue failed\n");
+        goto RET;
+    }
+    //800us+
+#if 1
+    ret = mpi->poll(ctx, MPP_PORT_OUTPUT, MPP_POLL_BLOCK);
+    if (ret)
+    {
+        LOG_ERROR("mpp task output poll failed ret %d\n", ret);
+        goto RET;
+    }//9028 us for 1080p
+#else
+    do
+    {
+        ret = mpi->poll(ctx, MPP_PORT_OUTPUT, MPP_POLL_NON_BLOCK);
+        usleep(100);
+    }
+    while (ret);//8882 us for 1080p
+#endif
+
+    ret = mpi->dequeue(ctx, MPP_PORT_OUTPUT, &task);
+    if (ret || NULL == task)
+    {
+        LOG_ERROR("mpp task output dequeue failed ret %d task %p\n", ret, task);
+        goto RET;
+    }
+
+    if (task)
+    {
+        MppFrame packet_out = NULL;
+        mpp_task_meta_get_packet(task, KEY_OUTPUT_PACKET, &packet_out);
+        assert(packet_out == packet);
+        if (packet)
+        {
+            // write packet to file here
+            size_t len = mpp_packet_get_length(packet);
+#if RK_MPP_DYNAMIC_DEBUG_ON
+            if (!access(RK_MPP_OUT_LEN_DEBUG_CHECK, 0))
+                LOG_INFO("out_len=%d\n", len);
+#endif
+
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+            uvc_buf->size = len;
+            uvc_buf->frame_count = p->frame_count;
+            if (p->fps_ctr_enable == true) {
+#if (RK_MPP_MJPEG_FPS_CONTROL && MJPEG_FPS_CONTROL_V2)
+                if (!mpp_mjpeg_encode_data_set(p->fps_handle, (void *)uvc_buf, len)) {
+                    LOG_INFO("mpp_mjpeg_encode_data_set fail\n");
+                    uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
+                }
+#endif
+            } else {
+                uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
+            }
+#else
+            void *ptr = mpp_packet_get_pos(packet);
+#endif
+            if (p->fp_output)
+            {
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+                fwrite(uvc_buf->buffer, 1, len, p->fp_output);
+#else
+                fwrite(ptr, 1, len, p->fp_output);
+#endif
+#if RK_MPP_DYNAMIC_DEBUG_ON
+                if (access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
+                {
+                    fclose(p->fp_output);
+                    p->fp_output = NULL;
+                    LOG_INFO("debug out file close\n");
+                }
+            }
+            else if (!access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
+            {
+                p->fp_output = fopen(p->streamout_save_dir, "w+b");
+                if (p->fp_output)
+                {
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+                    fwrite(uvc_buf->buffer, 1, len, p->fp_output);
+#else
+                    fwrite(ptr, 1, len, p->fp_output);
+#endif
+                    LOG_INFO("debug out file open\n");
+                }
+#endif
+            }
+#ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
+            p->enc_data = ptr;
+            p->enc_len = len;
+#endif
+            mpp_packet_deinit(&packet);
+            clock_gettime(CLOCK_MONOTONIC, &now_tm);
+            last_time_us = now_time_us;
+            now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
+            use_time_us = now_time_us - uvc_buf->pts;
+
+            p->common_cfg.enc_time = (now_time_us - last_time_us) / 1000 +
+                                     (p->common_cfg.try_count - try_count) * MPP_FRC_WAIT_TIME_MS;
+            p->common_cfg.enc_time = p->common_cfg.enc_time > 80 ? 80 : p->common_cfg.enc_time < 2 ? 2 : p->common_cfg.enc_time;
+            mpp_try_count_set(p);
+#if UVC_DYNAMIC_DEBUG_USE_TIME
+            if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
+            {
+                LOG_INFO("mpp_enc+getbuf time:%d ms, try_count:%d \n",
+                          p->common_cfg.enc_time, p->common_cfg.try_count);
+#if USE_RK_AISERVER
+                LOG_INFO("isp->aiserver->ipc->mpp_enc_ok latency time:%d us, %d ms\n",
+                          use_time_us, use_time_us / 1000);
+#endif
+#if USE_ROCKIT
+                LOG_INFO("isp->rockit->uvc->mpp_enc_ok latency time:%d us, %d ms\n",
+                          use_time_us, use_time_us / 1000);
+#endif
+#if USE_RKMEDIA
+                LOG_INFO("isp->rkmedia->uvc->mpp_enc_ok latency time:%d us, %d ms\n",
+                          use_time_us, use_time_us / 1000);
+#endif
+            }
+#endif
+        }
+        //9175 us for 1080p
+        p->frame_count++;
+    }
+    /*
+            if(p->frame_count % 100 == 0) {
+              LOG_INFO("outlen=%d\n", uvc_buf->size);
+            }
+    */
+    ret = mpi->enqueue(ctx, MPP_PORT_OUTPUT, task);
+    if (ret)
+    {
+        LOG_ERROR("mpp task output enqueue failed\n");
+        goto RET;
+    }//9195 us for 1080p
+
+RET:
+  //  uvc_user_unlock();
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
+    pthread_mutex_lock(&p->cond_mutex);
+    if (p->destory_info.unfinished == false)
+    {
+        p->destory_info.unfinished = true;
+        p->destory_info.destory_frame = frame;
+        p->destory_info.destory_buf = buf;
+        p->destory_info.destory_pkt_buf_out = pkt_buf_out;
+        //if (p->frame_count % 100 != 0) //for test
+        pthread_cond_signal(&p->cond);
+    }
+    else
+    {
+        //pthread_cond_signal(&p->cond);
+        do_destory_mpp_buf(p);
+        LOG_INFO("not go here normal,count=%d,frm=%d\n", p->destory_info.count, p->frame_count);
+#endif
+        if (frame)
+        {
+            mpp_frame_deinit(&frame);
+            frame = NULL;
+        }
+        if (buf)
+        {
+            mpp_buffer_put(buf);
+            buf = NULL;
+        }
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+        if (pkt_buf_out)
+        {
+            mpp_buffer_put(pkt_buf_out);
+            pkt_buf_out = NULL;
+        }
+#endif
+#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
+    }
+    pthread_mutex_unlock(&p->cond_mutex);
+#endif
+
+    return ret;
+#else
+     mpp_enc_need_extra_buf(p, info);
 #endif
 }
 
@@ -1156,6 +1216,10 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         return ret;
     }
     pthread_create(&p->check_cfg_change_hd, NULL, thread_check_mpp_enc_chenge_loop, p);
+#if RK_MPP_MJPEG_FPS_CONTROL
+    mpp_mjpeg_fps_init(p);
+#endif
+
 #ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     pthread_create(&p->destory_buf_hd, NULL, thread_destory_mpp_buf, p);
 #endif
@@ -1199,6 +1263,11 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
 {
     MPP_RET ret = MPP_OK;
     MpiEncTestData *p = *data;
+
+#if RK_MPP_MJPEG_FPS_CONTROL
+    mpp_mjpeg_fps_deinit(p);
+#endif
+
 #ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     if (p->destory_buf_hd) {
         pthread_cancel(p->destory_buf_hd);
@@ -1485,11 +1554,11 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              p->streamin_save_dir, p->streamout_save_dir);
 
     LOG_INFO("###dump_mpp_enc_cfg for mjpeg cfg:\n");
-    LOG_INFO("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d\n",
+    LOG_INFO("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d,enc_mode:%d\n",
              p->mjpeg_cfg.quant, p->mjpeg_cfg.qfactor, p->mjpeg_cfg.range,
              p->mjpeg_cfg.qfactor_min, p->mjpeg_cfg.qfactor_max,
              p->mjpeg_cfg.gop, p->mjpeg_cfg.rc_mode, p->mjpeg_cfg.bps,
-             p->mjpeg_cfg.framerate);
+             p->mjpeg_cfg.framerate, p->mjpeg_cfg.enc_mode);
 
     LOG_INFO("### dump_mpp_enc_cfg for h264 cfg:\n");
     LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
@@ -1753,6 +1822,15 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                              p->mjpeg_cfg.framerate > MPP_ENC_CFG_MAX_FPS ? MPP_ENC_CFG_MAX_FPS :
                                              p->mjpeg_cfg.framerate;
                     p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(8);
+                }
+                cJSON *child_mjpeg_enc_mode = cJSON_GetObjectItem(child_mjpeg_param, "enc_mode");
+                if (child_mjpeg_enc_mode)
+                {
+                    p->mjpeg_cfg.enc_mode = child_mjpeg_enc_mode->valueint;
+                    p->mjpeg_cfg.enc_mode = p->mjpeg_cfg.enc_mode < 0 ? 0 :
+                                             p->mjpeg_cfg.enc_mode > 2 ? 2 :
+                                             p->mjpeg_cfg.enc_mode;
+                   // p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9); //not need.
                 }
 
                 LOG_INFO("mjpeg_cfg.change:0x%x\n", p->mjpeg_cfg.change);

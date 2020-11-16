@@ -46,7 +46,7 @@ extern "C" {
 
 #define V4L2_PIX_FMT_H265     v4l2_fourcc('H', '2', '6', '5') /* H265 with start codes */
 
-#define UVC_BUFFER_NUM 3
+#define UVC_BUFFER_NUM 3 //use mjpeg_fps can set 4
 #define YUYV_AS_RAW 0
 
 #define UVC_DYNAMIC_DEBUG_USE_TIME 1 //release version can set to 0

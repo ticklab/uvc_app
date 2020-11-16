@@ -18,8 +18,9 @@ set(LIB_SOURCE
     uvc/uevent.c
     uvc/drm.c
 )
+
 add_library(rkuvc SHARED ${LIB_SOURCE})
-target_link_libraries(rkuvc pthread drm rockchip_mpp )
+target_link_libraries(rkuvc pthread drm rockchip_mpp ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a)
 
 set(SOURCE
     main.c
@@ -31,6 +32,8 @@ set(UVC_APP_DEPENDENT_LIBS
     pthread
     drm
     rockchip_mpp
+    rt
+    ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a
 )
 
 set(UVC_APP_INC
