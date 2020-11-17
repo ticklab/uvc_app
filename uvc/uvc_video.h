@@ -42,6 +42,7 @@ extern "C" {
 #include <stddef.h>
 #include <unistd.h>
 #include <linux/videodev2.h>
+#include "uvc-gadget.h"
 
 #define V4L2_PIX_FMT_H265     v4l2_fourcc('H', '2', '6', '5') /* H265 with start codes */
 
@@ -54,6 +55,8 @@ extern "C" {
 #define UVC_DYNAMIC_DEBUG_FPS 1 //release version can set to 0
 #define UVC_DYNAMIC_DEBUG_ISP_FPS_CHECK "/tmp/uvc_isp_fps"
 #define UVC_DYNAMIC_DEBUG_IPC_FPS_CHECK "/tmp/uvc_ipc_fps"
+
+#define UVC_SEND_BUF_WHEN_ENC_READY 1
 
 #if UVC_DYNAMIC_DEBUG_FPS
 struct uvc_debug_info_def
@@ -89,6 +92,7 @@ struct uvc_buffer
     int v4l2_fd;
     bool abandon;
     unsigned long long int pts;
+    int frame_count;
 };
 
 struct uvc_user
@@ -114,6 +118,7 @@ struct uvc_video
     bool can_exit;
     unsigned int last_pts;
     unsigned int now_pts;
+    struct uvc_device *dev;
 };
 
 int uvc_gadget_pthread_create(int *id);
@@ -150,6 +155,11 @@ pthread_t *uvc_video_get_uvc_pid(int id);
 void uvc_user_fill_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int id);
 void uvc_buffer_write_set(int id, struct uvc_buffer *buf);
 void uvc_buffer_all_set(int id, struct uvc_buffer *buf);
+struct uvc_buffer *uvc_get_enc_data(struct uvc_device *dev, struct uvc_video *v, bool init);
+#if UVC_SEND_BUF_WHEN_ENC_READY
+int uvc_video_qbuf_index(struct uvc_device *dev, struct uvc_buffer *send_buf, int index, int len);
+struct uvc_buffer *uvc_user_fill_buffer_init(struct uvc_device *dev);
+#endif
 
 #ifdef __cplusplus
 }

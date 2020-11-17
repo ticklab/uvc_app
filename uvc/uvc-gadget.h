@@ -146,7 +146,7 @@ enum USB_STATE
 {
     USB_STATE_FIRST_GET_READY,
     USB_STATE_FIRST_GET_OK,
-    USB_STATE_FIST_SEND_OK,
+    USB_STATE_FIRST_SEND_OK,
     USB_STATE_NORMAL_RUN
 };
 
@@ -229,11 +229,14 @@ struct uvc_device
     unsigned int first_usb_send_ok_pts;
     unsigned int first_cmd_pts;
     unsigned int stream_on_pts;
+    int get_buf_count;
 };
 
 
 
 int uvc_gadget_main(int id);
+int uvc_video_reqbufs(struct uvc_device *dev, int nbufs);
+int uvc_video_stream(struct uvc_device *dev, int enable);
 
 #ifdef __cplusplus
 }

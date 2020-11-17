@@ -589,22 +589,33 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 //   memset(&outputCommit, 0, sizeof(outputCommit));
     outputCommit.type = MPP_BUFFER_TYPE_DRM;
 
-    while (try_count--)
+#if UVC_SEND_BUF_WHEN_ENC_READY
+    if (p->frame_count >= UVC_BUFFER_NUM)
+#endif
     {
-        if ((!uvc_get_user_run_state(uvc_enc.video_id) || !uvc_buffer_write_enable(uvc_enc.video_id)))
+        while (try_count--)
         {
-            // LOG_ERROR("not get write buff,read too slow.%d,%d\n",
-            //      uvc_get_user_run_state(uvc_enc.video_id),uvc_buffer_write_enable(uvc_enc.video_id));
-            // return ret;
-            usleep(MPP_FRC_WAIT_TIME_US);
+            if ((!uvc_get_user_run_state(uvc_enc.video_id) || !uvc_buffer_write_enable(uvc_enc.video_id)))
+            {
+                // LOG_ERROR("not get write buff,read too slow.%d,%d\n",
+                //      uvc_get_user_run_state(uvc_enc.video_id),uvc_buffer_write_enable(uvc_enc.video_id));
+                // return ret;
+                usleep(MPP_FRC_WAIT_TIME_US);
+            }
+            else
+            {
+                get_ok = true;
+                break;
+            }
         }
-        else
-        {
-            get_ok = true;
-            break;
-        }
-
     }
+#if UVC_SEND_BUF_WHEN_ENC_READY
+    else
+    {
+        get_ok = true;
+    }
+#endif
+
     if (!get_ok)
     {
         p->loss_frm ++;
@@ -657,6 +668,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         LOG_ERROR("uvc_buffer_write_get failed(buf: %p)\n", uvc_buf);
         goto RET;
     }
+
     uvc_buf->pts = info->pts;
 #if UVC_DYNAMIC_DEBUG_USE_TIME
     if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
@@ -804,6 +816,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
             uvc_buf->size = len;
+            uvc_buf->frame_count = p->frame_count;
             uvc_buffer_read_set_nolock(uvc_enc.video_id, uvc_buf);
 #else
             void *ptr = mpp_packet_get_pos(packet);

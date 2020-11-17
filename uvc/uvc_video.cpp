@@ -41,6 +41,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/prctl.h>
+#include <sys/ioctl.h>
 
 #include <list>
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
@@ -1055,6 +1056,57 @@ bool uvc_get_user_run_state(int id)
     return state;
 }
 
+#if UVC_SEND_BUF_WHEN_ENC_READY
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+int uvc_video_qbuf_index(struct uvc_device *dev, struct uvc_buffer *send_buf, int index, int len)
+{
+    //LOG_INFO("uvc_video_qbuf_index enter index:%d len=%d,dev->nbufs=%d\n", index, len, dev->nbufs);
+    unsigned int i;
+    int ret;
+    struct v4l2_requestbuffers req;
+    memset(&req, 0, sizeof (req));
+
+    req.count = dev->nbufs;
+    req.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+    req.memory = V4L2_MEMORY_DMABUF;
+    if (index == 0) {
+        uvc_video_reqbufs(dev, dev->nbufs);
+        uvc_video_stream(dev, 1);
+        dev->vbuf_info = (struct v4l2_buffer_info *)calloc(dev->nbufs, sizeof(struct v4l2_buffer_info));
+    }
+
+    /* UVC standalone setup. */
+    if (dev->run_standalone)
+    {
+        struct v4l2_buffer buf;
+        memset(&buf, 0, sizeof(buf));
+        buf.type = req.type;
+        buf.index = index;
+        buf.memory = req.memory;
+
+        struct uvc_buffer *uvc_buf = send_buf;//uvc_buffer_write_get(dev->video_id);
+        buf.m.fd = uvc_buf->fd;
+        buf.length = uvc_buf->total_size;
+        buf.bytesused = len;
+        dev->ubuf.bytesused = len;
+        dev->vbuf_info[index].fd = buf.m.fd;
+        dev->vbuf_info[index].uvc_buf = uvc_buf;
+
+        if (ioctl(dev->uvc_fd, VIDIOC_QBUF, &buf) < 0)
+        {
+            LOG_ERROR("%s ioctl(VIDIOC_QBUF): %m,buf.m.fd=%d,buf.length=%d\n", dev, buf.m.fd,  buf.length);
+            return -1;
+        }
+        /*else
+        {
+            LOG_INFO("V4L2: %u buffers allocated index:%d\n", dev->nbufs, index);
+        }*/
+    }
+
+    return 0;
+}
+#endif
+#endif
 static void _uvc_set_user_run_state(struct uvc_video *v, bool state)
 {
     pthread_mutex_lock(&v->user_mutex);
@@ -1164,9 +1216,8 @@ static bool _uvc_buffer_check(struct uvc_video *v, struct uvc_buffer *buffer)
         return false;
 }
 
-static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, struct v4l2_buffer *buf)
+static void uvc_delay_time_calcu_before_get(struct uvc_device *dev, struct uvc_video *v)
 {
-    struct uvc_buffer *buffer = NULL;
 #if UVC_DYNAMIC_DEBUG_USE_TIME
     if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
     {
@@ -1188,7 +1239,7 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
         use_time_us = dev->first_usb_get_ready_pts - dev->stream_on_pts;
         LOG_INFO("steamon->get_ready latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
     }
-    else if (dev->usb_state == USB_STATE_FIST_SEND_OK)
+    else if (dev->usb_state == USB_STATE_FIRST_SEND_OK)
     {
         struct timespec now_tm = {0, 0};
         int32_t use_time_us;
@@ -1202,6 +1253,106 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
     }
 #endif
 
+}
+
+static void uvc_delay_time_calcu_after_get(struct uvc_device *dev, struct uvc_video *v, struct uvc_buffer *buffer)
+{
+#if UVC_DYNAMIC_DEBUG_USE_TIME
+    if (dev->usb_state == USB_STATE_FIRST_GET_OK)
+    {
+        struct timespec now_tm = {0, 0};
+        int32_t use_time_us;
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        dev->first_usb_get_ok_pts = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000;
+        dev->usb_state = USB_STATE_FIRST_SEND_OK;
+        use_time_us = dev->first_usb_get_ok_pts - dev->stream_on_pts;
+        LOG_INFO("steamon->get_ready->get_ok time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+    }
+
+    v->last_pts = buffer->pts;
+    v->now_pts = buffer->pts;
+    if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
+    {
+        int32_t use_time_us, now_time_us;
+        struct timespec now_tm = {0, 0};
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
+        use_time_us = now_time_us - v->now_pts;
+        LOG_INFO("isp->mpp->usb_ready latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+    }
+#endif
+}
+
+struct uvc_buffer *uvc_get_enc_data(struct uvc_device *dev, struct uvc_video *v, bool init)
+{
+    struct uvc_buffer *buffer = NULL;
+    v->idle_cnt = 0;
+    int time_out = 60;
+    if (init)
+        time_out = 30;
+    while (!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v))
+    {
+        pthread_mutex_unlock(&mtx_v);
+        usleep(1000);
+        v->idle_cnt++;
+        pthread_mutex_lock(&mtx_v);
+        if (v->idle_cnt > time_out)
+        {
+            if(!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v)) // onece more check it.
+            {
+                if (init == false) {
+                    LOG_INFO("fill buf timeout %d ms, abandon this write buf %d\n",time_out, v->buffer_s->fd);
+                    v->buffer_s->abandon = true;
+                    uvc_buffer_pop_front(&v->uvc->write);
+                } else {
+                    LOG_INFO("init:%d,fill buf timeout %d ms\n", init, time_out);
+                }
+            }
+            break;
+        }
+    }
+   // LOG_INFO("init:%d,uvc_get_enc_data: %p\n", init, buffer);
+#if UVC_SEND_BUF_WHEN_ENC_READY
+    if (init && buffer) {
+        uvc_video_qbuf_index(dev, buffer, buffer->frame_count, buffer->size);
+    }
+#endif
+
+    if (buffer)
+        uvc_delay_time_calcu_after_get(dev, v, buffer);
+    return buffer;
+}
+
+#if UVC_SEND_BUF_WHEN_ENC_READY
+struct uvc_buffer *uvc_user_fill_buffer_init(struct uvc_device *dev)
+{
+    pthread_mutex_lock(&mtx_v);
+    struct uvc_buffer *buffer = NULL;
+    if (_uvc_video_id_check(dev->video_id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (dev->video_id == l->id)
+            {
+                uvc_delay_time_calcu_before_get(dev, l);
+                if(uvc_get_enc_data(dev, l, true)) {
+                    buffer = uvc_buffer_pop_front(&l->uvc->read);
+                }
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&mtx_v);
+    return buffer;
+}
+#endif
+
+static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, struct v4l2_buffer *buf)
+{
+    struct uvc_buffer *buffer = NULL;
+
+    uvc_delay_time_calcu_before_get(dev, v);
 #if UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
     for (int i = 0; i < dev->nbufs; i++)
     {
@@ -1215,51 +1366,9 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
     uvc_buffer_push_back(&v->uvc->write, v->buffer_s);
 #endif
 
-    v->idle_cnt = 0;
-    while (!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v))
-    {
-        pthread_mutex_unlock(&mtx_v);
-        usleep(1000);
-        v->idle_cnt++;
-        pthread_mutex_lock(&mtx_v);
-        if (v->idle_cnt > 60)
-        {
-            if(!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v)) // onece more check it.
-            {
-                LOG_INFO("fill buf timeout 60 ms, abandon this write buf %d\n", v->buffer_s->fd);
-                v->buffer_s->abandon = true;
-                uvc_buffer_pop_front(&v->uvc->write);
-            }
-            break;
-        }
-    }
-
+    buffer = uvc_get_enc_data(dev, v, false);
     if (buffer)
     {
-#if UVC_DYNAMIC_DEBUG_USE_TIME
-        if (dev->usb_state == USB_STATE_FIRST_GET_OK)
-        {
-            struct timespec now_tm = {0, 0};
-            int32_t use_time_us;
-            clock_gettime(CLOCK_MONOTONIC, &now_tm);
-            dev->first_usb_get_ok_pts = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000;
-            dev->usb_state = USB_STATE_FIST_SEND_OK;
-            use_time_us = dev->first_usb_get_ok_pts - dev->stream_on_pts;
-            LOG_INFO("steamon->get_ready->get_ok time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
-        }
-
-        v->last_pts = buffer->pts;
-        v->now_pts = buffer->pts;
-        if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
-        {
-            int32_t use_time_us, now_time_us;
-            struct timespec now_tm = {0, 0};
-            clock_gettime(CLOCK_MONOTONIC, &now_tm);
-            now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
-            use_time_us = now_time_us - v->now_pts;
-            LOG_INFO("isp->mpp->usb_ready latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
-        }
-#endif
         if (!_uvc_buffer_check(v, buffer))
             return;
         if (_uvc_get_user_run_state(v) && _uvc_video_get_uvc_process(v))

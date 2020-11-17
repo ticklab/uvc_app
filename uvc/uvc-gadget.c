@@ -300,9 +300,6 @@ static int g_suspend;
 static int g_uvc_cnt = 0;
 static pthread_mutex_t g_suspend_lock = PTHREAD_MUTEX_INITIALIZER;
 
-/* forward declarations */
-static int uvc_video_stream(struct uvc_device *dev, int enable);
-
 void uvc_clear_suspend(void)
 {
     g_suspend = 0;
@@ -913,8 +910,7 @@ uvc_video_set_format(struct uvc_device *dev)
     return 0;
 }
 
-static int
-uvc_video_stream(struct uvc_device *dev, int enable)
+int uvc_video_stream(struct uvc_device *dev, int enable)
 {
     int type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     int ret;
@@ -1199,44 +1195,51 @@ uvc_video_process(struct uvc_device *dev)
 
     if (dev->run_standalone)
     {
-        /* UVC stanalone setup. */
-        ret = ioctl(dev->uvc_fd, VIDIOC_DQBUF, &dev->ubuf);
-        if (ret < 0)
-            return ret;
-
-        dev->dqbuf_count++;
-
+#if UVC_SEND_BUF_WHEN_ENC_READY
+       if (dev->get_buf_count < UVC_BUFFER_NUM)
+       {
+           LOG_INFO("%d: wait enc buf ok:get_buf_count=%d\n", dev->video_id, dev->get_buf_count);
+           if(uvc_user_fill_buffer_init(dev))
+               dev->get_buf_count += 1;
+       }
+       else
+#endif
+       {
+            /* UVC stanalone setup. */
+            ret = ioctl(dev->uvc_fd, VIDIOC_DQBUF, &dev->ubuf);
+            if (ret < 0)
+                return ret;
+            dev->dqbuf_count++;
 #ifdef ENABLE_BUFFER_DEBUG
         LOG_INFO("%d: DeQueued buffer at UVC side = %d\n", dev->video_id, dev->ubuf.index);
 #endif
 
-        uvc_video_fill_buffer(dev, &dev->ubuf);
-
-        if (!dev->ubuf.bytesused)
-        {
-            dev->abandon_count ++;
-            LOG_INFO("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
-                     dev->video_id, dev->abandon_count);
-            //return 0;
-        }
-        ret = ioctl(dev->uvc_fd, VIDIOC_QBUF, &dev->ubuf);
-        if (ret < 0)
-        {
-            LOG_ERROR("%d: UVC: Unable to queue buffer: %s (%d).\n",
-                      dev->video_id, strerror(errno), errno);
-            return ret;
-        }
-
-        dev->qbuf_count++;
-
+            uvc_video_fill_buffer(dev, &dev->ubuf);
+            if (!dev->ubuf.bytesused)
+            {
+                dev->abandon_count ++;
+                LOG_INFO("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
+                         dev->video_id, dev->abandon_count);
+                //return 0;
+            }
+            ret = ioctl(dev->uvc_fd, VIDIOC_QBUF, &dev->ubuf);
+            if (ret < 0)
+            {
+                LOG_ERROR("%d: UVC: Unable to queue buffer: %s (%d).\n",
+                          dev->video_id, strerror(errno), errno);
+                return ret;
+            }
+            dev->qbuf_count++;
 #ifdef ENABLE_BUFFER_DEBUG
-        LOG_INFO("%d: ReQueueing buffer at UVC side = %d size = %d\n", dev->video_id, dev->ubuf.index, dev->ubuf.bytesused);
+            LOG_INFO("%d: ReQueueing buffer at UVC side = %d size = %d\n", dev->video_id, dev->ubuf.index, dev->ubuf.bytesused);
 #endif
 #ifdef ENABLE_BUFFER_TIME_DEBUG
-    struct timeval buffer_time;
-    gettimeofday(&buffer_time, NULL);
-    LOG_ERROR("UVC V4L2 BUFFER TIME END:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
+            struct timeval buffer_time;
+            gettimeofday(&buffer_time, NULL);
+            LOG_ERROR("UVC V4L2 BUFFER TIME END:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
 #endif
+        }
+
     }
     else
     {
@@ -1427,8 +1430,7 @@ uvc_video_qbuf_dmabuff(struct uvc_device *dev)
     return 0;
 }
 #endif
-static int
-uvc_video_qbuf(struct uvc_device *dev)
+int uvc_video_qbuf(struct uvc_device *dev)
 {
     int ret = 0;
 
@@ -1662,8 +1664,7 @@ err:
 
 }
 
-static int
-uvc_video_reqbufs(struct uvc_device *dev, int nbufs)
+int uvc_video_reqbufs(struct uvc_device *dev, int nbufs)
 {
     int ret = 0;
 
@@ -1701,11 +1702,11 @@ static int
 uvc_handle_streamon_event(struct uvc_device *dev)
 {
     int ret;
-
+#if !UVC_SEND_BUF_WHEN_ENC_READY
     ret = uvc_video_reqbufs(dev, dev->nbufs);
     if (ret < 0)
         goto err;
-
+#endif
     if (!dev->run_standalone)
     {
         /* UVC - V4L2 integrated path. */
@@ -1734,14 +1735,17 @@ uvc_handle_streamon_event(struct uvc_device *dev)
 
     /* Common setup. */
 
+#if !UVC_SEND_BUF_WHEN_ENC_READY
     /* Queue buffers to UVC domain and start streaming. */
     ret = uvc_video_qbuf(dev);
     if (ret < 0)
         goto err;
-
+#endif
     if (dev->run_standalone)
     {
+#if !UVC_SEND_BUF_WHEN_ENC_READY
         uvc_video_stream(dev, 1);
+#endif
         dev->first_buffer_queued = 1;
         dev->is_streaming = 1;
     }
@@ -3760,6 +3764,7 @@ uvc_events_process(struct uvc_device *dev)
         if (!dev->bulk)
             uvc_handle_streamon_event(dev);
         dev->abandon_count = 0;
+        dev->get_buf_count = 0;
         dev->usb_state = USB_STATE_FIRST_GET_READY;
 
         struct timespec now_tm = {0, 0};
@@ -4371,6 +4376,7 @@ uvc_gadget_main(int id)
         if (!dummy_data_gen_mode && !mjpeg_image)
             if (FD_ISSET(vdev->v4l2_fd, &fdsv))
                 v4l2_process_data(vdev);
+
     }
 
     if (!dummy_data_gen_mode && !mjpeg_image && vdev->is_streaming)
