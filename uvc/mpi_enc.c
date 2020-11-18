@@ -661,8 +661,8 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         }
     }
 
-    uvc_user_lock();
-    uvc_buf = uvc_buffer_write_get_nolock(uvc_enc.video_id);
+   // uvc_user_lock();
+    uvc_buf = uvc_buffer_write_get(uvc_enc.video_id);
     if (!uvc_buf || uvc_buf->abandon)
     {
         LOG_ERROR("uvc_buffer_write_get failed(buf: %p)\n", uvc_buf);
@@ -670,6 +670,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     }
 
     uvc_buf->pts = info->pts;
+    uvc_buf->seq = info->seq;
 #if UVC_DYNAMIC_DEBUG_USE_TIME
     if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
     {
@@ -679,13 +680,13 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
         use_time_us = now_time_us - uvc_buf->pts;
 #if USE_RK_AISERVER
-        LOG_INFO("isp->aiserver->ipc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("isp->aiserver->ipc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
 #endif
 #if USE_ROCKIT
-        LOG_INFO("isp->rockit->uvc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("isp->rockit->uvc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
 #endif
 #if USE_RKMEDIA
-        LOG_INFO("isp->rkmedia->uvc->mpp_get_buf latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("isp->rkmedia->uvc->mpp_get_buf seq:%d latency time:%d us, %d ms\n", uvc_buf->seq, use_time_us, use_time_us / 1000);
 #endif
     }
 #endif
@@ -817,7 +818,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
             uvc_buf->size = len;
             uvc_buf->frame_count = p->frame_count;
-            uvc_buffer_read_set_nolock(uvc_enc.video_id, uvc_buf);
+            uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
 #else
             void *ptr = mpp_packet_get_pos(packet);
 #endif
@@ -872,7 +873,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     }//9195 us for 1080p
 
 RET:
-    uvc_user_unlock();
+  //  uvc_user_unlock();
 #ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
     pthread_mutex_lock(&p->cond_mutex);
     if (p->destory_info.unfinished == false)

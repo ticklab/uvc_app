@@ -91,8 +91,9 @@ struct uvc_buffer
 
     int v4l2_fd;
     bool abandon;
-    unsigned long long int pts;
+    unsigned int pts;
     int frame_count;
+    unsigned int seq;
 };
 
 struct uvc_user
@@ -118,6 +119,7 @@ struct uvc_video
     bool can_exit;
     unsigned int last_pts;
     unsigned int now_pts;
+    unsigned int last_seq;
     struct uvc_device *dev;
 };
 
@@ -160,6 +162,8 @@ struct uvc_buffer *uvc_get_enc_data(struct uvc_device *dev, struct uvc_video *v,
 int uvc_video_qbuf_index(struct uvc_device *dev, struct uvc_buffer *send_buf, int index, int len);
 struct uvc_buffer *uvc_user_fill_buffer_init(struct uvc_device *dev);
 #endif
+void uvc_user_set_write_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int id);
+bool uvc_buffer_read_enable(int id);
 
 #ifdef __cplusplus
 }

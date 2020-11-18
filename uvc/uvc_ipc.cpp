@@ -296,7 +296,14 @@ void ShmUVCController::startRecvMessage()
     norecv_err_count = 0;
     norecv_count = 0;
     abandon_count = 0;
+    send_count = 0;
+    recv_count = 0;
     recvThread = new std::thread(ProcessRecvUVCMessage, this);
+    if (!access("tmp/uvc_ipc_state", 0))
+        system("rm /tmp/uvc_ipc_state");
+    if (!access("/tmp/uvc_ipc_buffer", 0))
+        system("rm /tmp/uvc_ipc_buffer");
+
     LOG_INFO("start recv message ok\n");
 }
 
@@ -349,7 +356,9 @@ void ShmUVCController::uvcIPCDebugLoop()
 #if UVC_IPC_DYNAMIC_DEBUG_ON
         if (!access(UVC_IPC_DYNAMIC_DEBUG_STATE, 0))
         {
-            LOG_INFO("send state:%d, recv state:%d\n", send_state, recv_state);
+            LOG_INFO("send state:%d,recv state:%d\n", send_state, recv_state);
+            LOG_INFO("send_seq:%d, recv_seq:%d send_count:%d, recv_count:%d\n",
+                      send_seq, recv_seq, send_count, recv_count);
         }
         if (!access(UVC_IPC_DYNAMIC_DEBUG_EPTZ, 0) && eptz == false)
         {
@@ -395,13 +404,16 @@ void ShmUVCController::recvUVCMessageLoop()
             if (norecv_count >= 5000) // 5s not recv data have error
             {
                 ++ norecv_err_count;
-                LOG_ERROR("%d ms not recv data, count up to %d, maybe isp err(uvc not get raw). stat:%d,%d\n",
+                LOG_ERROR("%d ms not recv data, count up to %d, maybe isp err(uvc not get raw). stat:%d,%d seq:%d,%d\n",
                            norecv_count * 1, norecv_err_count,
-                           send_state, recv_state);
+                           send_state, recv_state,
+                           send_seq, recv_seq);
                 if (norecv_err_count == 1)
                 {
                     system("touch /tmp/uvc_ipc_buffer"); // for check uvc_ipc_buffer
                     LOG_INFO("test: touch /tmp/uvc_ipc_buffer ok!\n");
+                    system("touch /tmp/uvc_ipc_state"); // for check uvc_ipc_state
+                    LOG_INFO("test: touch /tmp/uvc_ipc_state ok!\n");
                 }
                 norecv_count = 0;
             }
@@ -440,6 +452,7 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
     int32_t buf_size = bufferInfo->size();
     int64_t privData = bufferInfo->priv_data();
     int64_t pts = bufferInfo->pts();
+    int32_t seq = bufferInfo->seq();
     struct SendBufferInfo send_info;
     //std::map<int, DrmBuffMap> temp_map;
     struct DrmBuffMap drm_map;
@@ -451,6 +464,8 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
     send_info.handle = bufferInfo->handle();
     send_info.data = bufferInfo->data();
     send_info.priv_data = privData;
+    send_info.seq = seq;
+    recv_count ++;
     int count = 0;
     struct MPP_ENC_INFO enc_info;
 #if UVC_DYNAMIC_DEBUG_USE_TIME
@@ -462,12 +477,13 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
         now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
         use_time_us = now_time_us - pts;
         //pts = now_time_us;//for test
-        LOG_INFO("isp->aiserver->ipc latency time:%lld us, %lld ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("isp->aiserver->ipc seq: %d latency time:%lld us, %lld ms\n",seq, use_time_us, use_time_us / 1000);
     }
 #endif
 
 #if UVC_IPC_DYNAMIC_DEBUG_ON
     recv_state = UVC_IPC_STATE_RECV_ENTER;
+    recv_seq = seq;
 #endif
 #if UVC_IPC_DYNAMIC_DEBUG_ON
     if (!access(UVC_IPC_DYNAMIC_DEBUG_FPS, 0))
@@ -541,6 +557,7 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
     enc_info.fd = buf_fd;
     enc_info.size = nv12_size;
     enc_info.pts = pts;
+    enc_info.seq = seq;
 #if RK_MPP_DYNAMIC_DEBUG_ON
     if (!access(UVC_IPC_DYNAMIC_DEBUG_ISP_FPS, 0))
     {
@@ -602,19 +619,17 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         message.set_msg_name("uvcbuffer");
         message.SerializeToString(&sendbuf);
         message.ParseFromString(sendbuf);
-
-
     }
     break;
     case MSG_UVC_STOP:
-	{
+    {
         UVCMessage message;
         message.set_msg_type(event);
         message.set_msg_name("uvcbuffer");
         message.SerializeToString(&sendbuf);
         message.ParseFromString(sendbuf);
     }
-        break;
+    break;
     case MSG_UVC_ENABLE_ETPTZ:
     {
         UVCMessage message;
@@ -662,6 +677,9 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         bufferInfo->set_handle(info->handle);
         bufferInfo->set_data(info->data);
         bufferInfo->set_priv_data(info->priv_data);
+        bufferInfo->set_seq(info->seq);
+        send_seq = info->seq;
+        send_count ++;
 
         send_message.set_msg_type(event);
         send_message.set_msg_name("uvcbuffer");

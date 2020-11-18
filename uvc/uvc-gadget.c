@@ -1121,6 +1121,11 @@ uvc_close(struct uvc_device *dev)
 /* ---------------------------------------------------------------------------
  * UVC streaming related
  */
+static void
+uvc_video_set_write_buffer(struct uvc_device *dev, struct v4l2_buffer *buf)
+{
+    uvc_user_set_write_buffer(dev, buf, dev->video_id);
+}
 
 static void
 uvc_video_fill_buffer(struct uvc_device *dev, struct v4l2_buffer *buf)
@@ -1198,46 +1203,62 @@ uvc_video_process(struct uvc_device *dev)
 #if UVC_SEND_BUF_WHEN_ENC_READY
        if (dev->get_buf_count < UVC_BUFFER_NUM)
        {
-           LOG_DEBUG("%d: wait enc buf ok:get_buf_count=%d\n", dev->video_id, dev->get_buf_count);
            if(uvc_user_fill_buffer_init(dev))
+           {
                dev->get_buf_count += 1;
+               LOG_INFO("%d: wait enc buf ok:get_buf_count=%d\n", dev->video_id, dev->get_buf_count);
+           }
        }
        else
 #endif
        {
             /* UVC stanalone setup. */
-            ret = ioctl(dev->uvc_fd, VIDIOC_DQBUF, &dev->ubuf);
-            if (ret < 0)
-                return ret;
-            dev->dqbuf_count++;
+            do {
+                ret = ioctl(dev->uvc_fd, VIDIOC_DQBUF, &dev->ubuf);
+                if (ret >= 0) {
+                    dev->dqbuf_count++;
+                    uvc_video_set_write_buffer(dev, &dev->ubuf);
 #ifdef ENABLE_BUFFER_DEBUG
-        LOG_INFO("%d: DeQueued buffer at UVC side = %d\n", dev->video_id, dev->ubuf.index);
+                    LOG_INFO("dev->dqbuf_count:%lld, %d: DeQueued buffer at UVC side = %d\n",
+                              dev->dqbuf_count, dev->video_id, dev->ubuf.index);
 #endif
+                }
+                else if (ret < 0) {
+                    if (errno == EAGAIN)
+                         break;
+                    LOG_ERROR("%d: UVC: Unable to DeQueued buffer: %s (%d).\n",
+                               dev->video_id, strerror(errno), errno);
+                    return ret;
+                }
+            } while (ret >= 0);
 
-            uvc_video_fill_buffer(dev, &dev->ubuf);
-            if (!dev->ubuf.bytesused)
-            {
-                dev->abandon_count ++;
-                LOG_DEBUG("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
-                         dev->video_id, dev->abandon_count);
-                //return 0;
-            }
-            ret = ioctl(dev->uvc_fd, VIDIOC_QBUF, &dev->ubuf);
-            if (ret < 0)
-            {
-                LOG_ERROR("%d: UVC: Unable to queue buffer: %s (%d).\n",
-                          dev->video_id, strerror(errno), errno);
-                return ret;
-            }
-            dev->qbuf_count++;
+            do {
+                uvc_video_fill_buffer(dev, &dev->ubuf);
+                if (!dev->ubuf.bytesused)
+                {
+                    dev->abandon_count ++;
+                    LOG_DEBUG("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
+                             dev->video_id, dev->abandon_count);
+                    //return 0;
+                }
+                ret = ioctl(dev->uvc_fd, VIDIOC_QBUF, &dev->ubuf);
+                if (ret < 0)
+                {
+                    LOG_ERROR("%d: UVC: Unable to queue buffer: %s (%d).\n",
+                              dev->video_id, strerror(errno), errno);
+                    return ret;
+                }
+                dev->qbuf_count++;
 #ifdef ENABLE_BUFFER_DEBUG
-            LOG_INFO("%d: ReQueueing buffer at UVC side = %d size = %d\n", dev->video_id, dev->ubuf.index, dev->ubuf.bytesused);
+                LOG_INFO("dev->qbuf_count:%lld,%d: ReQueueing buffer at UVC side = %d size = %d\n",
+                          dev->qbuf_count, dev->video_id, dev->ubuf.index, dev->ubuf.bytesused);
 #endif
 #ifdef ENABLE_BUFFER_TIME_DEBUG
-            struct timeval buffer_time;
-            gettimeofday(&buffer_time, NULL);
-            LOG_ERROR("UVC V4L2 BUFFER TIME END:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
+                struct timeval buffer_time;
+                gettimeofday(&buffer_time, NULL);
+                LOG_ERROR("UVC V4L2 BUFFER TIME END:%d.%d (s)",buffer_time.tv_sec,buffer_time.tv_usec);
 #endif
+            } while (uvc_buffer_read_enable(dev->video_id));
         }
 
     }

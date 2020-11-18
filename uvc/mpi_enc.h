@@ -360,6 +360,7 @@ typedef struct MPP_ENC_INFO {
     int fd;
     size_t size;
     RK_U32 pts;
+    RK_U32 seq;
 } MPP_ENC_INFO_DEF;
 
 MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data);

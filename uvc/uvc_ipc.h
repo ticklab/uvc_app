@@ -130,6 +130,7 @@ struct SendBufferInfo
     int32_t handle;
     int64_t data;
     int64_t priv_data;
+    int32_t seq;
 };
 
 struct DrmBuffMap
@@ -193,6 +194,10 @@ private:
     int32_t               norecv_err_count;
     int32_t               abandon_count;
     int                   yuv_encode;
+    int32_t               recv_seq;
+    int32_t               send_seq;
+    int32_t               recv_count;
+    int32_t               send_count;
 };
 
 struct UVC_IPC_INFO

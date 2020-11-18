@@ -240,15 +240,16 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
            }
 
            if (get_ok) {
-               uvc_user_lock();
-               struct uvc_buffer *buffer = uvc_buffer_write_get_nolock(e->video_id);
+               //uvc_user_lock();
+               struct uvc_buffer *buffer = uvc_buffer_write_get(e->video_id);
                if (!buffer || buffer->abandon)
                {
                    LOG_ERROR("uvc_buffer_write_get failed:%p\n", buffer);
-                   uvc_user_unlock();
+                   //uvc_user_unlock();
                    return true;
                }
                buffer->pts = info->pts;
+               buffer->seq = info->seq;
 #if UVC_DYNAMIC_DEBUG_USE_TIME
                if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
                {
@@ -270,8 +271,8 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
 #endif
 
                NV12_to_YUYV(width, height, virt, buffer->buffer);
-               uvc_buffer_read_set_nolock(e->video_id, buffer);
-               uvc_user_unlock();
+               uvc_buffer_read_set(e->video_id, buffer);
+               //uvc_user_unlock();
            } else {
                e->loss_frm ++;
 #if RK_MPP_DYNAMIC_DEBUG_ON

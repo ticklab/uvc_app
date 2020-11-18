@@ -33,6 +33,7 @@ message MediaBufferInfo
     optional int64 pts     = 5;
     optional int64 data     = 6;
     optional int64 priv_data = 7;
+    optional int32 seq      = 8;
 }
 
 message StreamInfo

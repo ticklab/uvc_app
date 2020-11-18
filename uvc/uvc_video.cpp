@@ -666,6 +666,40 @@ bool uvc_buffer_write_enable(int id)
     return ret;
 }
 
+static bool _uvc_buffer_read_enable(struct uvc_video *v)
+{
+    bool ret = false;
+
+    if (pthread_mutex_trylock(&v->buffer_mutex))
+        return ret;
+    if (v->uvc && uvc_buffer_front(&v->uvc->read))
+        ret = true;
+    pthread_mutex_unlock(&v->buffer_mutex);
+    return ret;
+}
+
+bool uvc_buffer_read_enable(int id)
+{
+    bool ret = false;
+
+    pthread_mutex_lock(&mtx_v);
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
+                ret = _uvc_buffer_read_enable(l);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&mtx_v);
+
+    return ret;
+}
+
 static bool _uvc_mpp_buffer_write_enable(struct uvc_video *v)
 {
     bool ret = false;
@@ -1094,12 +1128,14 @@ int uvc_video_qbuf_index(struct uvc_device *dev, struct uvc_buffer *send_buf, in
         dev->ubuf.bytesused = len;
         dev->vbuf_info[index].fd = buf.m.fd;
         dev->vbuf_info[index].uvc_buf = uvc_buf;
+        dev->vbuf_info[index].index = index;
 
         if (ioctl(dev->uvc_fd, VIDIOC_QBUF, &buf) < 0)
         {
             LOG_ERROR("%s ioctl(VIDIOC_QBUF): %m,buf.m.fd=%d,buf.length=%d\n", dev, buf.m.fd,  buf.length);
             return -1;
         }
+
         /*else
         {
             LOG_INFO("V4L2: %u buffers allocated index:%d\n", dev->nbufs, index);
@@ -1229,7 +1265,7 @@ static void uvc_delay_time_calcu_before_get(struct uvc_device *dev, struct uvc_v
         clock_gettime(CLOCK_MONOTONIC, &now_tm);
         now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
         use_time_us = now_time_us - v->last_pts;   //usb send ok and calcu the latency time use last pts
-        LOG_INFO("isp->mpp->usb_ready->usb_send_ok latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("isp->mpp->usb_ready->usb_send_ok seq:%d latency time:%d us, %d ms\n", v->last_seq, use_time_us, use_time_us / 1000);
     }
 
     if (dev->usb_state == USB_STATE_FIRST_GET_READY)
@@ -1252,7 +1288,7 @@ static void uvc_delay_time_calcu_before_get(struct uvc_device *dev, struct uvc_v
         use_time_us = dev->first_usb_send_ok_pts - dev->stream_on_pts;
         LOG_INFO("steamon->get_ready->get_ok->send_ok latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
         use_time_us = dev->first_usb_send_ok_pts - v->last_pts;
-        LOG_INFO("isp->mpp->usb_ready->usb_send_ok latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("isp->mpp->usb_ready->usb_send_ok seq:%d latency time:%d us, %d ms\n", v->last_seq, use_time_us, use_time_us / 1000);
     }
 #endif
 
@@ -1269,11 +1305,12 @@ static void uvc_delay_time_calcu_after_get(struct uvc_device *dev, struct uvc_vi
         dev->first_usb_get_ok_pts = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000;
         dev->usb_state = USB_STATE_FIRST_SEND_OK;
         use_time_us = dev->first_usb_get_ok_pts - dev->stream_on_pts;
-        LOG_INFO("steamon->get_ready->get_ok time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("steamon->get_ready->get_ok seq:%d time:%d us, %d ms\n", buffer->seq, use_time_us, use_time_us / 1000);
     }
 
     v->last_pts = buffer->pts;
     v->now_pts = buffer->pts;
+    v->last_seq = buffer->seq;
     if (!access(UVC_DYNAMIC_DEBUG_USE_TIME_CHECK, 0))
     {
         int32_t use_time_us, now_time_us;
@@ -1281,7 +1318,7 @@ static void uvc_delay_time_calcu_after_get(struct uvc_device *dev, struct uvc_vi
         clock_gettime(CLOCK_MONOTONIC, &now_tm);
         now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
         use_time_us = now_time_us - v->now_pts;
-        LOG_INFO("isp->mpp->usb_ready latency time:%d us, %d ms\n", use_time_us, use_time_us / 1000);
+        LOG_INFO("isp->mpp->usb_ready seq:%d latency time:%d us, %d ms\n", buffer->seq, use_time_us, use_time_us / 1000);
     }
 #endif
 }
@@ -1307,8 +1344,8 @@ struct uvc_buffer *uvc_get_enc_data(struct uvc_device *dev, struct uvc_video *v,
                     if(drop_frame_cnt == 0) {
                       LOG_DEBUG("fill buf timeout %d ms, abandon this write buf %d\n",time_out, v->buffer_s->fd);
                     }
-                    v->buffer_s->abandon = true;
-                    uvc_buffer_pop_front(&v->uvc->write);
+                    //v->buffer_s->abandon = true;
+                    //uvc_buffer_pop_front(&v->uvc->write);
                 } else {
                     if(drop_frame_cnt == 0) {
                        LOG_DEBUG("init:%d,fill buf timeout %d ms\n", init, time_out);
@@ -1366,9 +1403,10 @@ struct uvc_buffer *uvc_user_fill_buffer_init(struct uvc_device *dev)
 static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, struct v4l2_buffer *buf)
 {
     struct uvc_buffer *buffer = NULL;
-
+    bool get_ok = false;
     uvc_delay_time_calcu_before_get(dev, v);
-#if UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
+
+#if 0//UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
     for (int i = 0; i < dev->nbufs; i++)
     {
         if (dev->vbuf_info[i].fd == buf->m.fd)
@@ -1384,8 +1422,22 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
     buffer = uvc_get_enc_data(dev, v, false);
     if (buffer)
     {
-        if (!_uvc_buffer_check(v, buffer))
+        for (int i = 0; i < dev->nbufs; i++)
+        {
+            if (buffer == dev->vbuf_info[i].uvc_buf)
+            {
+                buf->index = dev->vbuf_info[i].index;
+                buf->sequence = buffer->seq;
+                buf->m.fd = dev->vbuf_info[i].fd;
+                get_ok = true;
+                break;
+            }
+        }
+
+        if (get_ok == false || !_uvc_buffer_check(v, buffer)) {
+            LOG_ERROR("fail:%d\n", get_ok);
             return;
+        }
         if (_uvc_get_user_run_state(v) && _uvc_video_get_uvc_process(v))
         {
             if (buf->length >= buffer->size && buffer->buffer)
@@ -1476,6 +1528,41 @@ void uvc_user_fill_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int i
             if (id == l->id)
             {
                 _uvc_user_fill_buffer(l, dev, buf);
+                break;
+            }
+        }
+    }
+    pthread_mutex_unlock(&mtx_v);
+}
+
+static void _uvc_user_set_write_buffer(struct uvc_video *v, struct uvc_device *dev, struct v4l2_buffer *buf)
+{
+    struct uvc_buffer *buffer = NULL;
+
+ //   uvc_delay_time_calcu_before_get(dev, v);
+    for (int i = 0; i < dev->nbufs; i++)
+    {
+        if (dev->vbuf_info[i].fd == buf->m.fd)
+        {
+            v->buffer_s = dev->vbuf_info[i].uvc_buf;
+            v->buffer_s->abandon = false;
+            break;
+        }
+    }
+    uvc_buffer_push_back(&v->uvc->write, v->buffer_s);
+}
+
+void uvc_user_set_write_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int id)
+{
+    pthread_mutex_lock(&mtx_v);
+    if (_uvc_video_id_check(id))
+    {
+        for (std::list<struct uvc_video *>::iterator i = lst_v.begin(); i != lst_v.end(); ++i)
+        {
+            struct uvc_video *l = *i;
+            if (id == l->id)
+            {
+                _uvc_user_set_write_buffer(l, dev, buf);
                 break;
             }
         }

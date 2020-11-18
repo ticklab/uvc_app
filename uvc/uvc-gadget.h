@@ -141,6 +141,7 @@ struct v4l2_buffer_info
 {
     struct uvc_buffer *uvc_buf;
     int fd;
+    int index;
 };
 
 enum USB_STATE
