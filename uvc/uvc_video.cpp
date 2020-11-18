@@ -1060,7 +1060,10 @@ bool uvc_get_user_run_state(int id)
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
 int uvc_video_qbuf_index(struct uvc_device *dev, struct uvc_buffer *send_buf, int index, int len)
 {
-    //LOG_INFO("uvc_video_qbuf_index enter index:%d len=%d,dev->nbufs=%d\n", index, len, dev->nbufs);
+#if 0
+    LOG_INFO("uvc_video_qbuf_index enter send_buf=%p,index:%d len=%d,dev->nbufs=%d\n",
+                     send_buf, index, len, dev->nbufs);
+#endif
     unsigned int i;
     int ret;
     struct v4l2_requestbuffers req;
@@ -1314,7 +1317,7 @@ struct uvc_buffer *uvc_get_enc_data(struct uvc_device *dev, struct uvc_video *v,
    // LOG_INFO("init:%d,uvc_get_enc_data: %p\n", init, buffer);
 #if UVC_SEND_BUF_WHEN_ENC_READY
     if (init && buffer) {
-        uvc_video_qbuf_index(dev, buffer, buffer->frame_count, buffer->size);
+        uvc_video_qbuf_index(dev, buffer, dev->get_buf_count, buffer->size);
     }
 #endif
 
