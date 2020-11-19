@@ -2779,7 +2779,25 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             switch (req)
             {
             case UVC_SET_CUR:
-                resp->data[0] = 0x0;
+                resp->data[0] = 1;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                resp->data[0] = 0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                resp->data[0] = 2;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                resp->data[0] = 1;
                 resp->length = len;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
@@ -2792,7 +2810,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
                 dev->request_error_code.length = 1;
                 break;
             case UVC_GET_INFO:
-                resp->data[0] = 0x03;
+                resp->data[0] = 3;
                 resp->length = 1;
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
