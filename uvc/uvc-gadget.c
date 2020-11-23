@@ -1218,7 +1218,7 @@ uvc_video_process(struct uvc_device *dev)
             if (!dev->ubuf.bytesused)
             {
                 dev->abandon_count ++;
-                LOG_INFO("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
+                LOG_DEBUG("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
                          dev->video_id, dev->abandon_count);
                 //return 0;
             }

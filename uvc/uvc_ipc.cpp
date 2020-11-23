@@ -392,7 +392,7 @@ void ShmUVCController::recvUVCMessageLoop()
         {
             usleep(1 * 1000);
             ++ norecv_count;
-            if (norecv_count >= 3000) // 3s not recv data have error
+            if (norecv_count >= 5000) // 5s not recv data have error
             {
                 ++ norecv_err_count;
                 LOG_ERROR("%d ms not recv data, count up to %d, maybe isp err(uvc not get raw). stat:%d,%d\n",

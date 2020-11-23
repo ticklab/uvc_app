@@ -1285,7 +1285,7 @@ static void uvc_delay_time_calcu_after_get(struct uvc_device *dev, struct uvc_vi
     }
 #endif
 }
-
+static int drop_frame_cnt = 0;
 struct uvc_buffer *uvc_get_enc_data(struct uvc_device *dev, struct uvc_video *v, bool init)
 {
     struct uvc_buffer *buffer = NULL;
@@ -1304,11 +1304,23 @@ struct uvc_buffer *uvc_get_enc_data(struct uvc_device *dev, struct uvc_video *v,
             if(!(buffer = uvc_buffer_front(&v->uvc->read)) && _uvc_get_user_run_state(v)) // onece more check it.
             {
                 if (init == false) {
-                    LOG_INFO("fill buf timeout %d ms, abandon this write buf %d\n",time_out, v->buffer_s->fd);
+                    if(drop_frame_cnt == 0) {
+                      LOG_DEBUG("fill buf timeout %d ms, abandon this write buf %d\n",time_out, v->buffer_s->fd);
+                    }
                     v->buffer_s->abandon = true;
                     uvc_buffer_pop_front(&v->uvc->write);
                 } else {
-                    LOG_INFO("init:%d,fill buf timeout %d ms\n", init, time_out);
+                    if(drop_frame_cnt == 0) {
+                       LOG_DEBUG("init:%d,fill buf timeout %d ms\n", init, time_out);
+                    }
+                }
+                drop_frame_cnt++;
+                if(drop_frame_cnt > 200) {
+                   if (access("/tmp/uvc_camera_no_buf", 0)) {
+                     LOG_INFO("it's already 200 frames buf no to get from CAMERA,tell watchdog now\n");
+                     system("touch /tmp/uvc_camera_no_buf &");
+                   }
+                   drop_frame_cnt = 0;
                 }
             }
             break;
@@ -1387,6 +1399,8 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
 #else
                 dev->mem[buf->index].start = buffer->buffer;
 #endif
+                drop_frame_cnt = 0;
+                system("rm /tmp/uvc_camera_no_buf -rf &");
             }
         }
         else
