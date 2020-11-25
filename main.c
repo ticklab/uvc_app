@@ -70,6 +70,7 @@ int main(int argc, char *argv[])
     if (argc != 3)
     {
         signal(SIGQUIT, sigterm_handler);
+        signal(SIGTERM, sigterm_handler);
         LOG_INFO("uvc_app loop from v4l2.\n");
         camera_control_init();
         uvc_control_start_setcallback(camera_control_start);
