@@ -1198,7 +1198,7 @@ uvc_video_process(struct uvc_device *dev)
 #if UVC_SEND_BUF_WHEN_ENC_READY
        if (dev->get_buf_count < UVC_BUFFER_NUM)
        {
-           LOG_INFO("%d: wait enc buf ok:get_buf_count=%d\n", dev->video_id, dev->get_buf_count);
+           LOG_DEBUG("%d: wait enc buf ok:get_buf_count=%d\n", dev->video_id, dev->get_buf_count);
            if(uvc_user_fill_buffer_init(dev))
                dev->get_buf_count += 1;
        }

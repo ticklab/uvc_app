@@ -1400,7 +1400,6 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
                 dev->mem[buf->index].start = buffer->buffer;
 #endif
                 drop_frame_cnt = 0;
-                system("rm /tmp/uvc_camera_no_buf -rf &");
             }
         }
         else
