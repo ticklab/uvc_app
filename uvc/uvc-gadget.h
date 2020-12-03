@@ -89,6 +89,7 @@ extern "C" {
 #include <linux/videodev2.h>
 
 #define V4L2_PIX_FMT_H265     v4l2_fourcc('H', '2', '6', '5') /* H265 with start codes */
+#define UVC_PU_FPS_CONTROL 0xff
 
 /* ---------------------------------------------------------------------------
  * Generic stuff

@@ -53,7 +53,6 @@
 #if DBSERVER_SUPPORT
 #include "dbserver.h"
 
-
 extern "C" int video_record_set_brightness(int brightness) {
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
@@ -124,6 +123,21 @@ extern "C" int video_record_set_sharpness(int sharpness) {
         return -1;
    }
    json_object_object_add(js, "iSharpness", json_object_new_int(sharpness));
+   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   return 0;
+}
+
+extern "C" int video_record_set_fps(int fixfps) {
+   char *table = TABLE_IMAGE_ADJUSTMENT;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+   json_object_object_add(js, "iFPS", json_object_new_int(fixfps));
    dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
    return 0;
@@ -277,6 +291,9 @@ extern "C" int camera_pu_control_set(int type, int value)
             break;
         case UVC_PU_POWER_LINE_FREQUENCY_CONTROL:
             video_record_set_frequency_mode(value);
+            break;
+        case UVC_PU_FPS_CONTROL:
+            video_record_set_fps(value);
             break;
 #endif
       default:
