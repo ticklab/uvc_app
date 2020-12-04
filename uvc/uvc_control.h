@@ -39,6 +39,7 @@ extern "C"
 #endif
 
 #include <stdint.h>
+#include "mpi_enc.h"
 
 #ifdef USE_RK_MODULE
 #define ISP_SEQ 1
@@ -56,13 +57,17 @@ extern "C"
 #define UVC_CONTROL_CHECK_STRAIGHT (1 << 1)
 #define UVC_CONTROL_CAMERA (1 << 2)
 
+extern int enable_minilog;
+extern int uvc_app_log_level;
+extern int app_quit;
+
 void add_uvc_video();
 int uvc_control_loop(void);
 int check_uvc_video_id(void);
 void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz);
 void set_uvc_control_stop(void);
 void set_uvc_control_restart(void);
-void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps, int format, int eptz));
+void uvc_control_start_setcallback(int (*callback)(int fd, int width, int height, int fps, int format, int eptz));
 void uvc_control_stop_setcallback(void (*callback)());
 void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps);
 void uvc_control_exit();
@@ -70,6 +75,8 @@ int get_uvc_streaming_intf(void);
 void uvc_control_signal(void);
 int uvc_control_run(uint32_t flags);
 void uvc_control_join(uint32_t flags);
+void uvc_read_camera_buffer(void *cam_buf, MPP_ENC_INFO_DEF *info,
+                            void *extra_data, size_t extra_size);
 
 #ifdef __cplusplus
 }

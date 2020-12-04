@@ -19,16 +19,13 @@ enum {
   LOG_DEBUG
 };
 
-int enable_minilog = 0;
 #define LOG_TAG "uvc_app"
-int uvc_app_log_level = LOG_INFO;
 #define UVC_LOG_DYNAMIC_DEBUG "/tmp/uvc_log_debug"
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
 #define UVC_VERSION "SDK V1.24"
 
-int app_quit = 0;
 void sigterm_handler(int sig) {
   LOG_INFO("signal %d\n", sig);
   app_quit = sig;
@@ -47,14 +44,20 @@ int main(int argc, char *argv[])
     int y, uv;
     int extra_cnt = 0;
     uint32_t flags = 0;
+    int media_set = 0;
+
+    enable_minilog = 0;
+    uvc_app_log_level = LOG_INFO;
+    app_quit = 0;
+
 #if USE_RK_AISERVER
-    int media_set = 0x01;
+    media_set = 0x01;
 #endif
 #if USE_ROCKIT
-    int media_set = 0x02;
+    media_set = 0x02;
 #endif
 #if USE_RKMEDIA
-    int media_set = 0x04;
+    media_set = 0x04;
 #endif
     LOG_INFO("VERSION:%s %s %s media_set:0x%x\n", UVC_VERSION, __DATE__, __TIME__, media_set);
 #ifdef ENABLE_MINILOGGER

@@ -17,14 +17,14 @@ set(LIB_SOURCE
     uvc/mpi_enc.c
     uvc/uevent.c
     uvc/drm.c
+    cJSON/cJSON.c
 )
 
 add_library(rkuvc SHARED ${LIB_SOURCE})
-target_link_libraries(rkuvc pthread drm rockchip_mpp ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a)
+target_link_libraries(rkuvc pthread drm rockchip_mpp ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a libminilogger.a)
 
 set(SOURCE
     main.c
-    cJSON/cJSON.c
     ${LIB_SOURCE}
 )
 
@@ -69,22 +69,22 @@ else()
 		   )
 		install(FILES conf/uvc.json DESTINATION ../etc/uvc_app/)
 	else()
-		add_definitions(-DUSE_RKMEDIA=1)
-		add_definitions(-DEPTZ_ENABLE=1)
-		include_directories(${ROCKX_HEADER_DIR})
-		set(UVC_APP_DEPENDENT_LIBS
-		    ${UVC_APP_DEPENDENT_LIBS}
-		    easymedia
-		    rockx
-		    rga
-		    ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
-		set(SOURCE
-		   ${SOURCE}
-		   process/eptz_control.cpp
-		   process/zoom_control.cpp
-		   )
-		set(Algorithm_LIBS ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
-		install(FILES ${Algorithm_LIBS} DESTINATION lib)
+#		add_definitions(-DUSE_RKMEDIA=1)
+#		add_definitions(-DEPTZ_ENABLE=1)
+#		include_directories(${ROCKX_HEADER_DIR})
+#		set(UVC_APP_DEPENDENT_LIBS
+#		    ${UVC_APP_DEPENDENT_LIBS}
+#		    easymedia
+#		    rockx
+#		    rga
+#		    ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
+#		set(SOURCE
+#		   ${SOURCE}
+#		   process/eptz_control.cpp
+#		   process/zoom_control.cpp
+#		   )
+#		set(Algorithm_LIBS ${CMAKE_CURRENT_LIST_DIR}/libs/libuvcAlgorithm.so)
+#		install(FILES ${Algorithm_LIBS} DESTINATION lib)
 	endif()
 endif()
 
@@ -130,3 +130,7 @@ if(EXISTS "mpp_enc_cfg.conf")
 	set(ETC_DST "${PROJECT_SOURCE_DIR}/../../target/etc/")
 	file(COPY mpp_enc_cfg.conf DESTINATION ${ETC_DST})
 endif(EXISTS "mpp_enc_cfg.conf")
+
+if(DEFINED INSTALL_LIBRKUVC)
+install(TARGETS rkuvc DESTINATION lib)
+endif()

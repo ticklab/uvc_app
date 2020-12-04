@@ -46,6 +46,10 @@
 #define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/bInterfaceNumber"
 //#define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_intf"
 
+int enable_minilog;
+int uvc_app_log_level;
+int app_quit;
+
 static void (*camera_start_callback)(int fd, int width, int height, int fps, int format, int eptz);
 static void (*camera_stop_callback)();
 
@@ -115,7 +119,7 @@ int get_uvc_streaming_intf(void)
     return uvc_streaming_intf;
 }
 
-void uvc_control_start_setcallback(void (*callback)(int fd, int width, int height, int fps, int format, int eptz))
+void uvc_control_start_setcallback(int (*callback)(int fd, int width, int height, int fps, int format, int eptz))
 {
     camera_start_callback = callback;
 }
