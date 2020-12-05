@@ -311,9 +311,11 @@ int uvc_control_loop(void)
 #endif
         //camera_control_start(uvc_ctrl[2].id, uvc_ctrl[2].width, uvc_ctrl[2].height, uvc_ctrl[2].fps);
         uvc_ctrl[2].start = false;
+#ifdef CAMERA_CONTROL
         // set fps later
         sleep(1);
         camera_pu_control_set(UVC_PU_FPS_CONTROL,uvc_ctrl[2].fps);// set camera fps
+#endif
     }
     return 1;
 }
