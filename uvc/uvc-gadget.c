@@ -3684,6 +3684,9 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
         dev->imgsize = frame->width * frame->height * 2/*1.5*/;
         LOG_INFO("uvc_events_process_data:format->fcc:%d,dev->width:%d,dev->imgsize:%d\n", format->fcc, dev->width, dev->imgsize);
         target->dwMaxVideoFrameSize = dev->imgsize;
+        break;
+    }
+
 #if USE_RK_AISERVER
         int need_full_range = 1;
         char *full_range = getenv("ENABLE_FULL_RANGE");
@@ -3693,23 +3696,59 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
             LOG_INFO("uvc full_range use env setting:%d \n", need_full_range);
         }
         struct CAMERA_INFO camera_info;
-        camera_info.width = dev->width;
-        camera_info.height = dev->height;
-        camera_info.vir_width = dev->width;
-        camera_info.vir_height = dev->height;
-        camera_info.buf_size = dev->width * dev->height * 2;
+        camera_info.width = frame->width;
+        camera_info.height = frame->height;
+        camera_info.vir_width = frame->width;
+        camera_info.vir_height = frame->height;
+        camera_info.buf_size = frame->width * frame->height * 2;
         camera_info.range = need_full_range;
-        camera_info.yuv_encode = (dev->fcc == V4L2_PIX_FMT_YUYV);
-
+        camera_info.yuv_encode = (format->fcc == V4L2_PIX_FMT_YUYV);
         uvc_ipc_event(UVC_IPC_EVENT_CONFIG_CAMERA, (void *)&camera_info);
 #endif
-        break;
-    }
+
     target->dwFrameInterval = *interval;
 //  target->dwMaxPayloadTransferSize = target->dwMaxVideoFrameSize;
 
     if (dev->control == UVC_VS_COMMIT_CONTROL)
     {
+#if USE_RK_AISERVER
+        int needEPTZ = 0;
+        int eptzWidth = 0;
+        int eptzHeight = 0;
+        char *enableEptz = getenv("ENABLE_EPTZ");
+        LOG_INFO("enableEptz=%s", enableEptz);
+        if (enableEptz)
+        {
+            LOG_INFO("%s :uvc eptz use evn setting \n", __FUNCTION__);
+            needEPTZ = atoi(enableEptz);
+        } else if (dev->eptz_flag) {
+            LOG_INFO("uvc eptz use xu setting:%d\n", dev->eptz_flag);
+            needEPTZ = 1;
+        }
+        int need_full_range = 1;
+        char *full_range = getenv("ENABLE_FULL_RANGE");
+        if (full_range)
+        {
+            need_full_range = atoi(full_range);
+            LOG_INFO("uvc full_range use env setting:%d \n", need_full_range);
+        }
+
+        if (needEPTZ)
+            uvc_ipc_event(UVC_IPC_EVENT_ENABLE_ETPTZ, (void *)&needEPTZ);
+        struct CAMERA_INFO camera_info;
+        camera_info.width = frame->width;
+        camera_info.height = frame->height;
+        camera_info.vir_width = frame->width;
+        camera_info.vir_height = frame->height;
+        camera_info.buf_size = frame->width * frame->height * 2;
+        camera_info.range = need_full_range;
+        camera_info.yuv_encode = (format->fcc == V4L2_PIX_FMT_YUYV);
+        uvc_ipc_event(UVC_IPC_EVENT_CONFIG_CAMERA, (void *)&camera_info);
+        uvc_ipc_event(UVC_IPC_EVENT_START, NULL); //after the camera config
+        //int val = 12; // for test
+        //uvc_ipc_event(UVC_IPC_EVENT_SET_ZOOM, (void *)&val);                   // for test
+#endif
+
         if (uvc_video_get_uvc_process(dev->video_id))
             return 0;
         dev->fcc = format->fcc;
@@ -3827,16 +3866,7 @@ uvc_events_process(struct uvc_device *dev)
     gettimeofday(&buffer_time, NULL);
     LOG_ERROR("UVC STREAMON START TIME:%d.%d (us)",buffer_time.tv_sec,buffer_time.tv_usec);
 #endif
-        if (!dev->bulk)
-            uvc_handle_streamon_event(dev);
-        dev->abandon_count = 0;
-        dev->get_buf_count = 0;
-        dev->usb_state = USB_STATE_FIRST_GET_READY;
-
-        struct timespec now_tm = {0, 0};
-        clock_gettime(CLOCK_MONOTONIC, &now_tm);
-        dev->stream_on_pts = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
-#if USE_RK_AISERVER
+#if 0//USE_RK_AISERVER
         int needEPTZ = 0;
         int eptzWidth = 0;
         int eptzHeight = 0;
@@ -3871,8 +3901,17 @@ uvc_events_process(struct uvc_device *dev)
         uvc_ipc_event(UVC_IPC_EVENT_CONFIG_CAMERA, (void *)&camera_info);
         uvc_ipc_event(UVC_IPC_EVENT_START, NULL); //after the camera config
         //int val = 12; // for test
-        //uvc_ipc_event(UVC_IPC_EVENT_SET_ZOOM, (void *)&val);			 // for test
+        //uvc_ipc_event(UVC_IPC_EVENT_SET_ZOOM, (void *)&val);                   // for test
 #endif
+        if (!dev->bulk)
+            uvc_handle_streamon_event(dev);
+        dev->abandon_count = 0;
+        dev->get_buf_count = 0;
+        dev->usb_state = USB_STATE_FIRST_GET_READY;
+
+        struct timespec now_tm = {0, 0};
+        clock_gettime(CLOCK_MONOTONIC, &now_tm);
+        dev->stream_on_pts = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
 
 #if UVC_DYNAMIC_DEBUG_FPS
         uvc_debug_info.stream_on_pts = dev->stream_on_pts;

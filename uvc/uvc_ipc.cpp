@@ -58,18 +58,20 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
     switch (event)
     {
     case UVC_IPC_EVENT_START:
-        uvc_ipc_info.stop = false;
-        uvc_ipc_info.shm_control->clearRecvMessage(); // clear the last data
-        uvc_ipc_info.shm_control->startRecvMessage();
-        uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_START, data);
-        if (uvc_ipc_info.history[0] == true)
+        if (uvc_ipc_info.stop)
         {
+          uvc_ipc_info.stop = false;
+          uvc_ipc_info.shm_control->clearRecvMessage(); // clear the last data
+          uvc_ipc_info.shm_control->startRecvMessage();
+          uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_START, data);
+          if (uvc_ipc_info.history[0] == true)
+          {
             LOG_INFO("history eptz:%d\n", uvc_ipc_info.enable_eptz);
             uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_ENABLE_ETPTZ, (void *)&uvc_ipc_info.enable_eptz);
             uvc_ipc_info.history[0] = false;
             uvc_ipc_info.history[2] = false;
             uvc_ipc_info.history[3] = false;
-        } else {
+          } else {
             if (uvc_ipc_info.history[2] == true)
             {
                 LOG_INFO("history eptz_pan:%d\n", uvc_ipc_info.zoom);
@@ -82,15 +84,14 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
                 uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_ZOOM, (void *)&uvc_ipc_info.zoom);
                 uvc_ipc_info.history[3] = false;
             }
-        }
-        if (uvc_ipc_info.history[1] == true)
-        {
+          }
+          if (uvc_ipc_info.history[1] == true)
+          {
             LOG_INFO("history zoom:%d\n", uvc_ipc_info.zoom);
             uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_ZOOM, (void *)&uvc_ipc_info.zoom);
             uvc_ipc_info.history[1] = false;
+          }
         }
-
-
         break;
     case UVC_IPC_EVENT_STOP:
         if (!uvc_ipc_info.stop)
