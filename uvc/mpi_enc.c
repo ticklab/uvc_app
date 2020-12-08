@@ -346,48 +346,6 @@ RET:
     return ret;
 }
 
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-void do_destory_mpp_buf(MpiEncTestData *p)
-{
-    if (p->destory_info.destory_frame)
-    {
-        mpp_frame_deinit(&p->destory_info.destory_frame);
-        p->destory_info.destory_frame = NULL;
-    }
-    if (p->destory_info.destory_buf)
-    {
-        mpp_buffer_put(p->destory_info.destory_buf);
-        p->destory_info.destory_buf = NULL;
-    }
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
-    if (p->destory_info.destory_pkt_buf_out)
-    {
-        mpp_buffer_put(p->destory_info.destory_pkt_buf_out);
-        p->destory_info.destory_pkt_buf_out = NULL;
-    }
-#endif
-    p->destory_info.unfinished = false;
-    p->destory_info.count ++;
-
-}
-
-void *thread_destory_mpp_buf(void *user)
-{
-    MpiEncTestData *p = (MpiEncTestData *)user;
-    pthread_mutex_init(&p->cond_mutex, NULL);
-    pthread_cond_init(&p->cond, NULL);
-    p->destory_info.unfinished = false;
-    while (1)
-    {
-        pthread_mutex_lock(&p->cond_mutex);
-        pthread_cond_wait(&p->cond, &p->cond_mutex);
-        if (p->destory_info.unfinished)
-            do_destory_mpp_buf(p);
-        pthread_mutex_unlock(&p->cond_mutex);
-    }
-}
-
-#endif
 MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
 {
     MPP_RET ret = MPP_OK;
@@ -745,6 +703,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     bool get_ok = false;
     int32_t use_time_us, now_time_us, last_time_us;
     struct timespec now_tm = {0, 0};
+    bool init = false;
 
     if (NULL == p)
         return MPP_ERR_NULL_PTR;
@@ -769,9 +728,6 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     RK_S32 index = i++;
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
     struct uvc_buffer *uvc_buf;
-    MppBufferInfo outputCommit;
-//   memset(&outputCommit, 0, sizeof(outputCommit));
-    outputCommit.type = MPP_BUFFER_TYPE_DRM;
 
 #if UVC_SEND_BUF_WHEN_ENC_READY
     if (p->frame_count >= UVC_BUFFER_NUM)
@@ -874,33 +830,80 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     }
 #endif
 
-    outputCommit.size = uvc_buf->drm_buf_size;
-    outputCommit.fd = uvc_buf->fd;
-    ret = mpp_buffer_import(&pkt_buf_out, &outputCommit);
-    if (ret)
-    {
-        LOG_ERROR("import output picture buffer failed\n");
-        goto RET;
+    for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
+        if (uvc_buf->fd == p->out_buff_info[i].buf_fd) {
+            init = true;
+            packet = p->out_buff_info[i].packet;
+            pkt_buf_out = p->out_buff_info[i].pkt_buf_out;
+            break;
+        }
     }
+    if (init == false)
+    {
+        MppBufferInfo outputCommit;
+        outputCommit.type = MPP_BUFFER_TYPE_DRM;
+        outputCommit.size = uvc_buf->drm_buf_size;
+        outputCommit.fd = uvc_buf->fd;
+
+        ret = mpp_buffer_import(&pkt_buf_out, &outputCommit);
+        if (ret)
+        {
+            LOG_ERROR("import output picture buffer failed\n");
+            goto RET;
+        }
+        mpp_packet_init_with_buffer(&packet, pkt_buf_out);
+        for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
+            if (p->out_buff_info[i].init == false) {
+                p->out_buff_info[i].init = true;
+                p->out_buff_info[i].buf_fd = uvc_buf->fd;
+                p->out_buff_info[i].packet = packet;
+                p->out_buff_info[i].pkt_buf_out = pkt_buf_out;
+                break;
+            }
+        }
+        //LOG_INFO("new out put fd:%d\n", uvc_buf->fd);
+    }
+
 #else
     pkt_buf_out = p->pkt_buf;
-#endif
     mpp_packet_init_with_buffer(&packet, pkt_buf_out);
+#endif
+    //mpp_packet_set_pos(packet, NULL);
     mpp_packet_set_length(packet, 0);
 
 #if 0
     mpp_frame_set_buffer(frame, p->frm_buf);
 #else
-    MppBufferInfo inputCommit;
-//    memset(&inputCommit, 0, sizeof(inputCommit));
-    inputCommit.type = MPP_BUFFER_TYPE_ION;
-    inputCommit.size = info->size;
-    inputCommit.fd = info->fd;
-    ret = mpp_buffer_import(&buf, &inputCommit);
-    if (ret)
-    {
-        LOG_ERROR("import input picture buffer failed\n");
-        goto RET;
+    init = false;
+    for (int i = 0; i < IN_BUF_COUNT_MAX; i++) {
+        if (info->fd == p->in_buff_info[i].buf_fd) {
+            init = true;
+            buf = p->in_buff_info[i].buf;
+            break;
+        }
+    }
+
+    if (init == false) {
+        MppBufferInfo inputCommit;
+        inputCommit.type = MPP_BUFFER_TYPE_ION;
+        inputCommit.size = info->size;
+        inputCommit.fd = info->fd;
+        ret = mpp_buffer_import(&buf, &inputCommit);
+        if (ret)
+        {
+            LOG_ERROR("import input picture buffer failed\n");
+            goto RET;
+        }
+        for (int i = 0; i < IN_BUF_COUNT_MAX; i++) {
+            if (p->in_buff_info[i].init == false) {
+                p->in_buff_info[i].init = true;
+                p->in_buff_info[i].buf_fd = info->fd;
+                p->in_buff_info[i].buf = buf;
+                p->in_buff_info[i].pkt_buf_out = pkt_buf_out;
+                break;
+            }
+        }
+        //LOG_INFO("new in put fd:%d \n", info->fd);
     }
     mpp_frame_set_buffer(frame, buf);
 #endif
@@ -1047,7 +1050,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
             p->enc_data = ptr;
             p->enc_len = len;
 #endif
-            mpp_packet_deinit(&packet);
+           // mpp_packet_deinit(&packet);
             clock_gettime(CLOCK_MONOTONIC, &now_tm);
             last_time_us = now_time_us;
             now_time_us = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000; // us
@@ -1094,44 +1097,12 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 
 RET:
   //  uvc_user_unlock();
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    pthread_mutex_lock(&p->cond_mutex);
-    if (p->destory_info.unfinished == false)
+
+    if (frame)
     {
-        p->destory_info.unfinished = true;
-        p->destory_info.destory_frame = frame;
-        p->destory_info.destory_buf = buf;
-        p->destory_info.destory_pkt_buf_out = pkt_buf_out;
-        //if (p->frame_count % 100 != 0) //for test
-        pthread_cond_signal(&p->cond);
+        mpp_frame_deinit(&frame);
+        frame = NULL;
     }
-    else
-    {
-        //pthread_cond_signal(&p->cond);
-        do_destory_mpp_buf(p);
-        LOG_INFO("not go here normal,count=%d,frm=%d\n", p->destory_info.count, p->frame_count);
-#endif
-        if (frame)
-        {
-            mpp_frame_deinit(&frame);
-            frame = NULL;
-        }
-        if (buf)
-        {
-            mpp_buffer_put(buf);
-            buf = NULL;
-        }
-#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
-        if (pkt_buf_out)
-        {
-            mpp_buffer_put(pkt_buf_out);
-            pkt_buf_out = NULL;
-        }
-#endif
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    }
-    pthread_mutex_unlock(&p->cond_mutex);
-#endif
 
     return ret;
 #else
@@ -1220,10 +1191,6 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     mpp_mjpeg_fps_init(p);
 #endif
 
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    pthread_create(&p->destory_buf_hd, NULL, thread_destory_mpp_buf, p);
-#endif
-
     mpi_get_env_u32("uvc_enc_out", &cmd->have_output, 0);
 
     if (cmd->have_output || !access(RK_MPP_DYNAMIC_DEBUG_OUT_CHECK, 0))
@@ -1245,6 +1212,16 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         }
         LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
     }
+
+    for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
+        p->out_buff_info[i].init = false;
+        p->out_buff_info[i].buf_fd = -1;
+    }
+    for (int i = 0; i < IN_BUF_COUNT_MAX; i++) {
+        p->in_buff_info[i].init = false;
+        p->in_buff_info[i].buf_fd = -1;
+    }
+
     return ret;
 }
 
@@ -1268,14 +1245,32 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     mpp_mjpeg_fps_deinit(p);
 #endif
 
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    if (p->destory_buf_hd) {
-        pthread_cancel(p->destory_buf_hd);
-        pthread_join(p->destory_buf_hd, NULL);
-        pthread_mutex_destroy(&p->cond_mutex);
-        pthread_cond_destroy(&p->cond);
-    }
+    for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
+        if (p->out_buff_info[i].init) {
+            if (p->out_buff_info[i].packet)
+                mpp_packet_deinit(&p->out_buff_info[i].packet);
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+            if (p->out_buff_info[i].pkt_buf_out)
+            {
+                mpp_buffer_put(p->out_buff_info[i].pkt_buf_out);
+                p->out_buff_info[i].pkt_buf_out = NULL;
+            }
 #endif
+            p->out_buff_info[i].init = false;
+        }
+    }
+
+    for (int i = 0; i < IN_BUF_COUNT_MAX; i++) {
+        if (p->in_buff_info[i].init) {
+            if (p->in_buff_info[i].buf)
+            {
+                mpp_buffer_put(p->in_buff_info[i].buf);
+                p->in_buff_info[i].buf = NULL;
+            }
+        }
+        p->in_buff_info[i].init = false;
+    }
+
     if (p->check_cfg_change_hd) {
         pthread_cancel(p->check_cfg_change_hd);
         pthread_join(p->check_cfg_change_hd, NULL);

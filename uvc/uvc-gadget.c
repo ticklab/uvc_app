@@ -1164,6 +1164,7 @@ uvc_video_process(struct uvc_device *dev)
     struct v4l2_buffer vbuf;
     unsigned int i;
     int ret;
+    bool get_ok = false;
 
     /*
      * Return immediately if UVC video output device has not started
@@ -1215,7 +1216,7 @@ uvc_video_process(struct uvc_device *dev)
             /* UVC stanalone setup. */
             do {
                 ret = ioctl(dev->uvc_fd, VIDIOC_DQBUF, &dev->ubuf);
-                if (ret >= 0) {
+                if (ret == 0) {
                     dev->dqbuf_count++;
                     uvc_video_set_write_buffer(dev, &dev->ubuf);
 #ifdef ENABLE_BUFFER_DEBUG
@@ -1229,16 +1230,43 @@ uvc_video_process(struct uvc_device *dev)
                     LOG_ERROR("%d: UVC: Unable to DeQueued buffer: %s (%d).\n",
                                dev->video_id, strerror(errno), errno);
                     return ret;
+                } else {
+                    LOG_ERROR("%d: UVC: Unable to DeQueued buffer: %s (%d) ret(%d).\n",
+                               dev->video_id, strerror(errno), errno, ret);
+                    //return ret;
                 }
-            } while (ret >= 0);
+            } while (ret == 0);
 
             do {
+                get_ok = false;
                 uvc_video_fill_buffer(dev, &dev->ubuf);
                 if (!dev->ubuf.bytesused)
                 {
+                    struct uvc_buffer *uvc_buf;
                     dev->abandon_count ++;
                     LOG_DEBUG("%d: UVC: Unable to queue buffer length is 0 ,driver will drop it.%d\n",
                              dev->video_id, dev->abandon_count);
+                    uvc_buf = uvc_buffer_write_get(dev->video_id);
+                    if (!uvc_buf)
+                    {
+                        LOG_ERROR("uvc_buffer_write_get failed\n");
+                        return 0;
+                    }
+                    for (int i = 0; i < dev->nbufs; i++)
+                    {
+                        if (uvc_buf == dev->vbuf_info[i].uvc_buf)
+                        {
+                            dev->ubuf.index = dev->vbuf_info[i].index;
+                            dev->ubuf.sequence = uvc_buf->seq;
+                            dev->ubuf.m.fd = dev->vbuf_info[i].fd;
+                            get_ok = true;
+                            break;
+                        }
+                    }
+                    if (get_ok == false) {
+                        LOG_ERROR("get_ok failed\n");
+                        return 0; //if return 0 make host err,here should change to wait the enc buf.
+                    }
                     //return 0;
                 }
                 ret = ioctl(dev->uvc_fd, VIDIOC_QBUF, &dev->ubuf);
@@ -1260,7 +1288,6 @@ uvc_video_process(struct uvc_device *dev)
 #endif
             } while (uvc_buffer_read_enable(dev->video_id));
         }
-
     }
     else
     {

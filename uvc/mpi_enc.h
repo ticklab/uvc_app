@@ -51,7 +51,6 @@ extern "C" {
 #define RK_MPP_USE_ZERO_COPY 1
 
 #if RK_MPP_USE_ZERO_COPY
-#define RK_MPP_USE_DESTORY_BUFF_THREAD
 #if !RK_MPP_ENC_TEST_NATIVE
 #define RK_MPP_USE_UVC_VIDEO_BUFFER
 #endif
@@ -231,16 +230,18 @@ typedef struct
 } MpiEncH265Cfg;
 
 /***************************o not change the order above**************************************/
-typedef struct DestoryNode
+typedef struct MppBuffNode
 {
-    MppFrame destory_frame;
-    MppPacket destory_packet;
-    MppBuffer destory_buf;
-    MppBuffer destory_pkt_buf_out;
-    bool unfinished;
-    RK_U32 count;
-} MppDestoryInfo;
+    MppFrame frame;
+    MppPacket packet;
+    MppBuffer buf;
+    MppBuffer pkt_buf_out;
+    int buf_fd;
+    bool init;
+} MppBuffInfo;
 
+#define IN_BUF_COUNT_MAX 6
+#define OUT_BUF_COUNT_MAX 3
 
 #if RK_MPP_MJPEG_FPS_CONTROL
 #define MJPEG_FPS_CONTROL_V2 1
@@ -349,14 +350,6 @@ typedef struct
 
     int cfg_notify_fd;
     int cfg_notify_wd;
-#ifdef RK_MPP_USE_DESTORY_BUFF_THREAD
-    MppDestoryInfo destory_info;
-
-    pthread_t destory_buf_hd;
-    sigset_t sig;
-    pthread_cond_t cond;
-    pthread_mutex_t cond_mutex;
-
     RK_U32 loss_frm;
     RK_U32 continuous_frm;
     RK_U32 frc_up_frm_set;
@@ -365,8 +358,9 @@ typedef struct
 #if RK_MPP_MJPEG_FPS_CONTROL
     void *fps_handle;
 #endif
+    MppBuffInfo out_buff_info[OUT_BUF_COUNT_MAX];
+    MppBuffInfo in_buff_info[IN_BUF_COUNT_MAX];
 //    pthread_mutex_t destory_mutex;
-#endif
 } MpiEncTestData;
 
 typedef struct MPP_ENC_INFO {

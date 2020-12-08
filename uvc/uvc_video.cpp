@@ -1538,7 +1538,7 @@ void uvc_user_fill_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int i
 static void _uvc_user_set_write_buffer(struct uvc_video *v, struct uvc_device *dev, struct v4l2_buffer *buf)
 {
     struct uvc_buffer *buffer = NULL;
-
+    bool get_ok = false;
  //   uvc_delay_time_calcu_before_get(dev, v);
     for (int i = 0; i < dev->nbufs; i++)
     {
@@ -1546,10 +1546,14 @@ static void _uvc_user_set_write_buffer(struct uvc_video *v, struct uvc_device *d
         {
             v->buffer_s = dev->vbuf_info[i].uvc_buf;
             v->buffer_s->abandon = false;
+            get_ok = true;
             break;
         }
     }
-    uvc_buffer_push_back(&v->uvc->write, v->buffer_s);
+    if (get_ok)
+        uvc_buffer_push_back(&v->uvc->write, v->buffer_s);
+    else
+        LOG_ERROR("fail:%d\n", buf->m.fd);
 }
 
 void uvc_user_set_write_buffer(struct uvc_device *dev, struct v4l2_buffer *buf, int id)
