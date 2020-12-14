@@ -53,6 +53,12 @@ int app_quit;
 static void (*camera_start_callback)(int fd, int width, int height, int fps, int format, int eptz);
 static void (*camera_stop_callback)();
 
+uvc_pu_control_callback_t uvc_pu_control_cb = NULL;
+void register_uvc_pu_control_callback(uvc_pu_control_callback_t cb)
+{
+    uvc_pu_control_cb = cb;
+}
+
 struct uvc_ctrl
 {
     int id;

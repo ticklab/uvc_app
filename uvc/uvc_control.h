@@ -61,6 +61,10 @@ extern int enable_minilog;
 extern int uvc_app_log_level;
 extern int app_quit;
 
+typedef void (*uvc_pu_control_callback_t)(unsigned char cs, unsigned int val);
+void register_uvc_pu_control_callback(uvc_pu_control_callback_t cb);
+extern uvc_pu_control_callback_t uvc_pu_control_cb;
+
 void add_uvc_video();
 int uvc_control_loop(void);
 int check_uvc_video_id(void);

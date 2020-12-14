@@ -3531,6 +3531,8 @@ uvc_events_process_control_data(struct uvc_device *dev,
 #ifdef CAMERA_CONTROL
         camera_pu_control_set(cs, *val);
 #endif
+        if (uvc_pu_control_cb)
+            uvc_pu_control_cb(cs, *val);
 
         break;
     /* Extension unit 'UVC_VC_Extension_Unit'. */
