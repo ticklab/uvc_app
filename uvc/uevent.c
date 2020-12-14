@@ -97,7 +97,7 @@ static void parse_event(const char *msg, struct uevent *uevent)
             ;
     }
 
-    LOG_INFO("event { '%s', '%s', '%s', '%s', '%s' }\n",
+    LOG_DEBUG("event { '%s', '%s', '%s', '%s', '%s' }\n",
          uevent->action, uevent->path, uevent->subsystem, uevent->usb_state, uevent->device_name);
     handle_uvc_event(uevent);
 }
