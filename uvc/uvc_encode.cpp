@@ -99,6 +99,12 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h2
     return 0;
 }
 
+void uvc_encode_inbuf_deinit(struct uvc_encode *e)
+{
+    if(e->fcc != V4L2_PIX_FMT_YUYV)
+        mpi_enc_inbuf_deinit(e->mpi_data);
+}
+
 void uvc_encode_exit(struct uvc_encode *e)
 {
     if(e->fcc != V4L2_PIX_FMT_YUYV)

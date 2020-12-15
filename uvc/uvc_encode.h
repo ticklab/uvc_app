@@ -56,6 +56,7 @@ struct uvc_encode
 
 int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h265, unsigned int fps);
 void uvc_encode_exit(struct uvc_encode *e);
+void uvc_encode_inbuf_deinit(struct uvc_encode *e);
 bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *info);
 
 #ifdef __cplusplus

@@ -4463,13 +4463,14 @@ uvc_gadget_main(int id)
 
         if(app_quit) {
            LOG_ERROR("app quit=%d...\n",app_quit);
-           if(3 == app_quit){
+           if(3 == app_quit) {
+               uvc_control_inbuf_deinit();
 #if USE_RK_AISERVER
-             uvc_ipc_reconnect();
+               uvc_ipc_reconnect();
 #else
-             break;
+               break;
 #endif
-             app_quit = 0;
+               app_quit = 0;
            } else
              break;
         }

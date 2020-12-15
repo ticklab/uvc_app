@@ -194,6 +194,14 @@ void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps
     pthread_mutex_unlock(&lock);
 }
 
+void uvc_control_inbuf_deinit()
+{
+    pthread_mutex_lock(&lock);
+    if(uvc_encode_init_flag)
+        uvc_encode_inbuf_deinit(&uvc_enc);
+    pthread_mutex_unlock(&lock);
+}
+
 void uvc_control_exit()
 {
     pthread_mutex_lock(&lock);

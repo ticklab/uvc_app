@@ -1236,6 +1236,22 @@ MPP_RET mpi_enc_test_run(MpiEncTestData **data, MPP_ENC_INFO_DEF *info)
     return ret;
 }
 
+MPP_RET mpi_enc_inbuf_deinit(MpiEncTestData *data)
+{
+    MpiEncTestData *p = data;
+    for (int i = 0; i < IN_BUF_COUNT_MAX; i++) {
+        if (p->in_buff_info[i].init) {
+            if (p->in_buff_info[i].buf)
+            {
+                mpp_buffer_put(p->in_buff_info[i].buf);
+                p->in_buff_info[i].buf = NULL;
+                p->in_buff_info[i].buf_fd = -1;
+            }
+        }
+        p->in_buff_info[i].init = false;
+    }
+}
+
 MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
 {
     MPP_RET ret = MPP_OK;
@@ -1259,17 +1275,7 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
             p->out_buff_info[i].init = false;
         }
     }
-
-    for (int i = 0; i < IN_BUF_COUNT_MAX; i++) {
-        if (p->in_buff_info[i].init) {
-            if (p->in_buff_info[i].buf)
-            {
-                mpp_buffer_put(p->in_buff_info[i].buf);
-                p->in_buff_info[i].buf = NULL;
-            }
-        }
-        p->in_buff_info[i].init = false;
-    }
+    mpi_enc_inbuf_deinit(p);
 
     if (p->check_cfg_change_hd) {
         pthread_cancel(p->check_cfg_change_hd);

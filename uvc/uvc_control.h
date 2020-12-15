@@ -71,6 +71,7 @@ void uvc_control_start_setcallback(int (*callback)(int fd, int width, int height
 void uvc_control_stop_setcallback(void (*callback)());
 void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps);
 void uvc_control_exit();
+void uvc_control_inbuf_deinit();
 int get_uvc_streaming_intf(void);
 void uvc_control_signal(void);
 int uvc_control_run(uint32_t flags);
