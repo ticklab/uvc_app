@@ -298,30 +298,6 @@ static void *uvc_control_thread(void *arg)
     pthread_exit(NULL);
 }
 
-int read_fs_string(const char *filename, char *str)
-{
-    int ret = 0;
-    FILE  *fsfp;
-    int errno = 0;
-    fsfp = fopen(filename, "r");
-    if (!fsfp) {
-          ret = errno;
-          goto error_free;
-    }
-    if (fscanf(fsfp, "%s\n", str) != 1) {
-          ret = errno ? 0 : -1;
-          if (fclose(fsfp))
-               LOG_ERROR("read_sysfs_string(): Failed to close dir");
-          goto error_free;
-    }
-    LOG_INFO("read_fs_string:file:%s,str:%s\n",filename,str);
-    if (fclose(fsfp))
-          ret = 0;
-
-error_free:
-    return ret;
-}
-
 int uvc_control_loop(void)
 {
     if (uvc_restart)
@@ -357,10 +333,7 @@ int uvc_control_loop(void)
         // set fps later
         if (access("/tmp/uvc_no_set_fps", 0)){
            sleep(1);
-           char data[32];
-           read_fs_string("/tmp/.ispserver_cam0",data);
-           if(!strcmp(data,"1"))
-             camera_pu_control_set(UVC_PU_FPS_CONTROL,uvc_ctrl[2].fps);// set camera fps
+           camera_pu_control_set(UVC_PU_FPS_CONTROL,uvc_ctrl[2].fps);// set camera fps
         }
 #endif
     }

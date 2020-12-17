@@ -254,11 +254,43 @@ extern "C" int camera_pu_control_get(int type, int def)
     return def;
 }
 
+extern "C" int check_ispserver_work()
+{
+    int ret = 0;
+    FILE  *fsfp;
+    char str[32];
+    char *filename = "/tmp/.ispserver_cam0";
+    fsfp = fopen(filename, "r");
+    if (!fsfp) {
+          ret = 0;
+          goto error_free;
+    }
+    if (fscanf(fsfp, "%s\n", str) != 1) {
+          ret = 0;
+          if (fclose(fsfp))
+               LOG_ERROR("read_sysfs_string(): Failed to close dir");
+          goto error_free;
+    }
+    if (fclose(fsfp))
+          ret = 0;
+    LOG_DEBUG("read_fs_string:file:%s,str:%s\n",filename,str);
+    if(!strcmp(str,"1"))
+          ret = 1;
+
+error_free:
+    return ret;
+}
+
+
 extern "C" int camera_pu_control_set(int type, int value)
 {
     LOG_DEBUG("%s! type is %d,value is %d\n", __func__,type,value);
-    switch (type) {
 #if DBSERVER_SUPPORT
+    if(check_ispserver_work() == 0) {
+        LOG_INFO("check ispserver is deinit,pu set fail!\n");
+        return 0;
+    }
+    switch (type) {
         case UVC_PU_BRIGHTNESS_CONTROL:
             video_record_set_brightness(value);
             break;
@@ -295,12 +327,12 @@ extern "C" int camera_pu_control_set(int type, int value)
         case UVC_PU_FPS_CONTROL:
             video_record_set_fps(value);
             break;
-#endif
       default:
          LOG_DEBUG("====unknow pu cmd.\n");
          break;
 
     }
+#endif
     return 0;
 }
 

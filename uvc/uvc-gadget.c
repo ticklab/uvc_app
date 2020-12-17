@@ -4432,7 +4432,7 @@ uvc_gadget_main(int id)
 
         /* Timeout. */
         tv.tv_sec = 5;
-        tv.tv_usec = 500000;
+        tv.tv_usec = 0;
 
         if (!dummy_data_gen_mode && !mjpeg_image)
         {
@@ -4460,6 +4460,8 @@ uvc_gadget_main(int id)
             if (udev->bulk)
                 continue;
             LOG_ERROR("select timeout\n");
+            if (!access("/tmp/uvc_no_timeout", 0))
+                continue;
             break;
         }
 
