@@ -102,7 +102,7 @@ static struct uvc_buffer *uvc_buffer_create(int width, int height, struct uvc_vi
         return NULL;
     }
     buffer->buffer = (void *)drm_map_buffer(v->drm_fd, buffer->handle, buffer->drm_buf_size);
-    LOG_INFO("v->drm_fd=%d,buffer->handle=%d,size=%d\n", v->drm_fd, buffer->handle, buffer->drm_buf_size);
+    LOG_DEBUG("v->drm_fd=%d,buffer->handle=%d,size=%d\n", v->drm_fd, buffer->handle, buffer->drm_buf_size);
 #else
     buffer->buffer = calloc(1, buffer->size);
 #endif
@@ -259,7 +259,7 @@ int uvc_video_id_add(int id)
 {
     int ret = 0;
 
-    LOG_INFO("add uvc video id: %d\n", id);
+    LOG_DEBUG("add uvc video id: %d\n", id);
 
     pthread_mutex_lock(&mtx_v);
     if (!_uvc_video_id_check(id))
@@ -284,7 +284,7 @@ int uvc_video_id_add(int id)
     }
     else
     {
-        LOG_INFO("%s: %d: %d already exist.\n", __func__, __LINE__, id);
+        LOG_WARN("%s: %d: %d already exist.\n", __func__, __LINE__, id);
         ret = -1;
     }
     pthread_mutex_unlock(&mtx_v);
@@ -507,7 +507,7 @@ static int _uvc_buffer_init(struct uvc_video *v)
     uvc_buffer_clear(&v->uvc->read);
     uvc_buffer_clear(&v->uvc->all);
 
-    LOG_INFO("UVC_BUFFER_NUM = %d\n", UVC_BUFFER_NUM);
+    LOG_DEBUG("UVC_BUFFER_NUM = %d\n", UVC_BUFFER_NUM);
     v->drm_fd = -1;
     for (i = 0; i < UVC_BUFFER_NUM; i++)
     {
@@ -564,16 +564,16 @@ static void _uvc_buffer_deinit(struct uvc_video *v)
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
 
 #if UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
-        LOG_INFO("_uvc_buffer_deinit all\n");
+        LOG_DEBUG("_uvc_buffer_deinit all\n");
         uvc_drm_buffer_destroy(v, &v->uvc->all);
 #else
-        LOG_INFO("_uvc_buffer_deinit write\n");
+        LOG_DEBUG("_uvc_buffer_deinit write\n");
         uvc_drm_buffer_destroy(v, &v->uvc->write);
-        LOG_INFO("_uvc_buffer_deinit read\n");
+        LOG_DEBUG("_uvc_buffer_deinit read\n");
         uvc_drm_buffer_destroy(v, &v->uvc->read);
 #endif
         drm_close(v->drm_fd);
-        LOG_INFO("_uvc_buffer_deinit drm_close drm_fd:%d\n", v->drm_fd);
+        LOG_DEBUG("_uvc_buffer_deinit drm_close drm_fd:%d\n", v->drm_fd);
         v->drm_fd = -1;
 #else
         uvc_buffer_destroy(&v->uvc->write);
@@ -1008,7 +1008,7 @@ static void _uvc_set_user_resolution(struct uvc_video *v, int width, int height)
     pthread_mutex_lock(&v->user_mutex);
     v->uvc_user.width = width;
     v->uvc_user.height = height;
-    LOG_INFO("uvc_user.width = %u, uvc_user.height = %u\n", v->uvc_user.width,
+    LOG_DEBUG("uvc_user.width = %u, uvc_user.height = %u\n", v->uvc_user.width,
              v->uvc_user.height);
     pthread_mutex_unlock(&v->user_mutex);
 }
@@ -1456,7 +1456,7 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
         }
         else
         {
-            LOG_INFO("_uvc_user_fill_buffer no go here \n");
+            LOG_WARN("_uvc_user_fill_buffer no go here \n");
 #if UVC_IO_METHOD == UVC_IO_METHOD_MMAP
             buf->bytesused = buf->length;
 #elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF

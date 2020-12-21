@@ -249,6 +249,20 @@ typedef struct MppBuffNode
 
 typedef struct
 {
+#if RK_MPP_MJPEG_FPS_CONTROL
+    void *fps_handle;
+#endif
+    RK_U32 fps;
+    RK_U32 loss_frm;
+    RK_U32 continuous_frm;
+    RK_U32 frc_up_frm_set;
+    bool set_frc_low;
+    bool fps_ctr_enable;
+    MpiEncCommonCfg common_cfg;
+    MpiEncMjpegCfg mjpeg_cfg;
+    MpiEncH264Cfg h264_cfg;
+    MpiEncH265Cfg h265_cfg;
+
     // global flow control flag
     RK_U32 frm_eos;
     RK_U32 pkt_eos;
@@ -322,7 +336,6 @@ typedef struct
 
     // rate control runtime parameter
     RK_S32 gop;
-    RK_U32 fps;
     RK_S32 fps_in_flex;
     RK_S32 fps_in_den;
     RK_S32 fps_in_num;
@@ -342,22 +355,10 @@ typedef struct
     MppBufferGroup pkt_grp;
     MppBuffer pkt_buf;
 #endif
-    MpiEncCommonCfg common_cfg;
-    MpiEncMjpegCfg mjpeg_cfg;
-    MpiEncH264Cfg h264_cfg;
-    MpiEncH265Cfg h265_cfg;
     pthread_t check_cfg_change_hd;
 
     int cfg_notify_fd;
     int cfg_notify_wd;
-    RK_U32 loss_frm;
-    RK_U32 continuous_frm;
-    RK_U32 frc_up_frm_set;
-    bool set_frc_low;
-    bool fps_ctr_enable;
-#if RK_MPP_MJPEG_FPS_CONTROL
-    void *fps_handle;
-#endif
     MppBuffInfo out_buff_info[OUT_BUF_COUNT_MAX];
     MppBuffInfo in_buff_info[IN_BUF_COUNT_MAX];
 //    pthread_mutex_t destory_mutex;

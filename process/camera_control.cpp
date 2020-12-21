@@ -770,15 +770,15 @@ extern "C" int camera_control_start(int id, int width, int height, int fps, int 
     stream->deviceid = id;
     stream->eptz = eptz;
 
-    LOG_INFO("stream%d is uvc video device\n", stream->deviceid);
+    LOG_DEBUG("stream%d is uvc video device\n", stream->deviceid);
     while (stream_list) {
-        LOG_INFO("%s wait for release stream_list!\n", __func__);
+        LOG_DEBUG("%s wait for release stream_list!\n", __func__);
         usleep(100000);//wait for next
     }
     stream_list = stream;
     if (pthread_create(&stream->record_id, NULL, uvc_camera, stream))
     {
-        LOG_INFO("%s pthread create err!\n", __func__);
+        LOG_ERROR("%s pthread create err!\n", __func__);
         goto addvideo_exit;
     }
     record_id_list.push_back(stream->record_id);
@@ -809,7 +809,7 @@ addvideo_exit:
         stream = NULL;
     }
 
-    LOG_INFO("stream%d exit!\n", id);
+    LOG_DEBUG("stream%d exit!\n", id);
     ret = -1;
 
 addvideo_ret:

@@ -262,7 +262,7 @@ void ShmUVCController::ShmUVCDrmRelease()
             close(iter->second.buf_fd);
         if (iter->second.handle)
             drm_free(drmFd, iter->second.handle);
-        LOG_INFO("drm_free count:%d\n", free_count);
+        LOG_DEBUG("drm_free count:%d\n", free_count);
     }
     drm_info.clear();
 }
@@ -281,14 +281,14 @@ void ShmUVCController::initialize()
     //assert(shmWriteReadQueue.InitForWrite(kShmUVCReadKey, kQueueBufSize));
     shmWriteReadQueue.InitForWrite(kShmUVCReadKey, kQueueBufSize);
     shmReadQueue.InitForRead(kShmUVCReadKey);
-    LOG_INFO("ShmUVCController init\n");
+    LOG_DEBUG("ShmUVCController init\n");
 #endif
     drmFd = drm_open();
 }
 
 void ShmUVCController::startRecvMessage()
 {
-    LOG_INFO("start recv message in\n");
+    LOG_DEBUG("start recv message in\n");
 #if UVC_IPC_DYNAMIC_DEBUG_ON
     gettimeofday(&ipc_enter_time, NULL);
     gettimeofday(&isp_enter_time, NULL);
@@ -305,7 +305,7 @@ void ShmUVCController::startRecvMessage()
     if (!access("/tmp/uvc_ipc_buffer", 0))
         system("rm /tmp/uvc_ipc_buffer");
 
-    LOG_INFO("start recv message ok\n");
+    LOG_DEBUG("start recv message ok\n");
 }
 
 void ShmUVCController::clearRecvMessage()
@@ -331,7 +331,7 @@ void ShmUVCController::clearRecvMessage()
 
 void ShmUVCController::stopRecvMessage()
 {
-    LOG_INFO("stop recv message enter\n");
+    LOG_DEBUG("stop recv message enter\n");
     recvLooping = false;
     if (recvThread)
     {
@@ -348,7 +348,7 @@ void ShmUVCController::stopRecvMessage()
 #if UVC_IPC_DYNAMIC_DEBUG_ON
 void ShmUVCController::uvcIPCDebugLoop()
 {
-    LOG_INFO("enter\n");
+    LOG_DEBUG("enter\n");
     bool eptz = false;
     int set_eptz = 0;
     while (debugLooping)
@@ -377,14 +377,14 @@ void ShmUVCController::uvcIPCDebugLoop()
         }
 #endif
     }
-    LOG_INFO("exit \n");
+    LOG_DEBUG("exit \n");
 }
 #endif
 
 void ShmUVCController::recvUVCMessageLoop()
 {
     int ret = 0;
-    LOG_INFO("recv uvc message thread enter\n");
+    LOG_DEBUG("recv uvc message thread enter\n");
     while (recvLooping)
     {
         std::string msg;
@@ -420,7 +420,7 @@ void ShmUVCController::recvUVCMessageLoop()
             }
         }
     }
-    LOG_INFO("recv uvc message thread end\n");
+    LOG_DEBUG("recv uvc message thread end\n");
 }
 
 void ShmUVCController::handleUVCMessage(std::string &msg)
@@ -438,7 +438,7 @@ void ShmUVCController::handleUVCMessage(std::string &msg)
     }
     else
     {
-        LOG_INFO("recv uvc unknown message\n");
+        LOG_WARN("recv uvc unknown message\n");
     }
 }
 
@@ -533,7 +533,7 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
         ret = drm_handle_to_fd(drmFd, handle, &buf_fd, 0);
         if (ret)
         {
-            LOG_INFO("drm_handle_to_fd fail\n");
+            LOG_ERROR("drm_handle_to_fd fail\n");
             return;
         }
 #if RK_MPP_DYNAMIC_DEBUG_ON

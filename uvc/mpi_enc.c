@@ -166,7 +166,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
         return MPP_ERR_NULL_PTR;
 
     mpi_get_env_u32("enc_version", &p->enc_version, RK_MPP_VERSION_DEFAULT);
-    LOG_INFO("enc_version:%d,RK_MPP_USE_FULL_RANGE:%d\n",
+    LOG_DEBUG("enc_version:%d,RK_MPP_USE_FULL_RANGE:%d\n",
              p->enc_version, RK_MPP_USE_FULL_RANGE);
 
     int need_full_range = 1;
@@ -174,7 +174,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
     if (full_range)
     {
         need_full_range = atoi(full_range);
-        LOG_INFO("mpp full_range use env setting:%d \n", need_full_range);
+        LOG_DEBUG("mpp full_range use env setting:%d \n", need_full_range);
     }
 
     mpi = p->mpi;
@@ -294,7 +294,7 @@ static MPP_RET test_mpp_setup(MpiEncTestData *p)
 
     if (p->split_mode)
     {
-        LOG_INFO("split_mode %d split_arg %d\n", p->split_mode, p->split_arg);
+        LOG_DEBUG("split_mode %d split_arg %d\n", p->split_mode, p->split_arg);
         mpp_enc_cfg_set_s32(cfg, "split:mode", p->split_mode);
         mpp_enc_cfg_set_s32(cfg, "split:arg", p->split_arg);
     }
@@ -546,7 +546,7 @@ static MPP_RET mpp_enc_need_extra_buf(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
                     ret = mpi->control(ctx, MPP_ENC_SET_IDR_FRAME, NULL);
                     if (ret)
                     {
-                        LOG_INFO("mpi force idr frame control failed\n");
+                        LOG_ERROR("mpi force idr frame control failed\n");
                         goto RET;
                     }
                     else
@@ -919,7 +919,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
                     ret = mpi->control(ctx, MPP_ENC_SET_IDR_FRAME, NULL);
                     if (ret)
                     {
-                        LOG_INFO("mpi force idr frame control failed\n");
+                        LOG_ERROR("mpi force idr frame control failed\n");
                         goto RET;
                     }
                     else
@@ -1115,7 +1115,7 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     MPP_RET ret = MPP_OK;
     MpiEncTestData *p = NULL;
 
-    LOG_INFO("mpi_enc_test start\n");
+    LOG_DEBUG("mpi_enc_test start\n");
 
     ret = test_ctx_init(&p, cmd);
     if (ret)
@@ -1178,7 +1178,7 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     mpp_enc_cfg_default(p);
 
     if (!check_mpp_enc_cfg_file_init(p))
-        LOG_INFO("check_mpp_enc_cfg_file ok\n");
+        LOG_DEBUG("check_mpp_enc_cfg_file ok\n");
     ret = mpp_enc_cfg_set(p, true);
     dump_mpp_enc_cfg(p);
     if (ret)
@@ -1200,7 +1200,7 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         {
             LOG_ERROR("failed to open output file %s\n", p->streamout_save_dir);
         }
-        LOG_INFO("debug out file open\n");
+        LOG_DEBUG("debug out file open\n");
     }
 
     if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0))
@@ -1210,7 +1210,7 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         {
             LOG_ERROR("failed to open in file %s\n", p->streamin_save_dir);
         }
-        LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
+        LOG_WARN("warnning:debug in file open, open it will lower the fps\n");
     }
 
     for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
@@ -1372,7 +1372,7 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
     switch (fcc)
     {
     case V4L2_PIX_FMT_YUYV:
-        LOG_INFO("%s: yuyv not need mpp encodec: %d\n", __func__, fcc);
+        LOG_DEBUG("%s: yuyv not need mpp encodec: %d\n", __func__, fcc);
         break;
     case V4L2_PIX_FMT_MJPEG:
         cmd->type = MPP_VIDEO_CodingMJPEG;
@@ -1389,7 +1389,7 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
         cmd->type = MPP_VIDEO_CodingHEVC;
         break;
     default:
-        LOG_INFO("%s: not support fcc: %d\n", __func__, fcc);
+        LOG_WARN("%s: not support fcc: %d\n", __func__, fcc);
         break;
     }
 
@@ -1539,12 +1539,12 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
 {
 
 #if MPP_ENC_ROI_ENABLE
-    LOG_INFO("### dump_mpp_enc_cfg for roi cfg:\n");
-    LOG_INFO("roi_enable=%d\n", p->roi_enable);
+    LOG_DEBUG("### dump_mpp_enc_cfg for roi cfg:\n");
+    LOG_DEBUG("roi_enable=%d\n", p->roi_enable);
 #endif
 
-    LOG_INFO("### dump_mpp_enc_cfg for common cfg:\n");
-    LOG_INFO("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d,frc_fps=%d\n"
+    LOG_DEBUG("### dump_mpp_enc_cfg for common cfg:\n");
+    LOG_DEBUG("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d,frc_fps=%d\n"
              "frc_mode=%d,enc_time=%d,try_count=%d,frc_use_mpp=%d,fps:%d\n"
              "p->streamin_save_dir=%s,p->streamout_save_dir=%s\n",
              p->common_cfg.fbc, p->common_cfg.split_mode, p->common_cfg.split_arg,
@@ -1554,15 +1554,15 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              MPP_ENC_MJPEG_FRC_USE_MPP, p->fps,
              p->streamin_save_dir, p->streamout_save_dir);
 
-    LOG_INFO("###dump_mpp_enc_cfg for mjpeg cfg:\n");
-    LOG_INFO("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d,enc_mode:%d\n",
+    LOG_DEBUG("###dump_mpp_enc_cfg for mjpeg cfg:\n");
+    LOG_DEBUG("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d,enc_mode:%d\n",
              p->mjpeg_cfg.quant, p->mjpeg_cfg.qfactor, p->mjpeg_cfg.range,
              p->mjpeg_cfg.qfactor_min, p->mjpeg_cfg.qfactor_max,
              p->mjpeg_cfg.gop, p->mjpeg_cfg.rc_mode, p->mjpeg_cfg.bps,
              p->mjpeg_cfg.framerate, p->mjpeg_cfg.enc_mode);
 
-    LOG_INFO("### dump_mpp_enc_cfg for h264 cfg:\n");
-    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
+    LOG_DEBUG("### dump_mpp_enc_cfg for h264 cfg:\n");
+    LOG_DEBUG("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
              "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,profile=%d \n"
              "cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d \n",
              p->h264_cfg.gop, p->h264_cfg.rc_mode, p->h264_cfg.framerate,
@@ -1574,8 +1574,8 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              p->h264_cfg.trans_8x8, p->h264_cfg.level,
              p->h264_cfg.bps);
 
-    LOG_INFO("### dump_mpp_enc_cfg for h265 cfg:\n");
-    LOG_INFO("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
+    LOG_DEBUG("### dump_mpp_enc_cfg for h265 cfg:\n");
+    LOG_DEBUG("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
              "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,max_i_qp=%d \n"
              "min_i_qp=%d,bps=%d \n",
              p->h265_cfg.gop, p->h265_cfg.rc_mode, p->h265_cfg.framerate,
@@ -1594,7 +1594,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
     if (NULL == p)
         return -1;
 
-    LOG_INFO("parse_mpp_enc_cfg type: %d init:%d\n", p->type, init);
+    LOG_DEBUG("parse_mpp_enc_cfg type: %d init:%d\n", p->type, init);
     if (!init)
     {
         p->common_cfg.change = 0;
@@ -1611,7 +1611,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
     cJSON *child_version = cJSON_GetObjectItem(child, "version");
     if (child_version)
     {
-        LOG_INFO("parse_mpp_enc_cfg version:%s\n", child_version->valuestring);
+        LOG_DEBUG("parse_mpp_enc_cfg version:%s\n", child_version->valuestring);
     }
 
     cJSON *child_common = cJSON_GetObjectItem(child, "common");
@@ -1721,7 +1721,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
         }
         else
         {
-            LOG_INFO("no find common param_init or param_change\n");
+            LOG_WARN("no find common param_init or param_change\n");
         }
     }
 
@@ -1838,7 +1838,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
             }
             else
             {
-                LOG_INFO("no find mjpeg param_init or param_change\n");
+                LOG_WARN("no find mjpeg param_init or param_change\n");
             }
         }
     }
@@ -1951,7 +1951,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                     p->h264_cfg.profile = child_h264_profile->valueint;
                     if (p->h264_cfg.profile != 66 && p->h264_cfg.profile != 77 && p->h264_cfg.profile != 100)
                     {
-                        LOG_INFO("set h264_cfg.profile err %d, set default to %d\n",
+                        LOG_WARN("set h264_cfg.profile err %d, set default to %d\n",
                                  p->h264_cfg.profile, MPP_ENC_CFG_H264_DEFAULT_PROFILE);
                         p->h264_cfg.profile = MPP_ENC_CFG_H264_DEFAULT_PROFILE;
                     }
@@ -1994,7 +1994,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                             (p->h264_cfg.level >= 40 && p->h264_cfg.level <= 42) ||
                             (p->h264_cfg.level >= 50 && p->h264_cfg.level <= 52)))
                     {
-                        LOG_INFO("set h264_cfg.level err %d, set default to %d\n",
+                        LOG_WARN("set h264_cfg.level err %d, set default to %d\n",
                                  p->h264_cfg.level, MPP_ENC_CFG_H264_DEFAULT_LEVEL);
                         p->h264_cfg.level = MPP_ENC_CFG_H264_DEFAULT_LEVEL;
                     }
@@ -2013,7 +2013,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
             }
             else
             {
-                LOG_INFO("no find h264 param_init or param_change\n");
+                LOG_WARN("no find h264 param_init or param_change\n");
             }
         }
     }
@@ -2157,7 +2157,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
             }
             else
             {
-                LOG_INFO("no find h265 param_init or param_change\n");
+                LOG_WARN("no find h265 param_init or param_change\n");
             }
         }
     }
@@ -2191,7 +2191,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         int need_full_range = atoi(full_range);
         p->h264_cfg.range = need_full_range ? MPP_FRAME_RANGE_JPEG : MPP_FRAME_RANGE_MPEG;
         p->h265_cfg.range = need_full_range ? MPP_FRAME_RANGE_JPEG : MPP_FRAME_RANGE_MPEG;
-        LOG_INFO("mpp full_range use env setting:%d \n", need_full_range);
+        LOG_DEBUG("mpp full_range use env setting:%d \n", need_full_range);
     }
 
     mpi = p->mpi;
@@ -2597,7 +2597,7 @@ static int read_mpp_enc_cfg_modify_file(MpiEncTestData *p, bool init)
 
     FILE *modify_fd = fopen(RK_MPP_ENC_CFG_MODIFY_PATH, "rb");
     unsigned long size = get_file_size(RK_MPP_ENC_CFG_MODIFY_PATH);
-    LOG_INFO("get cfg size=%ld\n", size);
+    LOG_DEBUG("get cfg size=%ld\n", size);
     char *cfg = (char *)malloc(size);
     while (read_size != size)
     {
@@ -2641,7 +2641,7 @@ static int check_mpp_enc_cfg_file_init(MpiEncTestData *p)
         {
             sprintf(cmd, "cp %s %s", RK_MPP_ENC_CFG_ORIGINAL_PATH, RK_MPP_ENC_CFG_MODIFY_PATH);
             system(cmd);
-            LOG_INFO("copy enc cfg file...\n");
+            LOG_DEBUG("copy enc cfg file...\n");
             ret = read_mpp_enc_cfg_modify_file(p, true);
         }
         else

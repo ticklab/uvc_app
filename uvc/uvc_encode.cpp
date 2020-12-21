@@ -220,7 +220,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
             if (e->mpi_data->fp_input)
             {
                 fwrite(virt, 1, info->size, e->mpi_data->fp_input);
-                LOG_INFO("warnning:debug in file open, open it will lower the fps\n");
+                LOG_WARN("warnning:debug in file open, open it will lower the fps\n");
             }
 #endif
         }

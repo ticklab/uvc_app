@@ -111,7 +111,7 @@ static void query_uvc_streaming_intf(void)
         char intf[32] = {0};
         read(fd, intf, sizeof(intf) - 1);
         uvc_streaming_intf = atoi(intf);
-        LOG_INFO("uvc_streaming_intf = %d\n", uvc_streaming_intf);
+        LOG_DEBUG("uvc_streaming_intf = %d\n", uvc_streaming_intf);
         close(fd);
     }
     else
@@ -163,7 +163,7 @@ int check_uvc_video_id(void)
                         uvc_ctrl[1].id = i;
                     else if (uvc_ctrl[2].id < 0)
                         uvc_ctrl[2].id = i;
-                    LOG_INFO("found uvc video port.\n");
+                    LOG_DEBUG("found uvc video port.\n");
                 }
             }
             pclose(fp);
@@ -172,7 +172,7 @@ int check_uvc_video_id(void)
 
     if (uvc_ctrl[0].id < 0 && uvc_ctrl[1].id < 0)
     {
-        LOG_INFO("Please configure uvc...\n");
+        LOG_WARN("Please configure uvc...\n");
         return -1;
     }
     query_uvc_streaming_intf();
@@ -386,10 +386,10 @@ void uvc_control_join(uint32_t flags)
 
 void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz)
 {
-    LOG_INFO("%s!\n", __func__);
+    LOG_DEBUG("%s!\n", __func__);
     if (uvc_video_id_get(0) == video_id)
     {
-        LOG_INFO("%s: video_id:%d, width:%d,height:%d,fps:%d,eptz:%d!\n", __func__, video_id, width, height, fps, eptz);
+        LOG_DEBUG("%s: video_id:%d, width:%d,height:%d,fps:%d,eptz:%d!\n", __func__, video_id, width, height, fps, eptz);
         uvc_ctrl[2].id = video_id;
         uvc_ctrl[2].width = width;
         uvc_ctrl[2].height = height;

@@ -66,15 +66,22 @@ int main(int argc, char *argv[])
 #endif
    if (!access(UVC_LOG_DYNAMIC_DEBUG, 0))
    {
-     uvc_app_log_level = LOG_DEBUG;
+       uvc_app_log_level = LOG_DEBUG;
    }
+   char *log_level = getenv("uvc_app_log_level");
+   if (log_level)
+   {
+       LOG_INFO("uvc_app_log_level=%d", atoi(log_level));
+       uvc_app_log_level = atoi(log_level);
+   }
+
 #if (RK_MPP_ENC_TEST_NATIVE == 0)
 #ifdef CAMERA_CONTROL
     if (argc != 3)
     {
         signal(SIGQUIT, sigterm_handler);
         signal(SIGTERM, sigterm_handler);
-        LOG_INFO("uvc_app loop from v4l2.\n");
+        LOG_DEBUG("uvc_app loop from v4l2.\n");
         camera_control_init();
         uvc_control_start_setcallback(camera_control_start);
         uvc_control_stop_setcallback(camera_control_deinit);
@@ -94,23 +101,23 @@ int main(int argc, char *argv[])
     }
 #else
    if (argc != 3) {
-     LOG_INFO("please select true control mode!!\n");
+     LOG_WARN("please select true control mode!!\n");
      return 0;
    }
 #endif
 #endif
 
     if (argc < 3) {
-        LOG_INFO("Usage: uvc_app width height [test_file.nv12]\n");
-        LOG_INFO("e.g. uvc_app 640 480 [test_file.nv12]\n");
+        LOG_WARN("Usage: uvc_app width height [test_file.nv12]\n");
+        LOG_WARN("e.g. uvc_app 640 480 [test_file.nv12]\n");
         return -1;
     }
     width = atoi(argv[1]);
     height = atoi(argv[2]);
     FILE *test_file = NULL;
     if (width == 0 || height == 0) {
-        LOG_INFO("Usage: uvc_app width height [test_file.nv12]\n");
-        LOG_INFO("e.g. uvc_app 640 480 [test_file.nv12]\n");
+        LOG_WARN("Usage: uvc_app width height [test_file.nv12]\n");
+        LOG_WARN("e.g. uvc_app 640 480 [test_file.nv12]\n");
         return -1;
     }
 
@@ -122,7 +129,7 @@ int main(int argc, char *argv[])
     ret = drm_alloc(fd, size, 16, &handle, 0);
     if (ret)
         return -1;
-    LOG_INFO("size:%d", size);
+    LOG_DEBUG("size:%d", size);
     ret = drm_handle_to_fd(fd, handle, &handle_fd, 0);
     if (ret)
         return -1;
@@ -130,14 +137,14 @@ int main(int argc, char *argv[])
     buffer = (char *)drm_map_buffer(fd, handle, size);
     if (!buffer)
     {
-        LOG_INFO("drm map buffer fail.\n");
+        LOG_ERROR("drm map buffer fail.\n");
         return -1;
     }
 
     if (argc == 4) {
         test_file = fopen(argv[3], "r+b");
         if (!test_file) {
-            LOG_INFO("open %s fail.\n", argv[3]);
+            LOG_ERROR("open %s fail.\n", argv[3]);
             return -1;
         }
     } else {
