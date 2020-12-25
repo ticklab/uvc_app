@@ -18,6 +18,7 @@ set(LIB_SOURCE
     uvc/uevent.c
     uvc/drm.c
     cJSON/cJSON.c
+    uvc/mpp_osd.c
 )
 
 add_library(rkuvc SHARED ${LIB_SOURCE})

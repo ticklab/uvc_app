@@ -38,6 +38,7 @@ extern "C" {
 //#include "printf.h"
 //#include "mpp_time.h"
 #include "mpp_common.h"
+#include "mpp_osd.h"
 
 //#include "utils.h"
 #define BIT(n)  (1<<(n))
@@ -131,6 +132,7 @@ typedef struct  {
     uint8_t  abs_qp_en;    /**< absolute qp enable flag*/
 } EncROIRegion;
 
+//************************************//
 
 enum SIMPLE_FRC_MODE
 {
@@ -229,6 +231,18 @@ typedef struct
     RK_U32 bps;//12
 } MpiEncH265Cfg;
 
+#if MPP_ENC_OSD_ENABLE
+#define MPP_ENC_OSD_IMAGE_PATH_LEN 32
+typedef struct
+{
+    bool set_ok;
+    bool enable; //dynamic on/off set this
+    enum OSD_REGION_TYPE type;
+    RK_U32 start_x;
+    RK_U32 start_y;
+    char image_path[MPP_ENC_OSD_IMAGE_PATH_LEN];//*image_path;//
+} MpiEncOSDCfg;
+#endif
 /***************************o not change the order above**************************************/
 typedef struct MppBuffNode
 {
@@ -273,7 +287,6 @@ typedef struct
     FILE *fp_range_path;
     FILE *fp_range_file;
     char *range_path;
-
 #endif
     // src and dst
     FILE *fp_input;
@@ -290,9 +303,22 @@ typedef struct
     MppEncRcCfg rc_cfg;
     MppEncCodecCfg codec_cfg;
     MppEncSliceSplit split_cfg;
+#if MPP_ENC_OSD_ENABLE
+    /*
+    * osd idx size range from 16x16 bytes(pixels) to hor_stride*ver_stride(bytes).
+    * for general use, 1/8 Y buffer is enough.
+    */
     MppEncOSDPltCfg osd_plt_cfg;
     MppEncOSDPlt     osd_plt;
     MppEncOSDData    osd_data;
+    MppBuffer osd_idx_buf;
+    size_t osd_idx_size;
+    RK_U32 osd_count;
+    bool osd_enable;
+    bool osd_plt_user;
+    MpiEncOSDCfg osd_cfg[OSD_REGIONS_CNT];
+    RK_U32 plt_table[PALETTE_TABLE_LEN]; //ayuv map
+#endif
 #if MPP_ENC_ROI_ENABLE
     RK_U32 roi_enable;
     RK_U32 roi_number;
@@ -303,7 +329,6 @@ typedef struct
     MppBuffer frm_buf;
     MppEncSeiMode sei_mode;
     MppEncHeaderMode header_mode;
-    MppBuffer osd_idx_buf;
 
     // paramter for resource malloc
     RK_U32 width;
@@ -320,15 +345,7 @@ typedef struct
     size_t frame_size;
     /* NOTE: packet buffer may overflow */
     size_t packet_size;
-    /*
-    * osd idx size range from 16x16 bytes(pixels) to hor_stride*ver_stride(bytes).
-    * for general use, 1/8 Y buffer is enough.
-    */
-    size_t osd_idx_size;
-    RK_U32 plt_table[8];
 
-    RK_U32 osd_enable;
-    RK_U32 osd_mode;
     RK_U32 split_mode;
     RK_U32 split_arg;
 

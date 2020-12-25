@@ -34,6 +34,17 @@ static int mpp_roi_enable_set(MpiEncTestData *p, int enable);
 static int mpp_roi_enable_get(MpiEncTestData *p);
 #endif
 
+#if MPP_ENC_OSD_ENABLE
+extern int mpp_enc_gen_osd_plt(MpiEncTestData *p, uint32_t *ptl_data);
+extern const RK_U32 u32DftARGB8888ColorTblUser[PALETTE_TABLE_LEN];
+extern const RK_U32 u32DftARGB8888ColorTbl[PALETTE_TABLE_LEN];
+extern int mpp_osd_bmp_to_ayuv_image(MpiEncTestData *p, osd_data_s *draw_data);
+extern void mpp_osd_region_id_enable_set(MpiEncTestData *p, int region_id, int enable);
+extern mpp_osd_region_id_enable_get(MpiEncTestData *p, int region_id);
+extern void mpp_osd_enable_set(MpiEncTestData *p, bool enable);
+extern int mpp_osd_enable_get(MpiEncTestData *p);
+#endif
+
 #if RK_MPP_MJPEG_FPS_CONTROL
 extern MPP_RET mpp_mjpeg_fps_init(MpiEncTestData *p);
 extern void mpp_mjpeg_fps_deinit(MpiEncTestData *p);
@@ -939,6 +950,26 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         mpp_meta_set_ptr(meta, KEY_ROI_DATA, (void*)&p->roi_cfg);
     }
 #endif
+
+#if MPP_ENC_OSD_ENABLE
+    if (mpp_osd_enable_get(p)) {// && p->osd_data.num_region && p->osd_data.buf
+        MppMeta meta = NULL;
+        meta = mpp_frame_get_meta(frame);
+       // LOG_INFO("MPP Encoder: set osd data(%d regions) to frame\n", p->osd_data.num_region);
+#if 0
+        if (!access("/tmp/osd0", 0)) {
+            mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
+            system("rm /tmp/osd0");
+        } //test
+        if (!access("/tmp/osd1", 0)) {
+            mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
+            system("rm /tmp/osd1");
+        }
+#endif
+        mpp_meta_set_ptr(meta, KEY_OSD_DATA, (void*)&p->osd_data);
+    }
+#endif
+
     ret = mpi->poll(ctx, MPP_PORT_INPUT, MPP_POLL_BLOCK);
     if (ret)
     {
@@ -1159,7 +1190,7 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     }
 #if RK_MPP_USE_ZERO_COPY
 #ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
-    ret = mpp_buffer_group_get_internal(&p->pkt_grp, MPP_BUFFER_TYPE_ION);
+    ret = mpp_buffer_group_get_internal(&p->pkt_grp, MPP_BUFFER_TYPE_DRM);
     if (ret)
     {
         LOG_ERROR("failed to get buffer group for output packet ret %d\n", ret);
@@ -1173,6 +1204,15 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         LOG_ERROR("failed to get buffer for pkt_buf ret %d\n", ret);
         return ret;
     }
+#else
+#if MPP_ENC_OSD_ENABLE
+    ret = mpp_buffer_group_get_internal(&p->pkt_grp, MPP_BUFFER_TYPE_DRM);
+    if (ret)
+    {
+        LOG_ERROR("failed to get buffer group for output packet ret %d\n", ret);
+        return ret;
+    }
+#endif
 #endif
 #endif
     mpp_enc_cfg_default(p);
@@ -1305,6 +1345,19 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         p->cfg = NULL;
     }
 
+#if MPP_ENC_OSD_ENABLE
+    if (p->osd_idx_buf) {
+        mpp_buffer_put(p->osd_idx_buf);
+        p->osd_idx_buf = NULL;
+    }
+
+    if (p->osd_data.buf) {
+        LOG_DEBUG("MPP Encoder: free osd buff\n");
+        mpp_buffer_put(p->osd_data.buf);
+        p->osd_data.buf = NULL;
+    }
+#endif
+
 #if MPP_ENC_ROI_ENABLE
     if (p->roi_cfg.regions) {
         free(p->roi_cfg.regions);
@@ -1327,6 +1380,14 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         p->pkt_buf = NULL;
     }
 
+    if (p->pkt_grp)
+    {
+        mpp_buffer_group_put(p->pkt_grp);
+        p->pkt_grp = NULL;
+    }
+#endif
+#else
+#if MPP_ENC_OSD_ENABLE
     if (p->pkt_grp)
     {
         mpp_buffer_group_put(p->pkt_grp);
@@ -1533,6 +1594,17 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->h265_cfg.qp.min_i_qp = 24;
     p->h265_cfg.bps = p->width * p->height / 8 * p->h265_cfg.framerate / 2;
 
+#if MPP_ENC_OSD_ENABLE
+    p->osd_count = 0;
+    p->osd_plt_user = false;
+    p->osd_enable = false;
+    for (int i = 0; i < OSD_REGIONS_CNT; i++) {
+        p->osd_cfg[i].set_ok = false;
+        p->osd_cfg[i].enable = false;
+        p->osd_cfg[i].start_x = 0;
+        p->osd_cfg[i].start_y = 0;
+    }
+#endif
 }
 
 static void dump_mpp_enc_cfg(MpiEncTestData *p)
@@ -1584,6 +1656,17 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              p->h265_cfg.qp.max, p->h265_cfg.qp.min,
              p->h265_cfg.qp.step, p->h265_cfg.qp.max_i_qp,
              p->h265_cfg.qp.min_i_qp, p->h265_cfg.bps);
+#if MPP_ENC_OSD_ENABLE
+    LOG_DEBUG("### dump_mpp_enc_cfg for osd cfg:\n");
+    LOG_DEBUG("osd_enable=%d, count=%d, osd_plt_user=%d\n",
+               p->osd_enable, p->osd_count, p->osd_plt_user);
+    for (int i = 0; i < OSD_REGIONS_CNT; i++) {
+        LOG_DEBUG("enable=%d, set_ok=%d, start_x=%d, start_y=%d, path=%s\n",
+                   p->osd_cfg[i].enable, p->osd_cfg[i].set_ok,
+                   p->osd_cfg[i].start_x, p->osd_cfg[i].start_y,
+                   p->osd_cfg[i].image_path);
+    }
+#endif
 
 }
 
@@ -2170,6 +2253,105 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
     break;
     }
 
+
+#if MPP_ENC_OSD_ENABLE
+    cJSON *child_osd = cJSON_GetObjectItem(child, "osd");
+    if (!child_osd)
+    {
+        LOG_INFO("no osd info\n");
+    }
+    else
+    {
+        cJSON *child_osd_enable = cJSON_GetObjectItem(child_osd, "enable");
+        if (child_osd_enable)
+        {
+            p->osd_enable = strstr(child_osd_enable->valuestring, "on") ?
+                                   true : false;
+        }
+        cJSON *child_osd_count = cJSON_GetObjectItem(child_osd, "count");
+        if (child_osd_count)
+        {
+            p->osd_count = child_osd_count->valueint;
+            p->osd_count = p->osd_count < 0 ? 0 :
+                           p->osd_count > OSD_REGIONS_CNT ? OSD_REGIONS_CNT :
+                           p->osd_count;
+        }
+        cJSON *child_osd_plt_user = cJSON_GetObjectItem(child_osd, "plt_user");
+        if (child_osd_plt_user)
+        {
+            p->osd_plt_user = child_osd_plt_user->valueint;
+        }
+
+        char osd_name[6] = "osd_0";
+        for (int i = 0; i < p->osd_count; i ++)
+        {
+            osd_name[4] = i + 48;
+            cJSON *child_osd_index = cJSON_GetObjectItem(child_osd, osd_name);
+            if (child_osd_index)
+            {
+                p->osd_cfg[i].set_ok = true;
+                cJSON *child_osd_index_type = cJSON_GetObjectItem(child_osd_index, "type");;
+                if (child_osd_index_type)
+                {
+                     p->osd_cfg[i].type = strstr(child_osd_index_type->valuestring, "picture") ?
+                                                 OSD_REGION_TYPE_PICTURE : OSD_REGION_TYPE_PICTURE;
+                }
+                cJSON *child_osd_index_enable = cJSON_GetObjectItem(child_osd_index, "enable");
+                if (child_osd_index_enable)
+                {
+                     p->osd_cfg[i].enable = strstr(child_osd_index_enable->valuestring, "on") ?
+                                                 true : false;
+                }
+
+                char resolution_name[10] = "";
+                sprintf(resolution_name, "%d*%d",p->width, p->height);
+                cJSON *child_osd_resolution_name = cJSON_GetObjectItem(child_osd_index, resolution_name);
+                if (!child_osd_resolution_name) {
+                    child_osd_resolution_name = cJSON_GetObjectItem(child_osd_index, "common");
+                }
+                if (child_osd_resolution_name)
+                {
+                    cJSON *child_osd_index_path = cJSON_GetObjectItem(child_osd_resolution_name, "path");
+                    if (child_osd_index_path)
+                    {
+                        if (strlen(child_osd_index_path->valuestring) >
+                            (MPP_ENC_OSD_IMAGE_PATH_LEN - 1))
+                        {
+                            LOG_ERROR("osd img path:%s, the name too long\n",
+                                       child_osd_index_path->valuestring);
+                            p->osd_cfg[i].enable = false;
+                            p->osd_cfg[i].set_ok = false;
+                        }
+                        else
+                        {
+                            sprintf(p->osd_cfg[i].image_path, "%s",
+                                    child_osd_index_path->valuestring);
+                        }
+                    }
+                    cJSON *child_osd_index_start_x = cJSON_GetObjectItem(child_osd_resolution_name, "start_x");
+                    if (child_osd_index_start_x)
+                    {
+                         p->osd_cfg[i].start_x = UPALIGNTO16((int)(child_osd_index_start_x->valuedouble * p->width));
+                    }
+                    cJSON *child_osd_index_start_y = cJSON_GetObjectItem(child_osd_resolution_name, "start_y");
+                    if (child_osd_index_start_y)
+                    {
+                         p->osd_cfg[i].start_y = UPALIGNTO16((int)(child_osd_index_start_y->valuedouble * p->height));
+                    }
+                }
+                else
+                {
+                    LOG_INFO("no such resolution_name:%s && common path\n", resolution_name);
+                }
+            }
+            else
+            {
+                LOG_INFO("no such osd %s\n", osd_name);
+            }
+        }
+    }
+#endif
+
     return ret;
 }
 
@@ -2584,6 +2766,77 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     mpp_roi_config(p, region, 2);
     free(region);
 #endif
+#endif
+#if MPP_ENC_OSD_ENABLE
+   // mpp_env_get_u32("osd_enable", &p->osd_enable, 1);
+  //  mpp_env_get_u32("osd_plt_user", &p->osd_plt_user, 1);
+    if (p->osd_enable && (p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC)) {
+        const RK_U32 *pu32ArgbColorTbl;
+        if (p->osd_plt_user)
+            pu32ArgbColorTbl = u32DftARGB8888ColorTblUser;
+        else
+            pu32ArgbColorTbl = u32DftARGB8888ColorTbl;
+        color_tbl_argb_to_avuy(pu32ArgbColorTbl, p->plt_table);
+        p->osd_idx_size  = p->hor_stride * p->ver_stride / 8;
+        ret = mpp_buffer_get(p->pkt_grp, &p->osd_idx_buf, p->osd_idx_size);
+        if (ret) {
+            LOG_ERROR("failed to get buffer for input osd index ret %d\n", ret);
+            goto RET;
+        }
+
+#if 1
+        /* gen and cfg osd plt */
+        ret = mpp_enc_gen_osd_plt(p, p->plt_table);
+        if (ret) {
+            LOG_ERROR("mpp_enc_gen_osd_plt err:%d\n", ret);
+            goto RET;
+        }
+        osd_data_s osd_data;
+        osd_data.plt_table = pu32ArgbColorTbl;
+
+        for (int i = 0; i < p->osd_count; i++) {
+            if (p->osd_cfg[i].set_ok == true) {
+                if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
+                    osd_data.enable = p->osd_cfg[i].enable;
+                    osd_data.region_id = i;
+                    osd_data.origin_x = p->osd_cfg[i].start_x;
+                    osd_data.origin_y = p->osd_cfg[i].start_y;
+                    osd_data.image = p->osd_cfg[i].image_path;
+                    mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+                } else {
+                    LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
+                }
+            }
+        }
+#else // test //
+        /* gen and cfg osd plt */
+        ret = mpp_enc_gen_osd_plt(p, p->plt_table);
+        if (ret) {
+            LOG_ERROR("mpp_enc_gen_osd_plt err:%d\n", ret);
+            goto RET;
+        }
+#if 1 //yuv image demo
+        osd_data_s osd_data;
+
+        osd_data.plt_table = pu32ArgbColorTbl;
+        osd_data.enable = 1;
+        osd_data.region_id = 0;
+        osd_data.origin_x = 16;
+        osd_data.origin_y = 32;
+        osd_data.image = "/data/test-32.bmp";
+        mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+
+        osd_data.enable = 1;
+        osd_data.region_id = 1;
+        osd_data.origin_x = 16;
+        osd_data.origin_y = 320;
+        osd_data.image = "/data/mute-32.bmp";
+        mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+#else //simple demo
+        mpp_enc_gen_osd_data(&p->osd_data, p->osd_idx_buf, p->frame_count);
+#endif
+#endif
+    }
 #endif
 
 RET:
