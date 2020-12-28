@@ -3205,18 +3205,80 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             break;
 
         default:
+             LOG_INFO("+++++++++Extension unit usb default req ,cs:%d",cs);
+            switch (req)
+            {
+            case UVC_GET_LEN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = sizeof(resp->data);
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_SET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                memset(resp->data, 0xFF, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 1;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
             /*
              * We don't support this control, so STALL the control
              * ep.
-             */
             resp->length = -EL2HLT;
             /*
              * If we were not supposed to handle this
              * 'cs', prepare a Request Error Code response.
-             */
             dev->request_error_code.data[0] = 0x06;
             dev->request_error_code.length = 1;
             break;
+             */
         }
         break;
 
