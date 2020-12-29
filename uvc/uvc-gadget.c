@@ -1096,6 +1096,7 @@ uvc_open(struct uvc_device **uvc, char *devname)
 
     char *ver = XU_CAMERA_VERSION_DEFAULT;
     strncpy(dev->ex_sn_data, ver, MAX_UVC_REQUEST_DATA_LENGTH);
+    memset(dev->ex_tool_ctrl1, 0, sizeof(dev->ex_tool_ctrl1));
 
     *uvc = dev;
     g_uvc_cnt++;
@@ -2950,6 +2951,67 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
     case 6:
         switch (cs)
         {
+        case CMD_TOOLS_CTRL_1:
+            switch (req)
+            {
+            case UVC_GET_LEN:
+                resp->data[0] = 0x4;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_SET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                memset(resp->data, 0xFF, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                resp->length = len < sizeof(dev->ex_tool_ctrl1) ? len : sizeof(dev->ex_tool_ctrl1);
+                memcpy(resp->data, dev->ex_tool_ctrl1, resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 1;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
+            break;
         case CMD_GET_CAMERA_VERSION:
             switch (req)
             {
@@ -3601,6 +3663,23 @@ uvc_events_process_control_data(struct uvc_device *dev,
     case 6:
         switch (cs)
         {
+        case CMD_TOOLS_CTRL_1:
+            if (sizeof(dev->ex_tool_ctrl1) >= data->length)
+            {
+                memset(dev->ex_tool_ctrl1, 0, sizeof(dev->ex_tool_ctrl1));
+                memcpy(dev->ex_tool_ctrl1, data->data, data->length);
+                LOG_INFO("Extension:CMD_TOOLS_CTRL_1 set cur data: 0x%02x 0x%02x 0x%02x 0x%02x\n",
+                         data->data[0], data->data[1], data->data[2], data->data[3]);
+                unsigned int command = 0;
+                memcpy(&command, dev->ex_tool_ctrl1, sizeof(command));
+                if ( command == 0xFFFFFFFF )
+                {
+                   LOG_INFO("recive host reboot loader cmd");
+                   system("reboot loader &");
+                }
+
+            }
+            break;
         case CMD_SET_EPTZ:
             if (sizeof(dev->eptz_flag) >= data->length)
             {
@@ -3615,10 +3694,10 @@ uvc_events_process_control_data(struct uvc_device *dev,
         case CMD_GET_CAMERA_VERSION:
             if (sizeof(dev->ex_sn_data) >= data->length)
             {
+                memset(dev->ex_sn_data, 0, sizeof(dev->ex_sn_data));
                 memcpy(dev->ex_sn_data, data->data, data->length);
                 LOG_INFO("Extension:CMD_GET_CAMERA_VERSION set cur data: 0x%02x 0x%02x 0x%02x\n",
-                         dev->ex_sn_data[0], dev->ex_sn_data[1], dev->ex_sn_data[2]);
-
+                         data->data[0], data->data[1], data->data[2]);
             }
             break;
 

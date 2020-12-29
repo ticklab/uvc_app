@@ -97,9 +97,10 @@ extern "C" {
 
 enum XuCmd
 {
-    CMD_GET_CAMERA_VERSION = 0x01,
+    CMD_TOOLS_CTRL_1 = 0x01,
+    CMD_GET_CAMERA_VERSION,
     CMD_SET_CAMERA_IP,
-    CMD_START_CAMERA,
+//    CMD_START_CAMERA,
     CMD_SHUTDOWN_CAMERA,
     CMD_RESET_CAMERA,
     CMD_SET_MOTOR_RATE = 0x06,
@@ -182,6 +183,7 @@ struct uvc_device
     int tilt_val;
     short roll_val;
     unsigned char power_line_frequency_val;
+    unsigned char ex_tool_ctrl1[4];
     unsigned char ex_sn_data[MAX_UVC_REQUEST_DATA_LENGTH];
     unsigned char ex_ip_data[MAX_UVC_REQUEST_DATA_LENGTH];//
     unsigned char ex_date_data[MAX_UVC_REQUEST_DATA_LENGTH];
