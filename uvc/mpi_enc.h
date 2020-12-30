@@ -241,7 +241,17 @@ typedef struct
     RK_U32 start_x;
     RK_U32 start_y;
     char image_path[MPP_ENC_OSD_IMAGE_PATH_LEN];//*image_path;//
+
+// for mjpeg rga osd
+    RK_U32 width;
+    RK_U32 height;
+    int rga_osd_fd;
+    unsigned int handle; // for drm handle
+    uint8_t *buffer;
+    int drm_size;
+// for mjpeg rga osd
 } MpiEncOSDCfg;
+
 #endif
 /***************************o not change the order above**************************************/
 typedef struct MppBuffNode
@@ -318,6 +328,7 @@ typedef struct
     bool osd_plt_user;
     MpiEncOSDCfg osd_cfg[OSD_REGIONS_CNT];
     RK_U32 plt_table[PALETTE_TABLE_LEN]; //ayuv map
+    int rga_osd_drm_fd;
 #endif
 #if MPP_ENC_ROI_ENABLE
     RK_U32 roi_enable;

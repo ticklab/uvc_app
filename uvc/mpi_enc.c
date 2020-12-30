@@ -20,6 +20,12 @@
 #include "uvc_encode.h"
 #include "uvc_log.h"
 #include "../cJSON/cJSON.h"
+
+#if MJPEG_RGA_OSD_ENABLE
+#include <rga/im2d.h>
+#include <rga/rga.h>
+#endif
+
 void *thread_check_mpp_enc_chenge_loop(void *user);
 
 static int mpp_enc_cfg_set(MpiEncTestData *p, bool init);
@@ -43,11 +49,14 @@ extern void mpp_osd_region_id_enable_set(MpiEncTestData *p, int region_id, int e
 extern mpp_osd_region_id_enable_get(MpiEncTestData *p, int region_id);
 extern void mpp_osd_enable_set(MpiEncTestData *p, bool enable);
 extern int mpp_osd_enable_get(MpiEncTestData *p);
+#if MJPEG_RGA_OSD_ENABLE
+extern void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd);
+#endif
 #endif
 
 #if RK_MPP_MJPEG_FPS_CONTROL
-extern MPP_RET mpp_mjpeg_fps_init(MpiEncTestData *p);
-extern void mpp_mjpeg_fps_deinit(MpiEncTestData *p);
+extern void *mpp_mjpeg_fps_init(bool *enable, int mode, int fps);
+extern void mpp_mjpeg_fps_deinit(void *fps_handle);
 extern bool mpp_mjpeg_encode_data_set(void *fps_handle, void *data, size_t len);
 #endif
 
@@ -953,20 +962,45 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 
 #if MPP_ENC_OSD_ENABLE
     if (mpp_osd_enable_get(p)) {// && p->osd_data.num_region && p->osd_data.buf
-        MppMeta meta = NULL;
-        meta = mpp_frame_get_meta(frame);
-       // LOG_INFO("MPP Encoder: set osd data(%d regions) to frame\n", p->osd_data.num_region);
-#if 0
-        if (!access("/tmp/osd0", 0)) {
-            mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
-            system("rm /tmp/osd0");
-        } //test
-        if (!access("/tmp/osd1", 0)) {
-            mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
-            system("rm /tmp/osd1");
-        }
+        if (p->type == MPP_VIDEO_CodingMJPEG) {
+#if MJPEG_RGA_OSD_ENABLE
+            for (int i = 0; i < p->osd_count; i ++) {
+                if (p->osd_cfg[i].set_ok == true) {
+                   if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
+#if 0 //test
+                       if (!access("/tmp/osd0", 0)) {
+                           mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
+                           system("rm /tmp/osd0");
+                       } //test
+                       if (!access("/tmp/osd1", 0)) {
+                           mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
+                           system("rm /tmp/osd1");
+                       }
 #endif
-        mpp_meta_set_ptr(meta, KEY_OSD_DATA, (void*)&p->osd_data);
+                       if (mpp_osd_region_id_enable_get(p, i))
+                           mjpeg_rga_osd_process(p, i, info->fd);
+                   } else {
+                       LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
+                   }
+                }
+            }
+#endif
+        } else {
+            MppMeta meta = NULL;
+            meta = mpp_frame_get_meta(frame);
+           // LOG_INFO("MPP Encoder: set osd data(%d regions) to frame\n", p->osd_data.num_region);
+#if 0 //test
+            if (!access("/tmp/osd0", 0)) {
+                mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
+                system("rm /tmp/osd0");
+            } //test
+            if (!access("/tmp/osd1", 0)) {
+                mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
+                system("rm /tmp/osd1");
+            }
+#endif
+            mpp_meta_set_ptr(meta, KEY_OSD_DATA, (void*)&p->osd_data);
+        }
     }
 #endif
 
@@ -1228,7 +1262,8 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     }
     pthread_create(&p->check_cfg_change_hd, NULL, thread_check_mpp_enc_chenge_loop, p);
 #if RK_MPP_MJPEG_FPS_CONTROL
-    mpp_mjpeg_fps_init(p);
+    if (mjpeg_is_high_solution(p) == true)
+        p->fps_handle = mpp_mjpeg_fps_init(&p->fps_ctr_enable, p->mjpeg_cfg.enc_mode, p->fps);
 #endif
 
     mpi_get_env_u32("uvc_enc_out", &cmd->have_output, 0);
@@ -1261,6 +1296,10 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         p->in_buff_info[i].init = false;
         p->in_buff_info[i].buf_fd = -1;
     }
+
+    LOG_INFO("fps_ctr_enable:%d,roi:%d,enc_osd:%d,rga_osd:%d\n",
+              p->fps_ctr_enable, MPP_ENC_ROI_ENABLE,
+              MPP_ENC_OSD_ENABLE, MJPEG_RGA_OSD_ENABLE);
 
     return ret;
 }
@@ -1298,7 +1337,7 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
     MpiEncTestData *p = *data;
 
 #if RK_MPP_MJPEG_FPS_CONTROL
-    mpp_mjpeg_fps_deinit(p);
+    mpp_mjpeg_fps_deinit(p->fps_handle);
 #endif
 
     for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
@@ -1356,6 +1395,20 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         mpp_buffer_put(p->osd_data.buf);
         p->osd_data.buf = NULL;
     }
+#if MJPEG_RGA_OSD_ENABLE
+    if (p->rga_osd_drm_fd >= 0 && p->type == MPP_VIDEO_CodingMJPEG) {
+        for (int i = 0; i < p->osd_count; i++) {
+           if (p->osd_cfg[i].set_ok) {
+               drm_unmap_buffer(p->osd_cfg[i].buffer, p->osd_cfg[i].drm_size);
+               if (p->osd_cfg[i].rga_osd_fd)
+                   close(p->osd_cfg[i].rga_osd_fd);
+               if (p->rga_osd_drm_fd && p->osd_cfg[i].handle)
+                   drm_free(p->rga_osd_drm_fd, p->osd_cfg[i].handle);
+           }
+        }
+        drm_close(p->rga_osd_drm_fd);
+    }
+#endif
 #endif
 
 #if MPP_ENC_ROI_ENABLE
@@ -2802,7 +2855,9 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
                     osd_data.origin_x = p->osd_cfg[i].start_x;
                     osd_data.origin_y = p->osd_cfg[i].start_y;
                     osd_data.image = p->osd_cfg[i].image_path;
-                    mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+                    ret = mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+                    if (ret)
+                        p->osd_cfg[i].set_ok = false;
                 } else {
                     LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
                 }
@@ -2837,8 +2892,30 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 #endif
 #endif
     }
+#if MJPEG_RGA_OSD_ENABLE
+    else if (p->osd_enable && (p->type == MPP_VIDEO_CodingMJPEG)) {
+        p->rga_osd_drm_fd = -1;
+        osd_data_s osd_data;
+        for (int i = 0; i < p->osd_count; i++) {
+           if (p->osd_cfg[i].set_ok == true) {
+               if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
+                   osd_data.enable = p->osd_cfg[i].enable;
+                   mpp_osd_region_id_enable_set(p, i, osd_data.enable);
+                   osd_data.region_id = i;
+                   osd_data.origin_x = p->osd_cfg[i].start_x;
+                   osd_data.origin_y = p->osd_cfg[i].start_y;
+                   osd_data.image = p->osd_cfg[i].image_path;
+                   ret = mjpeg_rga_osd_bmp_to_buff(p, &osd_data);
+                   if (ret)
+                       p->osd_cfg[i].set_ok = false;
+               } else {
+                   LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
+               }
+           }
+       }
+    }
 #endif
-
+#endif
 RET:
     return ret;
 }

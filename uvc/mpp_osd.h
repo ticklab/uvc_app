@@ -41,6 +41,13 @@ extern "C"
 
 //***************OSD*********************//
 #define MPP_ENC_OSD_ENABLE 0
+
+#if MPP_ENC_OSD_ENABLE
+#define MJPEG_RGA_OSD_ENABLE 1  //can modify this
+#else
+#define MJPEG_RGA_OSD_ENABLE 0  //do not modify this
+#endif
+
 #define OSD_REGIONS_CNT 8
 #define PALETTE_TABLE_LEN 256
 #define OSD_DATA_DEBUG 0
@@ -130,6 +137,14 @@ enum OSD_REGION_TYPE {
 };
 
 //************************************//
+
+typedef struct rkMB_IMAGE_INFO {
+    uint32_t u32Width;
+    uint32_t u32Height;
+    uint32_t u32HorStride;
+    uint32_t u32VerStride;
+  //IMAGE_TYPE_E enImgType;
+} MB_IMAGE_INFO_S;
 
 
 #ifdef __cplusplus

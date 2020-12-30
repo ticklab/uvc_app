@@ -688,4 +688,155 @@ static MPP_RET mpp_enc_gen_osd_data(MppEncOSDData *osd_data, MppBuffer osd_buf, 
     return MPP_OK;
 }
 #endif
+#if MJPEG_RGA_OSD_ENABLE
+#include <rga/im2d.h>
+#include <rga/rga.h>
+#include "drm.h"
 
+int mjpeg_rga_osd_bmp_to_buff(MpiEncTestData *p, osd_data_s *draw_data)
+{
+    int ret = 0;
+    int read_len = 0, read_cout = 0, pitch = 0;
+    OsdRegionData osd_region_data;
+    uint32_t id = draw_data->region_id;
+
+    draw_data->bmp_file = fopen(draw_data->image, "rb");
+    if (draw_data->bmp_file == NULL) {
+        LOG_ERROR("yuv file open:%s fail!\n", draw_data->image);
+        return -1;
+    }
+    if(!osd_get_bmp_info(draw_data)) {
+        LOG_ERROR("osd_get_bmp_info fail!\n");
+        ret = -1;
+        goto ERR;
+    }
+    draw_data->width = draw_data->bmp_info_head.biWidth;
+    draw_data->height = draw_data->bmp_info_head.biHeight;
+    pitch = WIDTHBYTES(draw_data->width * draw_data->bmp_info_head.biBitCount);
+    draw_data->size = pitch * draw_data->height;
+    p->osd_cfg[id].width = draw_data->width;
+    p->osd_cfg[id].height = draw_data->height;
+    p->osd_cfg[id].drm_size = draw_data->size;
+    LOG_DEBUG("w:%d h:%d d:%d size:%d bfOffBits:%d\n",
+               draw_data->width, draw_data->height,
+               draw_data->bmp_info_head.biBitCount, draw_data->size,
+               draw_data->bmp_bit_head.bfOffBits); //test debug
+
+
+    if (draw_data->bmp_info_head.biBitCount != 32) {
+        LOG_ERROR("only support 32 bit argb bmp!this biBitCount:%d not support now!\n",
+                   draw_data->bmp_info_head.biBitCount);
+        ret = -1;
+        goto ERR;
+    }
+
+    if (p->rga_osd_drm_fd == -1)
+        p->rga_osd_drm_fd = drm_open();
+    if (p->rga_osd_drm_fd < 0) {
+        LOG_ERROR("rga_osd_drm_fd=%d!\n", p->rga_osd_drm_fd);
+        ret = -1;
+        goto ERR;
+    }
+    ret = drm_alloc(p->rga_osd_drm_fd, draw_data->size, 16, &p->osd_cfg[id].handle, 0);
+    if (ret)
+    {
+        LOG_ERROR("drm_alloc fail\n");
+        goto ERR;
+    }
+    ret = drm_handle_to_fd(p->rga_osd_drm_fd, p->osd_cfg[id].handle, &p->osd_cfg[id].rga_osd_fd, 0);
+    if (ret)
+    {
+        LOG_ERROR("drm_handle_to_fd fail\n");
+        goto ERR;
+    }
+    p->osd_cfg[id].buffer = (uint8_t *)drm_map_buffer(p->rga_osd_drm_fd, p->osd_cfg[id].handle, p->osd_cfg[id].drm_size);
+    LOG_DEBUG("rga_osd_drm_fd=%d,buffer->handle=%d,size=%d\n",
+               p->rga_osd_drm_fd, p->osd_cfg[id].handle, p->osd_cfg[id].drm_size);
+
+    draw_data->bmp_data = (uint8_t *)malloc(draw_data->size);
+
+    while (read_len < draw_data->size && read_cout < 10) {//read bmp data
+        read_len += fread(&draw_data->bmp_data[read_len], 1, draw_data->size - read_len, draw_data->bmp_file);
+        read_cout ++;
+    };
+
+    if (read_cout >= 10) {
+        LOG_ERROR("yuv read open:%s fail, len=%d!\n", draw_data->image, read_len);
+        ret = -1;
+        goto ERR;
+    }
+
+#if OSD_DATA_DEBUG
+    RK_U8 tb_data;
+    FILE *fp_out = NULL;
+    fp_out = fopen("/data/out.bmp","w+b");
+#endif
+
+    RK_U32 TargetWidth, TargetHeight;
+    RK_U32 ColorValue;
+    RK_U32 *BitmapLineStart;
+    RK_U32 *CanvasLineStart;
+    RK_U8 CanvasValue;
+    TargetWidth = draw_data->width;
+    TargetHeight = draw_data->height;
+
+    for (RK_U32 i = 0; i < TargetHeight; i++) {
+        BitmapLineStart = (RK_U32 *)draw_data->bmp_data + (TargetHeight - 1 - i) * TargetWidth;
+        CanvasLineStart = (RK_U32 *)(p->osd_cfg[id].buffer + i * TargetWidth * 4);
+        for (RK_U32 j = 0; j < TargetWidth; j++) {
+            ColorValue = *(BitmapLineStart + j); //argb format
+            if (ColorValue == 0x00ffffff)
+                ColorValue = 0x00000000; //0x00000000 mean transparency
+            else if (ColorValue > 0)
+                ColorValue |= 0xff000000; //0xffxxxxxx mean not transparency
+            *(CanvasLineStart + j) = ColorValue;// argb -> bgra
+        }
+    }
+
+#if OSD_DATA_DEBUG
+    for (RK_U32 i = 0; i < draw_data->size; i++)
+        fwrite(&p->osd_cfg[id].buffer[i], 1, 1, fp_out);
+    fclose(fp_out);
+    LOG_ERROR("debug osd data ok!");
+#endif
+
+    LOG_DEBUG("TargetWidth=%d,TargetHeight=%d,0:%x 1:%x 2:%x 3:%x 4:%x\n",
+               TargetWidth, TargetHeight,
+               p->osd_cfg[id].buffer[0],
+               p->osd_cfg[id].buffer[1],
+               p->osd_cfg[id].buffer[2],
+               p->osd_cfg[id].buffer[3],
+               p->osd_cfg[id].buffer[4]); //test debug
+
+ERR:
+    if (draw_data->bmp_file)
+        fclose(draw_data->bmp_file);
+    if (draw_data->bmp_data)
+        free(draw_data->bmp_data);
+    if (ret) {
+       drm_unmap_buffer(p->osd_cfg[id].buffer, p->osd_cfg[id].drm_size);
+       if (p->osd_cfg[id].rga_osd_fd)
+           close(p->osd_cfg[id].rga_osd_fd);
+       if (p->rga_osd_drm_fd && p->osd_cfg[id].handle)
+           drm_free(p->rga_osd_drm_fd, p->osd_cfg[id].handle);
+       drm_close(p->rga_osd_drm_fd);
+    }
+    return ret;
+}
+
+void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd)
+{
+    rga_buffer_t pat;
+    rga_buffer_t src;
+    IM_STATUS STATUS;
+    src = wrapbuffer_fd(src_fd, p->width, p->height, RK_FORMAT_YCbCr_420_SP);
+    pat = wrapbuffer_fd(p->osd_cfg[id].rga_osd_fd, p->osd_cfg[id].width, p->osd_cfg[id].height, RK_FORMAT_BGRA_8888);
+    //RK_FORMAT_RGBA_8888 // RK_FORMAT_BGRA_8888
+
+    im_rect pat_rect = {0, 0, p->osd_cfg[id].width, p->osd_cfg[id].height};
+    im_rect src_rect = {p->osd_cfg[id].start_x, p->osd_cfg[id].start_y, p->osd_cfg[id].width, p->osd_cfg[id].height};
+    STATUS = improcess(src,  src,  pat, src_rect, src_rect, pat_rect, IM_ALPHA_BLEND_DST_OVER);
+    //STATUS = imblend(src,  pat, IM_ALPHA_BLEND_DST_OVER, 1);
+    //STATUS = imcomposite(src, src, pat, IM_ALPHA_BLEND_DST_OVER, 1);
+}
+#endif

@@ -34,6 +34,7 @@ set(UVC_APP_DEPENDENT_LIBS
     drm
     rockchip_mpp
     rt
+    rga
     ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a
 )
 
