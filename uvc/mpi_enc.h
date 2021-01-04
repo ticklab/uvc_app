@@ -38,7 +38,9 @@ extern "C" {
 //#include "printf.h"
 //#include "mpp_time.h"
 #include "mpp_common.h"
+#if MPP_ENC_OSD_ENABLE
 #include "mpp_osd.h"
+#endif
 
 //#include "utils.h"
 #define BIT(n)  (1<<(n))

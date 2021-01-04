@@ -20,6 +20,7 @@
 #include "uvc_encode.h"
 #include "uvc_log.h"
 #include "../cJSON/cJSON.h"
+#include "mpp_osd.h"
 
 #if MJPEG_RGA_OSD_ENABLE
 #include <rga/im2d.h>
