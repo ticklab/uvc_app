@@ -22,7 +22,7 @@ set(LIB_SOURCE
 )
 
 add_library(rkuvc SHARED ${LIB_SOURCE})
-target_link_libraries(rkuvc pthread drm rockchip_mpp ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a libminilogger.a)
+target_link_libraries(rkuvc pthread drm rockchip_mpp ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a)
 
 set(SOURCE
     main.c
@@ -101,6 +101,7 @@ if (${ENABLE_MINILOGGER})
     find_package(MiniLogger REQUIRED)
     add_definitions(-DENABLE_MINILOGGER)
     set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} MiniLogger::MiniLogger)
+    target_link_libraries(rkuvc MiniLogger::MiniLogger)
 endif()
 
 option(COMPILES_CAMERA "compile:with rkmedia v4l2 flow " OFF)
