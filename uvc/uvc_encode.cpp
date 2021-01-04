@@ -39,6 +39,24 @@
 #include "mpi_enc.h"
 #include "yuv.h"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+#if MPP_ENC_OSD_ENABLE
+extern void mpp_osd_region_id_enable_set(MpiEncTestData *p, int region_id, int enable);
+extern int mpp_osd_region_id_enable_get(MpiEncTestData *p, int region_id);
+extern bool mpp_osd_enable_get(MpiEncTestData *p);
+#if YUV_RGA_OSD_ENABLE
+extern void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd);
+#endif
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
 #if RK_MPP_RANGE_DEBUG_ON
 static char *strtrimr(char *pstr)
 {
@@ -91,8 +109,6 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h2
     e->loss_frm = 0;
     mpi_enc_cmd_config(&e->mpi_cmd, width, height, fcc, h265, fps);
     //mpi_enc_cmd_config_mjpg(&e->mpi_cmd, width, height);
-    if(fcc == V4L2_PIX_FMT_YUYV)
-        return 0;
     if (mpi_enc_test_init(&e->mpi_cmd, &e->mpi_data) != MPP_OK)
         return -1;
 
@@ -107,8 +123,7 @@ void uvc_encode_inbuf_deinit(struct uvc_encode *e)
 
 void uvc_encode_exit(struct uvc_encode *e)
 {
-    if(e->fcc != V4L2_PIX_FMT_YUYV)
-        mpi_enc_test_deinit(&e->mpi_data);
+    mpi_enc_test_deinit(&e->mpi_data);
     e->video_id = -1;
     e->width = -1;
     e->height = -1;
@@ -201,7 +216,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
     }
 #endif
 
-    if(fcc != V4L2_PIX_FMT_YUYV)
+    //if(fcc != V4L2_PIX_FMT_YUYV)
     {
         if (e->mpi_data->fp_input)
         {
@@ -275,7 +290,34 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
 #endif
                }
 #endif
-
+#if MPP_ENC_OSD_ENABLE
+               if (mpp_osd_enable_get(e->mpi_data)) {// && p->osd_data.num_region && p->osd_data.buf
+                   if (e->mpi_data->type == 0) {
+#if YUV_RGA_OSD_ENABLE
+                       for (int i = 0; i < e->mpi_data->osd_count; i ++) {
+                           if (e->mpi_data->osd_cfg[i].set_ok == true) {
+                              if (e->mpi_data->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
+#if 0 //test
+                                  if (!access("/tmp/osd0", 0)) {
+                                      mpp_osd_region_id_enable_set(e->mpi_data, 0, !mpp_osd_region_id_enable_get(e->mpi_data, 0));
+                                      system("rm /tmp/osd0");
+                                  } //test
+                                  if (!access("/tmp/osd1", 0)) {
+                                      mpp_osd_region_id_enable_set(e->mpi_data, 1, !mpp_osd_region_id_enable_get(e->mpi_data, 1));
+                                      system("rm /tmp/osd1");
+                                  }
+#endif
+                                  if (mpp_osd_region_id_enable_get(e->mpi_data, i))
+                                      mjpeg_rga_osd_process(e->mpi_data, i, info->fd);
+                              } else {
+                                  LOG_WARN("ost no supprot this type:%d\n", e->mpi_data->osd_cfg[i].type);
+                              }
+                           }
+                       }
+#endif
+                   }
+               }
+#endif
                NV12_to_YUYV(width, height, virt, buffer->buffer);
                uvc_buffer_read_set(e->video_id, buffer);
                //uvc_user_unlock();

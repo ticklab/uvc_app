@@ -44,9 +44,14 @@ extern "C"
 
 #if MPP_ENC_OSD_ENABLE
 #define MJPEG_RGA_OSD_ENABLE 1  //can modify this
+#define YUV_RGA_OSD_ENABLE 1  //can modify this
 #else
 #define MJPEG_RGA_OSD_ENABLE 0  //do not modify this
+#define YUV_RGA_OSD_ENABLE 0  //do not modify this
 #endif
+
+#define FIX_MPP_WHITE_EDGE_VALUE 0 //reference  80
+#define FIX_RGA_WHITE_EDGE_VALUE 0 //reference  120
 
 #define OSD_REGIONS_CNT 8
 #define PALETTE_TABLE_LEN 256
@@ -145,7 +150,6 @@ typedef struct rkMB_IMAGE_INFO {
     uint32_t u32VerStride;
   //IMAGE_TYPE_E enImgType;
 } MB_IMAGE_INFO_S;
-
 
 #ifdef __cplusplus
 }

@@ -109,7 +109,7 @@ const RK_U32 u32DftARGB8888ColorTblUser[PALETTE_TABLE_LEN] = {
     0xff00ff00, 0xff00ff28, 0xff00ff5f, 0xff00ff87, 0xff00ffaf, 0xff00ffd7,
     0xff00ffff, 0xff00ffff, 0xff080808, 0xff121212, 0xff1c1c1c, 0xff262626,
     0xff303030, 0xff3a3a3a, 0xff444444, 0xff4e4e4e, 0xff585858, 0xff5f0000,
-    0xff5f005f, 0xff5f0087, 0xff5f00af, 0xff5f00d7, 0xff5f00ff, 0xff5f5f00,
+    0xff5f005f, 0xff5f0087, 0xff5f00af, 0xff5f00d7, 0xff5f00ff, 0xff5f5f00, //10
     0xff5f5f5f, 0xff5f5f87, 0xff5f5faf, 0xff5f5fd7, 0xff5f5fff, 0xff5f8700,
     0xff5f875f, 0xff5f8787, 0xff5f87af, 0xff5f87d7, 0xff5f87ff, 0xff5faf00,
     0xff5faf5f, 0xff5faf87, 0xff5fafaf, 0xff5fafd7, 0xff5fafff, 0xff5fd700,
@@ -119,7 +119,7 @@ const RK_U32 u32DftARGB8888ColorTblUser[PALETTE_TABLE_LEN] = {
     0xff808080, 0xff870000, 0xff87005f, 0xff870087, 0xff8700af, 0xff8700d7,
     0xff8700ff, 0xff875f00, 0xff875f5f, 0xff875f87, 0xff875faf, 0xff875fd7,
     0xff875fff, 0xff878700, 0xff87875f, 0xff878787, 0xff8787af, 0xff8787d7,
-    0xff8787ff, 0xff87af00, 0xff87af5f, 0xff87af87, 0xff87afaf, 0xff87afd7,
+    0xff8787ff, 0xff87af00, 0xff87af5f, 0xff87af87, 0xff87afaf, 0xff87afd7,//20
     0xff87afff, 0xff87d700, 0xff87d75f, 0xff87d787, 0xff87d7af, 0xff87d7d7,
     0xff87d7ff, 0xff87ff00, 0xff87ff5f, 0xff87ff87, 0xff87ffaf, 0xff87ffd7,
     0xff87ffff, 0xff8a8a8a, 0xff949494, 0xff9e9e9e, 0xffa8a8a8, 0xffaf0000,
@@ -610,8 +610,8 @@ static void bmp_to_yuva_map(osd_data_s *data)
             TargetWidth = data->width;
             TargetHeight = data->height;
 
-#if OSD_DATA_DEBUG
             RK_U8 tb_data;
+#if OSD_DATA_DEBUG
             FILE *fp_in = NULL, *fp_out = NULL;
             fp_in = fopen("/data/in.bmp","w+b");
             fp_out = fopen("/data/out.bmp","w+b");
@@ -621,15 +621,18 @@ static void bmp_to_yuva_map(osd_data_s *data)
                 CanvasLineStart = data->buffer + i * TargetWidth;
                 for (RK_U32 j = 0; j < TargetWidth; j++) {
                     ColorValue = *(BitmapLineStart + j);
-#if OSD_DATA_DEBUG
                     tb_data = find_argb_color_tbl_by_order(
                           data->plt_table, PALETTE_TABLE_LEN, ColorValue);
+#if FIX_MPP_WHITE_EDGE_VALUE
+                    if (tb_data > FIX_MPP_WHITE_EDGE_VALUE) {
+                        //LOG_ERROR("data:%d!", tb_data); // test
+                        tb_data = 0;
+                    }
+#endif
                     *(CanvasLineStart + j) = tb_data;
+#if OSD_DATA_DEBUG
                     fwrite(&ColorValue, 1, 4, fp_in);
                     fwrite(&tb_data, 1, 1, fp_out);
-#else
-                    *(CanvasLineStart + j) = find_argb_color_tbl_by_order(
-                          data->plt_table, PALETTE_TABLE_LEN, ColorValue);
 #endif
                 }
             }
@@ -687,8 +690,108 @@ static MPP_RET mpp_enc_gen_osd_data(MppEncOSDData *osd_data, MppBuffer osd_buf, 
 
     return MPP_OK;
 }
+
+MPP_RET mpp_osd_default_set(MpiEncTestData *p)
+{
+    MPP_RET ret = MPP_OK;
+    if (p->osd_enable && (p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC)) {
+        const RK_U32 *pu32ArgbColorTbl;
+        if (p->osd_plt_user)
+            pu32ArgbColorTbl = u32DftARGB8888ColorTblUser;
+        else
+            pu32ArgbColorTbl = u32DftARGB8888ColorTbl;
+        color_tbl_argb_to_avuy(pu32ArgbColorTbl, p->plt_table);
+        p->osd_idx_size  = p->hor_stride * p->ver_stride / 8;
+        ret = mpp_buffer_get(p->pkt_grp, &p->osd_idx_buf, p->osd_idx_size);
+        if (ret) {
+            LOG_ERROR("failed to get buffer for input osd index ret %d\n", ret);
+            goto RET;
+        }
+#if 1
+        /* gen and cfg osd plt */
+        ret = mpp_enc_gen_osd_plt(p, p->plt_table);
+        if (ret) {
+            LOG_ERROR("mpp_enc_gen_osd_plt err:%d\n", ret);
+            goto RET;
+        }
+        osd_data_s osd_data;
+        osd_data.plt_table = pu32ArgbColorTbl;
+
+        for (int i = 0; i < p->osd_count; i++) {
+            if (p->osd_cfg[i].set_ok == true) {
+                if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
+                    osd_data.enable = p->osd_cfg[i].enable;
+                    osd_data.region_id = i;
+                    osd_data.origin_x = p->osd_cfg[i].start_x;
+                    osd_data.origin_y = p->osd_cfg[i].start_y;
+                    osd_data.image = p->osd_cfg[i].image_path;
+                    ret = mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+                    if (ret)
+                        p->osd_cfg[i].set_ok = false;
+                } else {
+                    LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
+                }
+            }
+        }
+#else // test //
+        /* gen and cfg osd plt */
+        ret = mpp_enc_gen_osd_plt(p, p->plt_table);
+        if (ret) {
+            LOG_ERROR("mpp_enc_gen_osd_plt err:%d\n", ret);
+            goto RET;
+        }
+#if 1 //yuv image demo
+        osd_data_s osd_data;
+
+        osd_data.plt_table = pu32ArgbColorTbl;
+        osd_data.enable = 1;
+        osd_data.region_id = 0;
+        osd_data.origin_x = 16;
+        osd_data.origin_y = 32;
+        osd_data.image = "/data/test-32.bmp";
+        mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+
+        osd_data.enable = 1;
+        osd_data.region_id = 1;
+        osd_data.origin_x = 16;
+        osd_data.origin_y = 320;
+        osd_data.image = "/data/mute-32.bmp";
+        mpp_osd_bmp_to_ayuv_image(p, &osd_data);
+#else //simple demo
+        mpp_enc_gen_osd_data(&p->osd_data, p->osd_idx_buf, p->frame_count);
 #endif
-#if MJPEG_RGA_OSD_ENABLE
+#endif
+    }
+#if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
+    else if (p->osd_enable && ((p->type == MPP_VIDEO_CodingMJPEG && MJPEG_RGA_OSD_ENABLE) ||
+             (p->type == 0 && YUV_RGA_OSD_ENABLE))) {
+        p->rga_osd_drm_fd = -1;
+        osd_data_s osd_data;
+        for (int i = 0; i < p->osd_count; i++) {
+           if (p->osd_cfg[i].set_ok == true) {
+               if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
+                   osd_data.enable = p->osd_cfg[i].enable;
+                   mpp_osd_region_id_enable_set(p, i, osd_data.enable);
+                   osd_data.region_id = i;
+                   osd_data.origin_x = p->osd_cfg[i].start_x;
+                   osd_data.origin_y = p->osd_cfg[i].start_y;
+                   osd_data.image = p->osd_cfg[i].image_path;
+                   ret = mjpeg_rga_osd_bmp_to_buff(p, &osd_data);
+                   if (ret)
+                       p->osd_cfg[i].set_ok = false;
+               } else {
+                   LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
+               }
+           }
+       }
+    }
+#endif
+RET:
+    return ret;
+}
+#endif
+
+#if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
 #include <rga/im2d.h>
 #include <rga/rga.h>
 #include "drm.h"
@@ -787,8 +890,20 @@ int mjpeg_rga_osd_bmp_to_buff(MpiEncTestData *p, osd_data_s *draw_data)
             ColorValue = *(BitmapLineStart + j); //argb format
             if (ColorValue == 0x00ffffff)
                 ColorValue = 0x00000000; //0x00000000 mean transparency
-            else if (ColorValue > 0)
-                ColorValue |= 0xff000000; //0xffxxxxxx mean not transparency
+            else if (ColorValue > 0) {
+#if FIX_RGA_WHITE_EDGE_VALUE
+                RK_U8 r,g,b;
+                r = ColorValue >> 16;
+                g = ColorValue >> 8;
+                b = ColorValue ;
+                if (r > FIX_RGA_WHITE_EDGE_VALUE &&
+                    g > FIX_RGA_WHITE_EDGE_VALUE &&
+                    b > FIX_RGA_WHITE_EDGE_VALUE) //fix white edge
+                    ColorValue = 0x00000000; //0x00000000 mean transparency
+                else
+#endif
+                    ColorValue |= 0xff000000; //0xffxxxxxx mean not transparency
+            }
             *(CanvasLineStart + j) = ColorValue;// argb -> bgra
         }
     }

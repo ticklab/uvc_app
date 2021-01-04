@@ -48,8 +48,10 @@ extern int mpp_osd_bmp_to_ayuv_image(MpiEncTestData *p, osd_data_s *draw_data);
 extern void mpp_osd_region_id_enable_set(MpiEncTestData *p, int region_id, int enable);
 extern mpp_osd_region_id_enable_get(MpiEncTestData *p, int region_id);
 extern void mpp_osd_enable_set(MpiEncTestData *p, bool enable);
-extern int mpp_osd_enable_get(MpiEncTestData *p);
-#if MJPEG_RGA_OSD_ENABLE
+extern bool mpp_osd_enable_get(MpiEncTestData *p);
+extern MPP_RET mpp_osd_default_set(MpiEncTestData *p);
+
+#if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
 extern void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd);
 #endif
 #endif
@@ -1201,54 +1203,56 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
 
     LOG_INFO("mpi_enc_test encoder test start w %d h %d type %d\n",
              p->width, p->height, p->type);
+    if (p->type != 0)
+    {
+        // encoder demo
+        ret = mpp_create(&p->ctx, &p->mpi);
+        if (ret)
+        {
+            LOG_ERROR("mpp_create failed ret %d\n", ret);
+            return ret;
+        }
 
-    // encoder demo
-    ret = mpp_create(&p->ctx, &p->mpi);
-    if (ret)
-    {
-        LOG_ERROR("mpp_create failed ret %d\n", ret);
-        return ret;
-    }
-
-    ret = mpp_init(p->ctx, MPP_CTX_ENC, p->type);
-    if (ret)
-    {
-        LOG_ERROR("mpp_init failed ret %d\n", ret);
-        return ret;
-    }
-    ret = mpp_enc_cfg_init(&p->cfg);
-    if (ret)
-    {
-        LOG_ERROR("mpp_enc_cfg_init failed ret %d\n", ret);
-        return ret;
-    }
+        ret = mpp_init(p->ctx, MPP_CTX_ENC, p->type);
+        if (ret)
+        {
+            LOG_ERROR("mpp_init failed ret %d\n", ret);
+            return ret;
+        }
+        ret = mpp_enc_cfg_init(&p->cfg);
+        if (ret)
+        {
+            LOG_ERROR("mpp_enc_cfg_init failed ret %d\n", ret);
+            return ret;
+        }
 #if RK_MPP_USE_ZERO_COPY
 #ifndef RK_MPP_USE_UVC_VIDEO_BUFFER
-    ret = mpp_buffer_group_get_internal(&p->pkt_grp, MPP_BUFFER_TYPE_DRM);
-    if (ret)
-    {
-        LOG_ERROR("failed to get buffer group for output packet ret %d\n", ret);
-        return ret;
-    }
-    p->packet_size = p->width * p->height;
+        ret = mpp_buffer_group_get_internal(&p->pkt_grp, MPP_BUFFER_TYPE_DRM);
+        if (ret)
+        {
+            LOG_ERROR("failed to get buffer group for output packet ret %d\n", ret);
+            return ret;
+        }
+        p->packet_size = p->width * p->height;
 
-    ret = mpp_buffer_get(p->pkt_grp, &p->pkt_buf, p->packet_size);
-    if (ret)
-    {
-        LOG_ERROR("failed to get buffer for pkt_buf ret %d\n", ret);
-        return ret;
-    }
+        ret = mpp_buffer_get(p->pkt_grp, &p->pkt_buf, p->packet_size);
+        if (ret)
+        {
+            LOG_ERROR("failed to get buffer for pkt_buf ret %d\n", ret);
+            return ret;
+        }
 #else
 #if MPP_ENC_OSD_ENABLE
-    ret = mpp_buffer_group_get_internal(&p->pkt_grp, MPP_BUFFER_TYPE_DRM);
-    if (ret)
-    {
-        LOG_ERROR("failed to get buffer group for output packet ret %d\n", ret);
-        return ret;
+        ret = mpp_buffer_group_get_internal(&p->pkt_grp, MPP_BUFFER_TYPE_DRM);
+        if (ret)
+        {
+            LOG_ERROR("failed to get buffer group for output packet ret %d\n", ret);
+            return ret;
+        }
+#endif
+#endif
+#endif
     }
-#endif
-#endif
-#endif
     mpp_enc_cfg_default(p);
 
     if (!check_mpp_enc_cfg_file_init(p))
@@ -1395,8 +1399,10 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         mpp_buffer_put(p->osd_data.buf);
         p->osd_data.buf = NULL;
     }
-#if MJPEG_RGA_OSD_ENABLE
-    if (p->rga_osd_drm_fd >= 0 && p->type == MPP_VIDEO_CodingMJPEG) {
+#if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
+    else if (p->rga_osd_drm_fd >= 0 &&
+             ((p->type == MPP_VIDEO_CodingMJPEG && MJPEG_RGA_OSD_ENABLE) ||
+              (p->type == 0 && YUV_RGA_OSD_ENABLE))) {
         for (int i = 0; i < p->osd_count; i++) {
            if (p->osd_cfg[i].set_ok) {
                drm_unmap_buffer(p->osd_cfg[i].buffer, p->osd_cfg[i].drm_size);
@@ -2298,6 +2304,8 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
         }
     }
     break;
+    case 0:
+    break;
     default :
     {
         LOG_ERROR("unsupport encoder coding type %d\n", p->type);
@@ -2417,6 +2425,12 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 
     if (NULL == p)
         return MPP_ERR_NULL_PTR;
+    if (p->type == 0) {
+#if MPP_ENC_OSD_ENABLE
+        mpp_osd_default_set(p);
+#endif
+        return MPP_OK;
+    }
 
     mpi_get_env_u32("enc_version", &p->enc_version, RK_MPP_VERSION_DEFAULT);
 
@@ -2821,100 +2835,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 #endif
 #endif
 #if MPP_ENC_OSD_ENABLE
-   // mpp_env_get_u32("osd_enable", &p->osd_enable, 1);
-  //  mpp_env_get_u32("osd_plt_user", &p->osd_plt_user, 1);
-    if (p->osd_enable && (p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC)) {
-        const RK_U32 *pu32ArgbColorTbl;
-        if (p->osd_plt_user)
-            pu32ArgbColorTbl = u32DftARGB8888ColorTblUser;
-        else
-            pu32ArgbColorTbl = u32DftARGB8888ColorTbl;
-        color_tbl_argb_to_avuy(pu32ArgbColorTbl, p->plt_table);
-        p->osd_idx_size  = p->hor_stride * p->ver_stride / 8;
-        ret = mpp_buffer_get(p->pkt_grp, &p->osd_idx_buf, p->osd_idx_size);
-        if (ret) {
-            LOG_ERROR("failed to get buffer for input osd index ret %d\n", ret);
-            goto RET;
-        }
-
-#if 1
-        /* gen and cfg osd plt */
-        ret = mpp_enc_gen_osd_plt(p, p->plt_table);
-        if (ret) {
-            LOG_ERROR("mpp_enc_gen_osd_plt err:%d\n", ret);
-            goto RET;
-        }
-        osd_data_s osd_data;
-        osd_data.plt_table = pu32ArgbColorTbl;
-
-        for (int i = 0; i < p->osd_count; i++) {
-            if (p->osd_cfg[i].set_ok == true) {
-                if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
-                    osd_data.enable = p->osd_cfg[i].enable;
-                    osd_data.region_id = i;
-                    osd_data.origin_x = p->osd_cfg[i].start_x;
-                    osd_data.origin_y = p->osd_cfg[i].start_y;
-                    osd_data.image = p->osd_cfg[i].image_path;
-                    ret = mpp_osd_bmp_to_ayuv_image(p, &osd_data);
-                    if (ret)
-                        p->osd_cfg[i].set_ok = false;
-                } else {
-                    LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
-                }
-            }
-        }
-#else // test //
-        /* gen and cfg osd plt */
-        ret = mpp_enc_gen_osd_plt(p, p->plt_table);
-        if (ret) {
-            LOG_ERROR("mpp_enc_gen_osd_plt err:%d\n", ret);
-            goto RET;
-        }
-#if 1 //yuv image demo
-        osd_data_s osd_data;
-
-        osd_data.plt_table = pu32ArgbColorTbl;
-        osd_data.enable = 1;
-        osd_data.region_id = 0;
-        osd_data.origin_x = 16;
-        osd_data.origin_y = 32;
-        osd_data.image = "/data/test-32.bmp";
-        mpp_osd_bmp_to_ayuv_image(p, &osd_data);
-
-        osd_data.enable = 1;
-        osd_data.region_id = 1;
-        osd_data.origin_x = 16;
-        osd_data.origin_y = 320;
-        osd_data.image = "/data/mute-32.bmp";
-        mpp_osd_bmp_to_ayuv_image(p, &osd_data);
-#else //simple demo
-        mpp_enc_gen_osd_data(&p->osd_data, p->osd_idx_buf, p->frame_count);
-#endif
-#endif
-    }
-#if MJPEG_RGA_OSD_ENABLE
-    else if (p->osd_enable && (p->type == MPP_VIDEO_CodingMJPEG)) {
-        p->rga_osd_drm_fd = -1;
-        osd_data_s osd_data;
-        for (int i = 0; i < p->osd_count; i++) {
-           if (p->osd_cfg[i].set_ok == true) {
-               if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
-                   osd_data.enable = p->osd_cfg[i].enable;
-                   mpp_osd_region_id_enable_set(p, i, osd_data.enable);
-                   osd_data.region_id = i;
-                   osd_data.origin_x = p->osd_cfg[i].start_x;
-                   osd_data.origin_y = p->osd_cfg[i].start_y;
-                   osd_data.image = p->osd_cfg[i].image_path;
-                   ret = mjpeg_rga_osd_bmp_to_buff(p, &osd_data);
-                   if (ret)
-                       p->osd_cfg[i].set_ok = false;
-               } else {
-                   LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
-               }
-           }
-       }
-    }
-#endif
+    ret = mpp_osd_default_set(p);
 #endif
 RET:
     return ret;
