@@ -302,6 +302,8 @@ void ShmUVCController::startRecvMessage()
     abandon_count = 0;
     send_count = 0;
     recv_count = 0;
+    set_buf_count = 0;
+    isp_buf_count = 0;
     recvThread = new std::thread(ProcessRecvUVCMessage, this);
     if (!access("tmp/uvc_ipc_state", 0))
         system("rm /tmp/uvc_ipc_state");
@@ -513,16 +515,19 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
         if (name == iter->second.id)
         {
             has_map = true;
-
 #if RK_MPP_DYNAMIC_DEBUG_ON
-            if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0) || yuv_encode)
+            if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0) || (encode_type == UVC_IPC_ENC_YUV))
+#else
+            if (encode_type == UVC_IPC_ENC_YUV)
+#endif
             {
+
                 if (!iter->second.buf)
                 {
                     iter->second.buf = (char *)drm_map_buffer(drmFd, iter->second.handle, iter->second.size);
                 }
             }
-#endif
+
             buf = iter->second.buf;
             buf_fd = iter->second.buf_fd;
             break;
@@ -540,17 +545,21 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
             return;
         }
 #if RK_MPP_DYNAMIC_DEBUG_ON
-        if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0) || yuv_encode)
+        if (!access(RK_MPP_DYNAMIC_DEBUG_IN_CHECK, 0) || (encode_type == UVC_IPC_ENC_YUV))
+#else
+        if (encode_type == UVC_IPC_ENC_YUV)
+#endif
         {
             buf = (char *)drm_map_buffer(drmFd, handle, buf_size);
         }
-#endif
+
         drm_map.buf = buf;
         drm_map.id = name;
         drm_map.size = buf_size;
         drm_map.handle = handle;
         drm_map.buf_fd = buf_fd;
-        map_count = drm_info.size();
+        map_count = drm_info.size() + 1;
+        isp_buf_count ++;
         drm_info.insert(std::map<int, DrmBuffMap>::value_type(map_count, drm_map));
         LOG_INFO("new drm_map count=%d name=%d,buf_fd=%d buf_size=%d drm_size=%d priv=0x%llx\n",
                  map_count, name, buf_fd, buf_size, drm_size, privData);
@@ -598,7 +607,12 @@ void ShmUVCController::recvUVCBuffer(MediaBufferInfo *bufferInfo)
     recv_state = UVC_IPC_STATE_RECV_ENC_EXIT;
 #endif
     //uvc_ipc_event(UVC_IPC_EVENT_RET_TRANSPORT_BUF, (void *)&send_info); //not call uvc_ipc_event here,it will be dead lock
-    uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_TRANSPORT_BUF, (void *)&send_info);
+    if (!set_buf_count || (set_buf_count && isp_buf_count <= set_buf_count))
+        uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_TRANSPORT_BUF, (void *)&send_info);
+    else { // for mjpeg_fps 4k solution
+        isp_buf_count -= 1;
+        LOG_INFO("save isp buf count:%d priv=0x%llx\n", drm_info.size() - isp_buf_count, privData);
+    }
 #if UVC_IPC_DYNAMIC_DEBUG_ON
     recv_state = UVC_IPC_STATE_RECV_EXIT;
 #endif
@@ -623,6 +637,9 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         message.set_msg_name("uvcbuffer");
         message.SerializeToString(&sendbuf);
         message.ParseFromString(sendbuf);
+        if (encode_type == UVC_IPC_ENC_MJPEG_LOW_LATENCY) {
+            set_buf_count = 2;
+        }
     }
     break;
     case MSG_UVC_STOP:
@@ -722,16 +739,17 @@ void ShmUVCController::sendUVCBuffer(enum ShmUVCMessageType event, void *data)
         streamInfo->set_vir_height(info->vir_height);
         streamInfo->set_buf_size(info->buf_size);
         streamInfo->set_range(info->range);
-        yuv_encode = info->yuv_encode;
+        encode_type = info->encode_type;
+        uvc_fps_set = info->uvc_fps_set;
         message.set_allocated_stream_info(streamInfo);
         message.set_msg_type(event);
         message.set_msg_name("uvcbuffer");
         message.SerializeToString(&sendbuf);
         message.ParseFromString(sendbuf);
         LOG_INFO("send uvc config camera. \
-width:%d,height:%d,vir_width=%d,vir_height=%d,buf_size=%d,range=%d,yuv=%d\n",
+width:%d,height:%d,vir_width=%d,vir_height=%d,buf_size=%d,range=%d,enc=%d,fps=%d\n",
                  info->width, info->height, info->vir_width, info->vir_height,
-                 info->buf_size, info->range, yuv_encode);
+                 info->buf_size, info->range, encode_type, uvc_fps_set);
         memcpy(&uvc_ipc_info.camera, info, sizeof(struct CAMERA_INFO));
     }
     break;

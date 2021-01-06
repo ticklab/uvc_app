@@ -152,7 +152,7 @@ public:
     void ShmUVCDrmRelease();
     void sendUVCBuffer(enum ShmUVCMessageType event, void *data);
     void startRecvMessage();
-		void clearRecvMessage();
+    void clearRecvMessage();
     void stopRecvMessage();
     void recvUVCMessageLoop();
 #if UVC_IPC_DYNAMIC_DEBUG_ON
@@ -193,11 +193,14 @@ private:
     int32_t               norecv_count;
     int32_t               norecv_err_count;
     int32_t               abandon_count;
-    int                   yuv_encode;
+    enum UVC_IPC_ENC_TYPE encode_type;
     int32_t               recv_seq;
     int32_t               send_seq;
     int32_t               recv_count;
     int32_t               send_count;
+    int32_t               isp_buf_count;
+    int32_t               set_buf_count;
+    int32_t               uvc_fps_set;
 };
 
 struct UVC_IPC_INFO

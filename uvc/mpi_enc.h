@@ -198,6 +198,7 @@ typedef struct
     RK_U32 bps; // 7
     RK_U32 framerate; // 8
     RK_U32 enc_mode; //enc_mode no have change bit   0:mean auto select 1:close the mjpeg_frc 2: use mjpeg_frc
+    RK_U32 qfactor_frc_min;
 } MpiEncMjpegCfg;
 
 typedef struct

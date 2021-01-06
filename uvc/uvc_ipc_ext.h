@@ -23,6 +23,15 @@ enum UVC_IPC_EVENT
     UVC_IPC_EVENT_SET_EPTZ_TILT = 8
 };
 
+enum UVC_IPC_ENC_TYPE
+{
+    UVC_IPC_ENC_YUV = 0,
+    UVC_IPC_ENC_MJPEG_NORMAL,
+    UVC_IPC_ENC_MJPEG_LOW_LATENCY,
+    UVC_IPC_ENC_H264,
+    UVC_IPC_ENC_H265
+};
+
 struct CAMERA_INFO
 {
     int width;
@@ -31,7 +40,8 @@ struct CAMERA_INFO
     int vir_height;
     int buf_size;
     int range;
-    int yuv_encode;
+    enum UVC_IPC_ENC_TYPE encode_type;
+    int uvc_fps_set;
 };
 
 extern void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data);

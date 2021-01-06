@@ -401,7 +401,7 @@ MPP_RET mpp_mjpeg_simple_frc(MpiEncTestData *p, bool set_low)
             else
             {
                 last = p->mjpeg_cfg.frc_qfactor;
-                p->mjpeg_cfg.frc_qfactor = (p->mjpeg_cfg.frc_qfactor > MJPEG_FRC_QFACTOR_MIN ?
+                p->mjpeg_cfg.frc_qfactor = (p->mjpeg_cfg.frc_qfactor > p->mjpeg_cfg.qfactor_frc_min ?
                                            (p->mjpeg_cfg.frc_qfactor - 1) :
                                             p->mjpeg_cfg.frc_qfactor);
                 if (p->mjpeg_cfg.frc_qfactor != last)
@@ -508,20 +508,20 @@ bool mjpeg_is_high_solution(MpiEncTestData *p)
     bool ret = false;
     if (p->type != MPP_VIDEO_CodingMJPEG)
         return ret;
-#if 1
-    if ((p->height > 1440 && p->fps  > 15) ||
-        (p->height > 1080 && p->fps  > 25) ||
-        (p->height > 720 && p->fps > 30)) {
-        ret = true;
+    if (!p->common_cfg.frc_fps) {
+        if ((p->height > 1440 && p->fps  > 15) ||
+            (p->height > 1080 && p->fps  > 25) ||
+            (p->height > 720 && p->fps > 30)) {
+            ret = true;
+        }
+    } else {//if need use frc_fps to control rate,do this
+        p->fps = p->common_cfg.frc_fps;
+        if ((p->height > 1440 && p->fps  > 15) ||
+            (p->height > 1080 && p->fps  > 25) ||
+            (p->height > 720 && p->fps > 30)) {//if need use frc_fps to control rate,do change here p->fps to p->common_cfg.frc_fps
+            ret = true;
+        }
     }
-#else //if need use frc_fps to control rate,do this
-    p->fps = p->common_cfg.frc_fps;
-    if ((p->height > 1440 && p->fps  > 15) ||
-        (p->height > 1080 && p->fps  > 25) ||
-        (p->height > 720 && p->fps > 30)) {//if need use frc_fps to control rate,do change here p->fps to p->common_cfg.frc_fps
-        ret = true;
-    }
-#endif
     return ret;
 }
 
@@ -785,10 +785,13 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 #if RK_MPP_DYNAMIC_DEBUG_ON
         if (access(RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK, 0)) //no exist and output log
 #endif
-            LOG_ERROR("not get write buff,read too slow %d,%d.\"touch %s \" can close debug.\n",
-                      p->loss_frm,
-                      p->frc_up_frm_set,
-                      RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK);
+        {
+            if (p->mjpeg_cfg.qfactor_frc_min < p->mjpeg_cfg.frc_qfactor)
+                LOG_ERROR("not get write buff,read too slow %d,%d.\"touch %s \" can close debug.\n",
+                           p->loss_frm,
+                           p->frc_up_frm_set,
+                           RK_MPP_CLOSE_FRM_LOSS_DEBUG_CHECK);
+        }
         if (p->loss_frm >= 5 && p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.frc_mode)
         {
             p->loss_frm = 0;
@@ -1619,6 +1622,8 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->mjpeg_cfg.rc_mode = MPP_ENC_RC_MODE_FIXQP; // not use mpp frc here must be fixqp, do not modify this setting.
 #endif
     p->mjpeg_cfg.bps = p->width * p->height / 8 * p->mjpeg_cfg.framerate * 3 / 2; // 1080p 11Mbps
+    p->mjpeg_cfg.frc_qfactor = p->mjpeg_cfg.qfactor;
+    p->mjpeg_cfg.qfactor_frc_min = MJPEG_FRC_QFACTOR_MIN;
 
     //h264 set
     p->h264_cfg.gop = 60;
@@ -1902,14 +1907,45 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                          MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
                     p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
                 }
-                cJSON *child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_param, "qfactor");
-                if (child_mjpeg_qfactor)
-                {
-                    p->mjpeg_cfg.qfactor = child_mjpeg_qfactor->valueint;
-                    p->mjpeg_cfg.qfactor = p->mjpeg_cfg.qfactor < 0 ? 0 :
-                                           p->mjpeg_cfg.qfactor > 99 ? 99 :
-                                           p->mjpeg_cfg.qfactor;
-                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                char resolution_name[10] = "";
+                sprintf(resolution_name, "%d*%d",p->width, p->height);
+                cJSON *child_mjpeg_resolution_name = cJSON_GetObjectItem(child_mjpeg_param, resolution_name);
+                if (child_mjpeg_resolution_name) {
+                    cJSON *child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_resolution_name, "qfactor");
+                    if (child_mjpeg_qfactor)
+                    {
+                        p->mjpeg_cfg.qfactor = child_mjpeg_qfactor->valueint;
+                        p->mjpeg_cfg.qfactor = p->mjpeg_cfg.qfactor < 0 ? 0 :
+                                               p->mjpeg_cfg.qfactor > 99 ? 99 :
+                                               p->mjpeg_cfg.qfactor;
+                        p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                    }
+                    cJSON *child_mjpeg_qfactor_frc_min = cJSON_GetObjectItem(child_mjpeg_resolution_name, "qfactor_frc_min");
+                    if (child_mjpeg_qfactor_frc_min)
+                    {
+                        p->mjpeg_cfg.qfactor_frc_min = child_mjpeg_qfactor_frc_min->valueint;
+                        p->mjpeg_cfg.qfactor_frc_min = p->mjpeg_cfg.qfactor_frc_min < 0 ? 0 :
+                                                       p->mjpeg_cfg.qfactor_frc_min > p->mjpeg_cfg.qfactor ? p->mjpeg_cfg.qfactor :
+                                                       p->mjpeg_cfg.qfactor_frc_min;
+                    }
+                } else {
+                    cJSON *child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_param, "qfactor");
+                    if (child_mjpeg_qfactor)
+                    {
+                        p->mjpeg_cfg.qfactor = child_mjpeg_qfactor->valueint;
+                        p->mjpeg_cfg.qfactor = p->mjpeg_cfg.qfactor < 0 ? 0 :
+                                               p->mjpeg_cfg.qfactor > 99 ? 99 :
+                                               p->mjpeg_cfg.qfactor;
+                        p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                    }
+                    cJSON *child_mjpeg_qfactor_frc_min = cJSON_GetObjectItem(child_mjpeg_param, "qfactor_frc_min");
+                    if (child_mjpeg_qfactor_frc_min)
+                    {
+                        p->mjpeg_cfg.qfactor_frc_min = child_mjpeg_qfactor_frc_min->valueint;
+                        p->mjpeg_cfg.qfactor_frc_min = p->mjpeg_cfg.qfactor_frc_min < 0 ? 0 :
+                                                       p->mjpeg_cfg.qfactor_frc_min > p->mjpeg_cfg.qfactor ? p->mjpeg_cfg.qfactor :
+                                                       p->mjpeg_cfg.qfactor_frc_min;
+                    }
                 }
                 cJSON *child_mjpeg_qfactor_min = cJSON_GetObjectItem(child_mjpeg_param, "qfactor_min");
                 if (child_mjpeg_qfactor_min)
