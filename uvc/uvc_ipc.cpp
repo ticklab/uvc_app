@@ -139,7 +139,10 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
         uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_TRANSPORT_BUF, data);
         break;
     case UVC_IPC_EVENT_CONFIG_CAMERA:
-        uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_CONFIG_CAMERA, data);
+        if (uvc_ipc_info.stop)
+        {
+            uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_CONFIG_CAMERA, data);
+        }
         break;
     case MSG_UVC_SET_EPTZ_PAN:
 #if UVC_STREAM_OFF_NOT_SEND_SETTING
