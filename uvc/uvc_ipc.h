@@ -70,13 +70,15 @@ using namespace shmc;
 
 #if DBUG
 #define UVC_IPC_DYNAMIC_DEBUG_ON 1 //release version can set to 0
+#else
+#define UVC_IPC_DYNAMIC_DEBUG_ON 0
+#endif
+
 #define UVC_IPC_DYNAMIC_DEBUG_FPS "/tmp/uvc_ipc_fps"
 #define UVC_IPC_DYNAMIC_DEBUG_STATE "/tmp/uvc_ipc_state"
 #define UVC_IPC_DYNAMIC_DEBUG_EPTZ "/tmp/uvc_ipc_eptz"
 #define UVC_IPC_DYNAMIC_DEBUG_ISP_FPS "/tmp/uvc_isp_fps"
-#else
-#define UVC_IPC_DYNAMIC_DEBUG_ON 0
-#endif
+#define UVC_IPC_DYNAMIC_DEBUG_ISP_STATE "/tmp/uvc_isp_state"
 
 #define UVC_SENDBUFF_USE_INIT_ALLOC 1
 #define UVC_STREAM_OFF_NOT_SEND_SETTING 1

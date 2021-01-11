@@ -337,6 +337,12 @@ void ShmUVCController::clearRecvMessage()
 void ShmUVCController::stopRecvMessage()
 {
     LOG_DEBUG("stop recv message enter\n");
+
+#if UVC_IPC_DYNAMIC_DEBUG_ON
+    if (!access(UVC_IPC_DYNAMIC_DEBUG_ISP_STATE, 0))
+        system("rm /tmp/uvc_isp_state");
+#endif
+
     recvLooping = false;
     if (recvThread)
     {
@@ -379,6 +385,86 @@ void ShmUVCController::uvcIPCDebugLoop()
             eptz = false;
             set_eptz = 0;
             uvc_ipc_event(UVC_IPC_EVENT_ENABLE_ETPTZ, (void *)&set_eptz);
+        }
+        if (!access(UVC_IPC_DYNAMIC_DEBUG_ISP_STATE, 0))
+        {
+            int fd = -1, ret = -1, handle_fd = -1, size = 0;
+            char *buffer;
+            unsigned int handle = 0;
+            int isp_state = 0, y, uv;
+            struct MPP_ENC_INFO enc_info;
+            struct timespec now_tm = {0, 0};
+
+            LOG_INFO("send fixed picture to uvc instead isp enter\n");
+            std::lock_guard<std::mutex> lock(rQueueMtx);
+            fd = drm_open();
+            if (fd < 0) {
+                LOG_ERROR("drm open fail\n");
+                goto DRM_FAIL;
+            }
+            size = MPP_ALIGN(width, 16) * MPP_ALIGN(height, 16) * 3 / 2;
+            ret = drm_alloc(fd, size, 16, &handle, 0);
+            if (ret) {
+                LOG_ERROR("drm alloc fail\n");
+                goto DRM_FAIL;
+            }
+            ret = drm_handle_to_fd(fd, handle, &handle_fd, 0);
+            if (ret) {
+                LOG_ERROR("drm_handle_to_fd fail\n");
+                goto DRM_FAIL;
+            }
+            buffer = (char *)drm_map_buffer(fd, handle, size);
+            if (!buffer)
+            {
+                LOG_ERROR("drm map buffer fail.\n");
+                goto DRM_FAIL;
+            }
+            enc_info.fd = handle_fd;
+            enc_info.size = size;
+
+            while (!access(UVC_IPC_DYNAMIC_DEBUG_ISP_STATE, 0)) {
+                enc_info.seq = isp_state;
+                clock_gettime(CLOCK_MONOTONIC, &now_tm);
+                enc_info.pts = now_tm.tv_sec * 1000000LL + now_tm.tv_nsec / 1000;
+
+                isp_state ++;
+                if (isp_state % 2) {
+                    y = width * height / 4;
+                    memset(buffer, 128, y);
+                    memset(buffer + y, 64, y);
+                    memset(buffer + y * 2, 128, y);
+                    memset(buffer + y * 3, 192, y);
+                    uv = width * height / 8;
+                    memset(buffer + y * 4, 0, uv);
+                    memset(buffer + y * 4 + uv, 64, uv);
+                    memset(buffer + y * 4 + uv * 2, 128, uv);
+                    memset(buffer + y * 4 + uv * 3, 192, uv);
+                } else {
+                    y = width * height / 4;
+                    memset(buffer, 64, y);
+                    memset(buffer + y, 128, y);
+                    memset(buffer + y * 2, 192, y);
+                    memset(buffer + y * 3, 128, y);
+                    uv = width * height / 8;
+                    memset(buffer + y * 4, 192, uv);
+                    memset(buffer + y * 4 + uv, 128, uv);
+                    memset(buffer + y * 4 + uv * 2, 64, uv);
+                    memset(buffer + y * 4 + uv * 3, 0, uv);
+                }
+                uvc_read_camera_buffer(buffer, &enc_info, NULL, 0);
+                usleep(100 * 1000);
+            }
+DRM_FAIL:
+            drm_unmap_buffer(buffer, size);
+            if (handle_fd >= 0)
+                close(handle_fd);
+            if (fd >=0 && handle > 0)
+                drm_free(fd, handle);
+            if (fd >= 0)
+                drm_close(fd);
+            if (!access(UVC_IPC_DYNAMIC_DEBUG_ISP_STATE, 0))
+                system("rm /tmp/uvc_isp_state");
+            LOG_INFO("send fixed picture to uvc instead isp exit\n");
         }
 #endif
     }
