@@ -63,7 +63,7 @@ extern void camera_control_set_zoom(int val);
 
 /* Enable debug prints. */
 //#define ENABLE_BUFFER_DEBUG
-//#define ENABLE_USB_REQUEST_DEBUG
+#define ENABLE_USB_REQUEST_DEBUG
 
 #define CLEAR(x)    memset (&(x), 0, sizeof (x))
 #define max(a, b)   (((a) > (b)) ? (a) : (b))
@@ -3464,7 +3464,7 @@ uvc_events_process_setup(struct uvc_device *dev, struct usb_ctrlrequest *ctrl,
     dev->control = 0;
 
 #ifdef ENABLE_USB_REQUEST_DEBUG
-    LOG_INFO("\nbRequestType %02x bRequest %02x wValue %04x wIndex %04x "
+    LOG_DEBUG("\nbRequestType %02x bRequest %02x wValue %04x wIndex %04x "
              "wLength %04x\n", ctrl->bRequestType, ctrl->bRequest,
              ctrl->wValue, ctrl->wIndex, ctrl->wLength);
 #endif
