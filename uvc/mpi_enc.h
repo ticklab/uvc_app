@@ -217,6 +217,7 @@ typedef struct
     RK_U32 trans_8x8;//
     RK_U32 level;
     RK_U32 bps;//15
+    RK_U32 idr_bps;//16
 } MpiEncH264Cfg;
 
 typedef struct
@@ -230,6 +231,7 @@ typedef struct
     bool sei;//5
     MpiEncQqCfg qp;//6-11
     RK_U32 bps;//12
+    RK_U32 idr_bps;//12
 } MpiEncH265Cfg;
 
 #if MPP_ENC_OSD_ENABLE

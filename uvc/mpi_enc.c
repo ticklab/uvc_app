@@ -34,6 +34,8 @@ static void mpp_enc_cfg_default(MpiEncTestData *p);
 static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init);
 static void dump_mpp_enc_cfg(MpiEncTestData *p);
 static int read_mpp_enc_cfg_modify_file(MpiEncTestData *p, bool init);
+static MPP_RET mpp_enc_bps_set(MpiEncTestData *p, RK_U32 bps);
+
 #if MPP_ENC_ROI_ENABLE
 static int mpp_roi_config(MpiEncTestData *p, EncROIRegion *regions, int region_cnt);
 static int mpp_roi_enable_set(MpiEncTestData *p, int enable);
@@ -941,17 +943,28 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
             {
                 if ((p->h2645_frm_count % p->common_cfg.force_idr_period) == 0)
                 {
-                    ret = mpi->control(ctx, MPP_ENC_SET_IDR_FRAME, NULL);
-                    if (ret)
-                    {
-                        LOG_ERROR("mpi force idr frame control failed\n");
-                        goto RET;
-                    }
-                    else
-                    {
-                        LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d ,H264:%d\n",
-                                  p->h2645_frm_count, (p->type == MPP_VIDEO_CodingAVC));
-                    }
+                    LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d ,H264:%d\n",
+                              p->h2645_frm_count, (p->type == MPP_VIDEO_CodingAVC));
+                }
+                p->h2645_frm_count++;
+            }
+            else if (p->h2645_frm_count == p->common_cfg.force_idr_count * p->common_cfg.force_idr_period)
+            {
+                if (p->type == MPP_VIDEO_CodingAVC)
+                {
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h264_cfg.gop);
+                    mpp_enc_bps_set(p, p->h264_cfg.bps);
+                }
+                else
+                {
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h265_cfg.gop);
+                    mpp_enc_bps_set(p, p->h265_cfg.bps);
+                }
+                ret = mpi->control(ctx, MPP_ENC_SET_CFG, p->cfg);
+                if (ret)
+                {
+                    LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
+                    goto RET;
                 }
                 p->h2645_frm_count++;
             }
@@ -1269,8 +1282,12 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     }
     pthread_create(&p->check_cfg_change_hd, NULL, thread_check_mpp_enc_chenge_loop, p);
 #if RK_MPP_MJPEG_FPS_CONTROL
-    if (mjpeg_is_high_solution(p) == true)
+    if (mjpeg_is_high_solution(p) == true || p->mjpeg_cfg.enc_mode == 2)
+    {
+        if (p->mjpeg_cfg.enc_mode == 0)
+            p->fps_ctr_enable = true;
         p->fps_handle = mpp_mjpeg_fps_init(&p->fps_ctr_enable, p->mjpeg_cfg.enc_mode, p->fps);
+    }
 #endif
 
     mpi_get_env_u32("uvc_enc_out", &cmd->have_output, 0);
@@ -1642,6 +1659,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->h264_cfg.trans_8x8 = 1;
     p->h264_cfg.level = MPP_ENC_CFG_H264_DEFAULT_LEVEL;
     p->h264_cfg.bps = p->width * p->height / 8 * p->h264_cfg.framerate / 2;
+    p->h264_cfg.idr_bps = p->width * p->height / 8 * p->h264_cfg.framerate;
 
     //h265 set
     p->h265_cfg.gop = 60;
@@ -1657,6 +1675,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->h265_cfg.qp.max_i_qp = 46;
     p->h265_cfg.qp.min_i_qp = 24;
     p->h265_cfg.bps = p->width * p->height / 8 * p->h265_cfg.framerate / 2;
+    p->h265_cfg.idr_bps = p->width * p->height / 8 * p->h265_cfg.framerate;
 
 #if MPP_ENC_OSD_ENABLE
     p->osd_count = 0;
@@ -1700,7 +1719,7 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
     LOG_DEBUG("### dump_mpp_enc_cfg for h264 cfg:\n");
     LOG_DEBUG("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
              "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,profile=%d \n"
-             "cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d \n",
+             "cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d idr_bps=%d\n",
              p->h264_cfg.gop, p->h264_cfg.rc_mode, p->h264_cfg.framerate,
              p->h264_cfg.range, p->h264_cfg.head_each_idr,
              p->h264_cfg.sei, p->h264_cfg.qp.init,
@@ -1708,18 +1727,18 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              p->h264_cfg.qp.step, p->h264_cfg.profile,
              p->h264_cfg.cabac_en, p->h264_cfg.cabac_idc,
              p->h264_cfg.trans_8x8, p->h264_cfg.level,
-             p->h264_cfg.bps);
+             p->h264_cfg.bps, p->h264_cfg.idr_bps);
 
     LOG_DEBUG("### dump_mpp_enc_cfg for h265 cfg:\n");
     LOG_DEBUG("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
              "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,max_i_qp=%d \n"
-             "min_i_qp=%d,bps=%d \n",
+             "min_i_qp=%d,bps=%d idr_bps=%d\n",
              p->h265_cfg.gop, p->h265_cfg.rc_mode, p->h265_cfg.framerate,
              p->h265_cfg.range, p->h265_cfg.head_each_idr,
              p->h265_cfg.sei, p->h265_cfg.qp.init,
              p->h265_cfg.qp.max, p->h265_cfg.qp.min,
              p->h265_cfg.qp.step, p->h265_cfg.qp.max_i_qp,
-             p->h265_cfg.qp.min_i_qp, p->h265_cfg.bps);
+             p->h265_cfg.qp.min_i_qp, p->h265_cfg.bps, p->h265_cfg.idr_bps);
 #if MPP_ENC_OSD_ENABLE
     LOG_DEBUG("### dump_mpp_enc_cfg for osd cfg:\n");
     LOG_DEBUG("osd_enable=%d, count=%d, osd_plt_user=%d\n",
@@ -1737,6 +1756,7 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
 static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
 {
     int ret = 0;
+    RK_U32 fps;
 
     if (NULL == p)
         return -1;
@@ -1872,6 +1892,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
         }
     }
 
+    fps = (p->common_cfg.frc_fps ? p->common_cfg.frc_fps : p->fps);
     switch (p->type)
     {
     case MPP_VIDEO_CodingMJPEG :
@@ -1907,46 +1928,35 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                          MPP_FRAME_RANGE_MPEG : MPP_FRAME_RANGE_JPEG;
                     p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(1);
                 }
-                char resolution_name[10] = "";
-                sprintf(resolution_name, "%d*%d",p->width, p->height);
+
+                char resolution_name[15] = "";
+                sprintf(resolution_name, "%d*%dp%d",p->width, p->height, fps);
                 cJSON *child_mjpeg_resolution_name = cJSON_GetObjectItem(child_mjpeg_param, resolution_name);
+                cJSON *child_mjpeg_qfactor = NULL;
+                cJSON *child_mjpeg_qfactor_frc_min =  NULL;
                 if (child_mjpeg_resolution_name) {
-                    cJSON *child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_resolution_name, "qfactor");
-                    if (child_mjpeg_qfactor)
-                    {
-                        p->mjpeg_cfg.qfactor = child_mjpeg_qfactor->valueint;
-                        p->mjpeg_cfg.qfactor = p->mjpeg_cfg.qfactor < 0 ? 0 :
-                                               p->mjpeg_cfg.qfactor > 99 ? 99 :
-                                               p->mjpeg_cfg.qfactor;
-                        p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
-                    }
-                    cJSON *child_mjpeg_qfactor_frc_min = cJSON_GetObjectItem(child_mjpeg_resolution_name, "qfactor_frc_min");
-                    if (child_mjpeg_qfactor_frc_min)
-                    {
-                        p->mjpeg_cfg.qfactor_frc_min = child_mjpeg_qfactor_frc_min->valueint;
-                        p->mjpeg_cfg.qfactor_frc_min = p->mjpeg_cfg.qfactor_frc_min < 0 ? 0 :
-                                                       p->mjpeg_cfg.qfactor_frc_min > p->mjpeg_cfg.qfactor ? p->mjpeg_cfg.qfactor :
-                                                       p->mjpeg_cfg.qfactor_frc_min;
-                    }
+                    child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_resolution_name, "qfactor");
+                    child_mjpeg_qfactor_frc_min = cJSON_GetObjectItem(child_mjpeg_resolution_name, "qfactor_frc_min");
                 } else {
-                    cJSON *child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_param, "qfactor");
-                    if (child_mjpeg_qfactor)
-                    {
-                        p->mjpeg_cfg.qfactor = child_mjpeg_qfactor->valueint;
-                        p->mjpeg_cfg.qfactor = p->mjpeg_cfg.qfactor < 0 ? 0 :
-                                               p->mjpeg_cfg.qfactor > 99 ? 99 :
-                                               p->mjpeg_cfg.qfactor;
-                        p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
-                    }
-                    cJSON *child_mjpeg_qfactor_frc_min = cJSON_GetObjectItem(child_mjpeg_param, "qfactor_frc_min");
-                    if (child_mjpeg_qfactor_frc_min)
-                    {
-                        p->mjpeg_cfg.qfactor_frc_min = child_mjpeg_qfactor_frc_min->valueint;
-                        p->mjpeg_cfg.qfactor_frc_min = p->mjpeg_cfg.qfactor_frc_min < 0 ? 0 :
-                                                       p->mjpeg_cfg.qfactor_frc_min > p->mjpeg_cfg.qfactor ? p->mjpeg_cfg.qfactor :
-                                                       p->mjpeg_cfg.qfactor_frc_min;
-                    }
+                    child_mjpeg_qfactor = cJSON_GetObjectItem(child_mjpeg_param, "qfactor");
+                    child_mjpeg_qfactor_frc_min = cJSON_GetObjectItem(child_mjpeg_param, "qfactor_frc_min");
                 }
+                if (child_mjpeg_qfactor)
+                {
+                    p->mjpeg_cfg.qfactor = child_mjpeg_qfactor->valueint;
+                    p->mjpeg_cfg.qfactor = p->mjpeg_cfg.qfactor < 0 ? 0 :
+                                           p->mjpeg_cfg.qfactor > 99 ? 99 :
+                                           p->mjpeg_cfg.qfactor;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(2);
+                }
+                if (child_mjpeg_qfactor_frc_min)
+                {
+                    p->mjpeg_cfg.qfactor_frc_min = child_mjpeg_qfactor_frc_min->valueint;
+                    p->mjpeg_cfg.qfactor_frc_min = p->mjpeg_cfg.qfactor_frc_min < 0 ? 0 :
+                                                   p->mjpeg_cfg.qfactor_frc_min > p->mjpeg_cfg.qfactor ? p->mjpeg_cfg.qfactor :
+                                                   p->mjpeg_cfg.qfactor_frc_min;
+                }
+
                 cJSON *child_mjpeg_qfactor_min = cJSON_GetObjectItem(child_mjpeg_param, "qfactor_min");
                 if (child_mjpeg_qfactor_min)
                 {
@@ -2178,7 +2188,19 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                     }
                     p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(14);
                 }
-                cJSON *child_h264_bps = cJSON_GetObjectItem(child_h264_param, "bps");
+                char resolution_name[15] = "";
+                sprintf(resolution_name, "%d*%dp%d",p->width, p->height, fps);
+                cJSON *child_h264_bps = NULL;
+                cJSON *child_h264_force_idr_bps = NULL;
+                cJSON *child_h264_resolution_name = cJSON_GetObjectItem(child_h264_param, resolution_name);
+                if (child_h264_resolution_name) {
+                    child_h264_bps = cJSON_GetObjectItem(child_h264_resolution_name, "bps");
+                    child_h264_force_idr_bps = cJSON_GetObjectItem(child_h264_resolution_name, "force_idr_bps");
+                } else {
+                    child_h264_bps = cJSON_GetObjectItem(child_h264_param, "bps");
+                    child_h264_force_idr_bps = cJSON_GetObjectItem(child_h264_param, "force_idr_bps");
+                }
+
                 if (child_h264_bps)
                 {
                     p->h264_cfg.bps = child_h264_bps->valueint;
@@ -2187,6 +2209,15 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                       p->h264_cfg.bps;
                     p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(15);
                 }
+                if (child_h264_force_idr_bps)
+                {
+                    p->h264_cfg.idr_bps = child_h264_force_idr_bps->valueint;
+                    p->h264_cfg.idr_bps = p->h264_cfg.idr_bps < MPP_ENC_CFG_MIN_BPS ? MPP_ENC_CFG_MIN_BPS :
+                                          p->h264_cfg.idr_bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
+                                          p->h264_cfg.idr_bps;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(16);
+                }
+
                 LOG_INFO("h264_cfg.change:0x%x\n", p->h264_cfg.change);
             }
             else
@@ -2321,7 +2352,19 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                               p->h265_cfg.qp.min_i_qp;
                     p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(11);
                 }
-                cJSON *child_h265_bps = cJSON_GetObjectItem(child_h265_param, "bps");
+                char resolution_name[15] = "";
+                sprintf(resolution_name, "%d*%dp%d",p->width, p->height, fps);
+                cJSON *child_h265_bps = NULL;
+                cJSON *child_h265_force_idr_bps = NULL;
+                cJSON *child_h265_resolution_name = cJSON_GetObjectItem(child_h265_param, resolution_name);
+                if (child_h265_resolution_name) {
+                    child_h265_bps = cJSON_GetObjectItem(child_h265_resolution_name, "bps");
+                    child_h265_force_idr_bps = cJSON_GetObjectItem(child_h265_resolution_name, "force_idr_bps");
+                } else {
+                    child_h265_bps = cJSON_GetObjectItem(child_h265_param, "bps");
+                    child_h265_force_idr_bps = cJSON_GetObjectItem(child_h265_param, "force_idr_bps");
+                }
+
                 if (child_h265_bps)
                 {
                     p->h265_cfg.bps = child_h265_bps->valueint;
@@ -2329,6 +2372,14 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                       p->h265_cfg.bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
                                       p->h265_cfg.bps;
                     p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(12);
+                }
+                if (child_h265_force_idr_bps)
+                {
+                    p->h265_cfg.idr_bps = child_h265_force_idr_bps->valueint;
+                    p->h265_cfg.idr_bps = p->h265_cfg.idr_bps < MPP_ENC_CFG_MIN_BPS ? MPP_ENC_CFG_MIN_BPS :
+                                          p->h265_cfg.idr_bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
+                                          p->h265_cfg.idr_bps;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(13);
                 }
 
                 LOG_INFO("h265_cfg.change:0x%x\n", p->h265_cfg.change);
@@ -2452,6 +2503,131 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
     return ret;
 }
 
+static MPP_RET mpp_enc_bps_set(MpiEncTestData *p, RK_U32 bps)
+{
+    MPP_RET ret = MPP_OK;
+
+    switch (p->type)
+    {
+        case MPP_VIDEO_CodingMJPEG:
+        {
+            switch (p->mjpeg_cfg.rc_mode)
+            {
+                case MPP_ENC_RC_MODE_FIXQP :
+                {
+                    /* do not set bps on fix qp mode */
+                } break;
+                case MPP_ENC_RC_MODE_CBR :
+                {
+                    /* CBR mode has narrow bound */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 15 / 16);
+                    p->mjpeg_cfg.frc_bps = bps;
+                }
+                break;
+                case MPP_ENC_RC_MODE_VBR :
+                {
+                    /* CBR mode has wide bound */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 1 / 16);
+                    p->mjpeg_cfg.frc_bps = bps;
+                }
+                break;
+                default :
+                {
+                    LOG_ERROR("unsupport encoder rc mode %d\n", p->mjpeg_cfg.rc_mode);
+                }
+                break;
+            }
+        }
+        break;
+        case MPP_VIDEO_CodingAVC:
+        {
+            switch (p->h264_cfg.rc_mode)
+            {
+                case MPP_ENC_RC_MODE_FIXQP :
+                {
+                    /* do not set bps on fix qp mode */
+                } break;
+                case MPP_ENC_RC_MODE_CBR :
+                {
+                    /* CBR mode has narrow bound */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 15 / 16);
+                }
+                break;
+                case MPP_ENC_RC_MODE_VBR :
+                {
+                    /* VBR mode has wide bound */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 1 / 16);
+                }
+                break;
+                case MPP_ENC_RC_MODE_AVBR :
+                {
+                    /* AVBR mode min is mean the silence bps, do not too low */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 1 / 4);
+                }
+                break;
+                default :
+                {
+                    LOG_ERROR("unsupport encoder rc mode %d\n", p->h264_cfg.rc_mode);
+                }
+                break;
+            }
+        }
+        break;
+        case MPP_VIDEO_CodingHEVC:
+        {
+            switch (p->h265_cfg.rc_mode)
+            {
+                case MPP_ENC_RC_MODE_FIXQP :
+                {
+                    /* do not set bps on fix qp mode */
+                } break;
+                case MPP_ENC_RC_MODE_CBR :
+                {
+                    /* CBR mode has narrow bound */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 15 / 16);
+                }
+                break;
+                case MPP_ENC_RC_MODE_VBR :
+                {
+                    /* CBR mode has wide bound */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 1 / 16);
+                }
+                break;
+                case MPP_ENC_RC_MODE_AVBR :
+                {
+                    /* AVBR mode min is mean the silence bps, do not too low */
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_target", bps);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_max", bps * 17 / 16);
+                    mpp_enc_cfg_set_s32(p->cfg, "rc:bps_min", bps * 1 / 4);
+                }
+                break;
+                default :
+                {
+                    LOG_ERROR("unsupport encoder rc mode %d\n", p->h265_cfg.rc_mode);
+                }
+                break;
+            }
+        }
+        break;
+    }
+    return ret;
+}
+
+
 static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 {
     MPP_RET ret;
@@ -2537,36 +2713,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:mode", p->mjpeg_cfg.rc_mode);
         if (init || (p->mjpeg_cfg.change & BIT(7)))
         {
-            switch (p->mjpeg_cfg.rc_mode)
-            {
-                case MPP_ENC_RC_MODE_FIXQP :
-                {
-                    /* do not set bps on fix qp mode */
-                } break;
-                case MPP_ENC_RC_MODE_CBR :
-                {
-                    /* CBR mode has narrow bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->mjpeg_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->mjpeg_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->mjpeg_cfg.bps * 15 / 16);
-                    p->mjpeg_cfg.frc_bps = p->mjpeg_cfg.bps;
-                }
-                break;
-                case MPP_ENC_RC_MODE_VBR :
-                {
-                    /* CBR mode has wide bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->mjpeg_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->mjpeg_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->mjpeg_cfg.bps * 1 / 16);
-                    p->mjpeg_cfg.frc_bps = p->mjpeg_cfg.bps;
-                }
-                break;
-                default :
-                {
-                    LOG_ERROR("unsupport encoder rc mode %d\n", p->mjpeg_cfg.rc_mode);
-                }
-                break;
-            }
+            mpp_enc_bps_set(p, p->mjpeg_cfg.bps);
         }
         if (init || (p->mjpeg_cfg.change & BIT(8)))
         {
@@ -2598,7 +2745,16 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     case MPP_VIDEO_CodingAVC :
     {
         if (init || (p->h264_cfg.change & BIT(0)))
-            mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h264_cfg.gop);
+        {
+            if (init && p->common_cfg.force_idr_count * p->common_cfg.force_idr_period)
+            {
+                mpp_enc_cfg_set_s32(cfg, "rc:gop", p->common_cfg.force_idr_period);
+            }
+            else
+            {
+                mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h264_cfg.gop);
+            }
+        }
         if (init || (p->h264_cfg.change & BIT(1)))
             mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h264_cfg.rc_mode);
         if (init || (p->h264_cfg.change & BIT(2)))
@@ -2675,41 +2831,13 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 
         if (init || (p->h264_cfg.change & BIT(15)))
         {
-            switch (p->h264_cfg.rc_mode)
+            if (init && p->h264_cfg.idr_bps)
             {
-                case MPP_ENC_RC_MODE_FIXQP :
-                {
-                    /* do not set bps on fix qp mode */
-                } break;
-                case MPP_ENC_RC_MODE_CBR :
-                {
-                    /* CBR mode has narrow bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 15 / 16);
-                }
-                break;
-                case MPP_ENC_RC_MODE_VBR :
-                {
-                    /* VBR mode has wide bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 16);
-                }
-                break;
-                case MPP_ENC_RC_MODE_AVBR :
-                {
-                    /* AVBR mode min is mean the silence bps, do not too low */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h264_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h264_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h264_cfg.bps * 1 / 4);
-                }
-                break;
-                default :
-                {
-                    LOG_ERROR("unsupport encoder rc mode %d\n", p->h264_cfg.rc_mode);
-                }
-                break;
+                mpp_enc_bps_set(p, p->h264_cfg.idr_bps);
+            }
+            else
+            {
+                mpp_enc_bps_set(p, p->h264_cfg.bps);
             }
         }
     }
@@ -2720,7 +2848,16 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     case MPP_VIDEO_CodingHEVC :
     {
         if (init || (p->h265_cfg.change & BIT(0)))
-            mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h265_cfg.gop);
+        {
+            if (init && p->common_cfg.force_idr_count * p->common_cfg.force_idr_period)
+            {
+                mpp_enc_cfg_set_s32(cfg, "rc:gop", p->common_cfg.force_idr_period);
+            }
+            else
+            {
+                mpp_enc_cfg_set_s32(cfg, "rc:gop", p->h265_cfg.gop);
+            }
+        }
         if (init || (p->h265_cfg.change & BIT(1)))
             mpp_enc_cfg_set_s32(cfg, "rc:mode", p->h265_cfg.rc_mode);
         if (init || (p->h265_cfg.change & BIT(2)))
@@ -2789,41 +2926,13 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "h265:qp_min_i", p->h265_cfg.qp.min_i_qp);
         if (init || (p->h265_cfg.change & BIT(12)))
         {
-            switch (p->h265_cfg.rc_mode)
+            if (init && p->h265_cfg.idr_bps)
             {
-                case MPP_ENC_RC_MODE_FIXQP :
-                {
-                    /* do not set bps on fix qp mode */
-                } break;
-                case MPP_ENC_RC_MODE_CBR :
-                {
-                    /* CBR mode has narrow bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 15 / 16);
-                }
-                break;
-                case MPP_ENC_RC_MODE_VBR :
-                {
-                    /* CBR mode has wide bound */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 16);
-                }
-                break;
-                case MPP_ENC_RC_MODE_AVBR :
-                {
-                    /* AVBR mode min is mean the silence bps, do not too low */
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_target", p->h265_cfg.bps);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_max", p->h265_cfg.bps * 17 / 16);
-                    mpp_enc_cfg_set_s32(cfg, "rc:bps_min", p->h265_cfg.bps * 1 / 4);
-                }
-                break;
-                default :
-                {
-                    LOG_ERROR("unsupport encoder rc mode %d\n", p->h265_cfg.rc_mode);
-                }
-                break;
+                mpp_enc_bps_set(p, p->h265_cfg.idr_bps);
+            }
+            else
+            {
+                mpp_enc_bps_set(p, p->h265_cfg.bps);
             }
         }
     }
