@@ -52,6 +52,7 @@ extern mpp_osd_region_id_enable_get(MpiEncTestData *p, int region_id);
 extern void mpp_osd_enable_set(MpiEncTestData *p, bool enable);
 extern bool mpp_osd_enable_get(MpiEncTestData *p);
 extern MPP_RET mpp_osd_default_set(MpiEncTestData *p);
+void mpp_osd_run(MpiEncTestData *p, int fd, MppFrame frame);
 
 #if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
 extern void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd);
@@ -979,47 +980,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 #endif
 
 #if MPP_ENC_OSD_ENABLE
-    if (mpp_osd_enable_get(p)) {// && p->osd_data.num_region && p->osd_data.buf
-        if (p->type == MPP_VIDEO_CodingMJPEG) {
-#if MJPEG_RGA_OSD_ENABLE
-            for (int i = 0; i < p->osd_count; i ++) {
-                if (p->osd_cfg[i].set_ok == true) {
-                   if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
-#if 0 //test
-                       if (!access("/tmp/osd0", 0)) {
-                           mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
-                           system("rm /tmp/osd0");
-                       } //test
-                       if (!access("/tmp/osd1", 0)) {
-                           mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
-                           system("rm /tmp/osd1");
-                       }
-#endif
-                       if (mpp_osd_region_id_enable_get(p, i))
-                           mjpeg_rga_osd_process(p, i, info->fd);
-                   } else {
-                       LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
-                   }
-                }
-            }
-#endif
-        } else {
-            MppMeta meta = NULL;
-            meta = mpp_frame_get_meta(frame);
-           // LOG_INFO("MPP Encoder: set osd data(%d regions) to frame\n", p->osd_data.num_region);
-#if 0 //test
-            if (!access("/tmp/osd0", 0)) {
-                mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
-                system("rm /tmp/osd0");
-            } //test
-            if (!access("/tmp/osd1", 0)) {
-                mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
-                system("rm /tmp/osd1");
-            }
-#endif
-            mpp_meta_set_ptr(meta, KEY_OSD_DATA, (void*)&p->osd_data);
-        }
-    }
+    mpp_osd_run(p, info->fd, frame);
 #endif
 
     ret = mpi->poll(ctx, MPP_PORT_INPUT, MPP_POLL_BLOCK);

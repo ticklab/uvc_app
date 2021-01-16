@@ -70,6 +70,37 @@ typedef uint16_t WORD;
 typedef uint32_t DWORD;
 typedef int32_t LONG;
 
+enum BMP_TYPE {
+    BMP_TYPE_NO_DEF = 0,
+    BMP_TYPE_ARGB,
+    BMP_TYPE_BGRA_1, // 0x00ffffff   ->transparency
+    BMP_TYPE_BGRA_2, // 0x00xxxxxx -> transparency
+};
+
+typedef union
+{
+    struct
+    {
+        uint32_t data_32;
+    };
+    struct
+    {
+        uint8_t argb_a; // low bit
+        uint8_t argb_r;
+        uint8_t argb_g;
+        uint8_t argb_b; // high bit
+    };
+    struct
+    {
+        uint8_t bgra_b; // low bit
+        uint8_t bgra_g;
+        uint8_t bgra_r;
+        uint8_t bgra_a; // high bit
+    };
+
+}BMP_DATA;
+
+
 typedef struct tagBITMAPFILEHEADER {
   DWORD bfSize;
   WORD bfReserved1;
@@ -122,6 +153,7 @@ typedef struct osd_data {
     uint8_t *bmp_data;
     BITMAPFILEHEADER bmp_bit_head;
     BITMAPINFOHEADER bmp_info_head;
+    enum BMP_TYPE bmp_type;
 } osd_data_s;
 
 enum {

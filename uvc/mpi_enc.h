@@ -329,6 +329,7 @@ typedef struct
     RK_U32 osd_count;
     bool osd_enable;
     bool osd_plt_user;
+    bool osd_index_enable[OSD_REGIONS_CNT];
     MpiEncOSDCfg osd_cfg[OSD_REGIONS_CNT];
     RK_U32 plt_table[PALETTE_TABLE_LEN]; //ayuv map
     int rga_osd_drm_fd;

@@ -198,22 +198,103 @@ static bool osd_get_bmp_info(osd_data_s *draw_data);
 
 void mpp_osd_region_id_enable_set(MpiEncTestData *p, int region_id, int enable)
 {
-    p->osd_data.region[region_id].enable = enable;
+    if (p)
+        p->osd_data.region[region_id].enable = enable;
 }
 
 int mpp_osd_region_id_enable_get(MpiEncTestData *p, int region_id)
 {
-    return p->osd_data.region[region_id].enable;
+    if (p)
+        return p->osd_data.region[region_id].enable;
+    else
+        return -1;
 }
 
 void mpp_osd_enable_set(MpiEncTestData *p, bool enable)
 {
-    p->osd_enable = enable;
+    int i = 0;
+    if (p) {
+        p->osd_enable = enable;
+        if ((p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC)) {
+            if (!enable) {
+                for (i = 0; i < OSD_REGIONS_CNT; i ++) {
+#ifdef MPP_OSD_ENABLE_SET_HISTORY
+                    p->osd_index_enable[i] = p->osd_data.region[i].enable;
+#endif
+                    mpp_osd_region_id_enable_set(p, i, false);
+                }
+            } else {
+                for (i = 0; i < OSD_REGIONS_CNT; i ++) {
+#ifdef MPP_OSD_ENABLE_SET_HISTORY
+                    mpp_osd_region_id_enable_set(p, i, p->osd_index_enable[i]);
+#else
+                    mpp_osd_region_id_enable_set(p, i, true);
+#endif
+                }
+            }
+        }
+    }
 }
 
 bool mpp_osd_enable_get(MpiEncTestData *p)
 {
-    return p->osd_enable;
+    if (p)
+        return p->osd_enable;
+    else
+        return false;
+}
+
+void mpp_osd_run(MpiEncTestData *p, int fd, MppFrame frame)
+{
+#if 0 //test
+    if (!access("/tmp/osd2", 0)) {
+        mpp_osd_enable_set(p, !mpp_osd_enable_get(p));
+        system("rm /tmp/osd2");
+    }
+#endif
+
+    if (mpp_osd_enable_get(p)) {// && p->osd_data.num_region && p->osd_data.buf
+        if (p->type == MPP_VIDEO_CodingMJPEG) {
+#if MJPEG_RGA_OSD_ENABLE
+            for (int i = 0; i < p->osd_count; i ++) {
+                if (p->osd_cfg[i].set_ok == true) {
+                   if (p->osd_cfg[i].type == OSD_REGION_TYPE_PICTURE) {
+#if 0 //test
+                       if (!access("/tmp/osd0", 0)) {
+                           mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
+                           system("rm /tmp/osd0");
+                       } //test
+                       if (!access("/tmp/osd1", 0)) {
+                           mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
+                           system("rm /tmp/osd1");
+                       }
+#endif
+                       if (mpp_osd_region_id_enable_get(p, i))
+                           mjpeg_rga_osd_process(p, i, fd);
+                   } else {
+                       LOG_WARN("ost no supprot this type:%d\n", p->osd_cfg[i].type);
+                   }
+                }
+            }
+#endif
+        } else {
+            MppMeta meta = NULL;
+            meta = mpp_frame_get_meta(frame);
+           // LOG_INFO("MPP Encoder: set osd data(%d regions) to frame\n", p->osd_data.num_region);
+#if 0 //test
+            if (!access("/tmp/osd0", 0)) {
+                mpp_osd_region_id_enable_set(p, 0, !mpp_osd_region_id_enable_get(p, 0));
+                system("rm /tmp/osd0");
+            } //test
+            if (!access("/tmp/osd1", 0)) {
+                mpp_osd_region_id_enable_set(p, 1, !mpp_osd_region_id_enable_get(p, 1));
+                system("rm /tmp/osd1");
+            }
+#endif
+            mpp_meta_set_ptr(meta, KEY_OSD_DATA, (void*)&p->osd_data);
+        }
+    }
+
 }
 
 static int mpp_osd_update_region_info(MppEncOSDData *osd, OsdRegionData *region_data)
@@ -478,8 +559,12 @@ static bool osd_get_bmp_info(osd_data_s *draw_data)
     }
     fread(&draw_data->bmp_bit_head, 1, sizeof(BITMAPFILEHEADER), draw_data->bmp_file);
     fread(&draw_data->bmp_info_head, 1, sizeof(BITMAPINFOHEADER), draw_data->bmp_file);
-    if (draw_data->bmp_bit_head.bfOffBits > 54)
+    if (draw_data->bmp_bit_head.bfOffBits > 54) {
         fread(tmp, 1, draw_data->bmp_bit_head.bfOffBits - 54, draw_data->bmp_file);
+        draw_data->bmp_type = BMP_TYPE_BGRA_2;
+    } else {
+        draw_data->bmp_type = BMP_TYPE_BGRA_1;
+    }
 
     if (draw_data->bmp_info_head.biBitCount < 24) {
         LOG_ERROR("bmp:%s must be 24/32 depth!", draw_data->image);
@@ -604,7 +689,7 @@ static void bmp_to_yuva_map(osd_data_s *data)
         break;
         case 32: {
             RK_U32 TargetWidth, TargetHeight;
-            RK_U32 ColorValue;
+            BMP_DATA ColorValue;
             RK_U32 *BitmapLineStart;
             RK_U8 *CanvasLineStart;
             TargetWidth = data->width;
@@ -620,9 +705,14 @@ static void bmp_to_yuva_map(osd_data_s *data)
                 BitmapLineStart = (RK_U32 *)data->bmp_data + (TargetHeight - 1 - i) * TargetWidth;
                 CanvasLineStart = data->buffer + i * TargetWidth;
                 for (RK_U32 j = 0; j < TargetWidth; j++) {
-                    ColorValue = *(BitmapLineStart + j);
+                    ColorValue.data_32 = *(BitmapLineStart + j);
+                    if (data->bmp_type == BMP_TYPE_BGRA_1 && ColorValue.data_32 != 0x00ffffff)
+                        ColorValue.data_32 |= 0xff000000;
+                    else if (data->bmp_type == BMP_TYPE_BGRA_2 && ColorValue.bgra_a == 0x00)
+                        ColorValue.data_32 = 0x00ffffff;
+
                     tb_data = find_argb_color_tbl_by_order(
-                          data->plt_table, PALETTE_TABLE_LEN, ColorValue);
+                          data->plt_table, PALETTE_TABLE_LEN, ColorValue.data_32);
 #if FIX_MPP_WHITE_EDGE_VALUE
                     if (tb_data > FIX_MPP_WHITE_EDGE_VALUE) {
                         //LOG_ERROR("data:%d!", tb_data); // test
@@ -631,7 +721,7 @@ static void bmp_to_yuva_map(osd_data_s *data)
 #endif
                     *(CanvasLineStart + j) = tb_data;
 #if OSD_DATA_DEBUG
-                    fwrite(&ColorValue, 1, 4, fp_in);
+                    fwrite(&ColorValue.data_32, 1, 4, fp_in);
                     fwrite(&tb_data, 1, 1, fp_out);
 #endif
                 }
@@ -820,11 +910,11 @@ int mjpeg_rga_osd_bmp_to_buff(MpiEncTestData *p, osd_data_s *draw_data)
     p->osd_cfg[id].width = draw_data->width;
     p->osd_cfg[id].height = draw_data->height;
     p->osd_cfg[id].drm_size = draw_data->size;
-    LOG_DEBUG("w:%d h:%d d:%d size:%d bfOffBits:%d\n",
+    LOG_DEBUG("w:%d h:%d d:%d size:%d bfOffBits:%d bmp_type:%d\n",
                draw_data->width, draw_data->height,
                draw_data->bmp_info_head.biBitCount, draw_data->size,
-               draw_data->bmp_bit_head.bfOffBits); //test debug
-
+               draw_data->bmp_bit_head.bfOffBits,
+               draw_data->bmp_type); //test debug
 
     if (draw_data->bmp_info_head.biBitCount != 32) {
         LOG_ERROR("only support 32 bit argb bmp!this biBitCount:%d not support now!\n",
@@ -876,36 +966,60 @@ int mjpeg_rga_osd_bmp_to_buff(MpiEncTestData *p, osd_data_s *draw_data)
 #endif
 
     RK_U32 TargetWidth, TargetHeight;
-    RK_U32 ColorValue;
+    BMP_DATA ColorValue;
     RK_U32 *BitmapLineStart;
     RK_U32 *CanvasLineStart;
     RK_U8 CanvasValue;
     TargetWidth = draw_data->width;
     TargetHeight = draw_data->height;
 
-    for (RK_U32 i = 0; i < TargetHeight; i++) {
-        BitmapLineStart = (RK_U32 *)draw_data->bmp_data + (TargetHeight - 1 - i) * TargetWidth;
-        CanvasLineStart = (RK_U32 *)(p->osd_cfg[id].buffer + i * TargetWidth * 4);
-        for (RK_U32 j = 0; j < TargetWidth; j++) {
-            ColorValue = *(BitmapLineStart + j); //argb format
-            if (ColorValue == 0x00ffffff)
-                ColorValue = 0x00000000; //0x00000000 mean transparency
-            else if (ColorValue > 0) {
+    if (draw_data->bmp_type == BMP_TYPE_BGRA_1) {
+        for (RK_U32 i = 0; i < TargetHeight; i++) {
+            BitmapLineStart = (RK_U32 *)draw_data->bmp_data + (TargetHeight - 1 - i) * TargetWidth;
+            CanvasLineStart = (RK_U32 *)(p->osd_cfg[id].buffer + i * TargetWidth * 4);
+            for (RK_U32 j = 0; j < TargetWidth; j++) {
+                ColorValue.data_32 = *(BitmapLineStart + j); //bgra1 format
+                if (ColorValue.data_32 == 0x00ffffff)
+                    ColorValue.data_32 = 0x00000000; //0x00000000 mean transparency
+                else if (ColorValue.data_32 > 0) {
 #if FIX_RGA_WHITE_EDGE_VALUE
-                RK_U8 r,g,b;
-                r = ColorValue >> 16;
-                g = ColorValue >> 8;
-                b = ColorValue ;
-                if (r > FIX_RGA_WHITE_EDGE_VALUE &&
-                    g > FIX_RGA_WHITE_EDGE_VALUE &&
-                    b > FIX_RGA_WHITE_EDGE_VALUE) //fix white edge
-                    ColorValue = 0x00000000; //0x00000000 mean transparency
-                else
+                    if (ColorValue.bgra_r > FIX_RGA_WHITE_EDGE_VALUE &&
+                        ColorValue.bgra_g > FIX_RGA_WHITE_EDGE_VALUE &&
+                        ColorValue.bgra_b > FIX_RGA_WHITE_EDGE_VALUE) //fix white edge
+                        ColorValue.data_32 = 0x00000000; //0x00000000 mean transparency
+                    else
 #endif
-                    ColorValue |= 0xff000000; //0xffxxxxxx mean not transparency
+                        ColorValue.data_32 |= 0xff000000; //0xffxxxxxx mean not transparency
+                }
+                *(CanvasLineStart + j) = ColorValue.data_32;// bgra -> bgra
             }
-            *(CanvasLineStart + j) = ColorValue;// argb -> bgra
         }
+
+    } else if (draw_data->bmp_type == BMP_TYPE_BGRA_2) {
+        for (RK_U32 i = 0; i < TargetHeight; i++) {
+            BitmapLineStart = (RK_U32 *)draw_data->bmp_data + (TargetHeight - 1 - i) * TargetWidth;
+            CanvasLineStart = (RK_U32 *)(p->osd_cfg[id].buffer + i * TargetWidth * 4);
+            for (RK_U32 j = 0; j < TargetWidth; j++) {
+                ColorValue.data_32 = *(BitmapLineStart + j); //bgra2 format
+                if (ColorValue.bgra_a == 0x00)
+                    ColorValue.data_32 = 0x00000000; //0x00000000 mean transparency
+                else if (ColorValue.data_32 > 0) {
+#if FIX_RGA_WHITE_EDGE_VALUE
+                    if (ColorValue.bgra_r > FIX_RGA_WHITE_EDGE_VALUE &&
+                        ColorValue.bgra_g > FIX_RGA_WHITE_EDGE_VALUE &&
+                        ColorValue.bgra_b > FIX_RGA_WHITE_EDGE_VALUE) //fix white edge
+                        ColorValue.data_32 = 0x00000000; //0x00000000 mean transparency
+                    else
+#endif
+                        ColorValue.data_32 |= 0xff000000; //0xffxxxxxx mean not transparency
+                }
+                *(CanvasLineStart + j) = ColorValue.data_32;// bgra -> bgra
+            }
+        }
+    } else {
+        LOG_ERROR("no support such bmp type=%d!\n", draw_data->bmp_type);
+        ret = -1;
+        goto ERR;
     }
 
 #if OSD_DATA_DEBUG
