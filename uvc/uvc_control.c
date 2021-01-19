@@ -192,6 +192,8 @@ int check_uvc_video_id(void)
                     else if (uvc_ctrl[2].id < 0)
                         uvc_ctrl[2].id = i;
                     LOG_DEBUG("found uvc video port.\n");
+                    pclose(fp);
+                    break;
                 }
             }
             pclose(fp);
