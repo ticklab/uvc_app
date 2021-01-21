@@ -38,6 +38,11 @@
 #include "uvc_log.h"
 #include "mpi_enc.h"
 #include "yuv.h"
+#define USE_RGA_COPY_YUV 1
+#if USE_RGA_COPY_YUV
+#include <rga/im2d.h>
+#include <rga/rga.h>
+#endif
 
 #ifdef __cplusplus
 extern "C"
@@ -318,7 +323,31 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
                    }
                }
 #endif
+#if USE_RGA_COPY_YUV //use rga nv12-yuyv
+              {
+                  rga_buffer_t dst;
+                  rga_buffer_t src;
+                  IM_STATUS STATUS;
+                  int dst_fd = buffer->fd;
+                  src = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
+                  dst = wrapbuffer_fd(dst_fd, width, height, RK_FORMAT_YUYV_422);//buffer->fd
+                  src.format = RK_FORMAT_YCbCr_420_SP;
+                  dst.format = RK_FORMAT_YUYV_422;
+#if 0 //for check
+                  im_rect src_rect = {0, 0, 240, 160};
+                  im_rect pat_rect = {0, 0, width, height};
+                  STATUS = imcheck(src, dst, src_rect, pat_rect);
+                  printf("imcheck .... %s\n", imStrError(STATUS));
+#endif
+                  STATUS = imcvtcolor(src, dst, src.format, dst.format);
+                  if (STATUS != IM_STATUS_SUCCESS) {
+                      LOG_ERROR("(need update rgalib!)cvtcolor .... %s\n", imStrError(STATUS));
+                      NV12_to_YUYV(width, height, virt, buffer->buffer);
+                  }
+              }
+#else
                NV12_to_YUYV(width, height, virt, buffer->buffer);
+#endif
                uvc_buffer_read_set(e->video_id, buffer);
                //uvc_user_unlock();
            } else {
