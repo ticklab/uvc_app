@@ -728,7 +728,8 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     bool get_ok = false;
     int32_t use_time_us, now_time_us, last_time_us;
     struct timespec now_tm = {0, 0};
-    bool init = false;
+    bool in_init = false;
+    bool out_init = false;
 
     if (NULL == p)
         return MPP_ERR_NULL_PTR;
@@ -860,13 +861,13 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 
     for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
         if (uvc_buf->fd == p->out_buff_info[i].buf_fd) {
-            init = true;
+            out_init = true;
             packet = p->out_buff_info[i].packet;
             pkt_buf_out = p->out_buff_info[i].pkt_buf_out;
             break;
         }
     }
-    if (init == false)
+    if (out_init == false)
     {
         MppBufferInfo outputCommit;
         outputCommit.type = MPP_BUFFER_TYPE_DRM;
@@ -886,6 +887,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
                 p->out_buff_info[i].buf_fd = uvc_buf->fd;
                 p->out_buff_info[i].packet = packet;
                 p->out_buff_info[i].pkt_buf_out = pkt_buf_out;
+                out_init = true;
                 break;
             }
         }
@@ -902,16 +904,15 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
 #if 0
     mpp_frame_set_buffer(frame, p->frm_buf);
 #else
-    init = false;
     for (int i = 0; i < IN_BUF_COUNT_MAX; i++) {
         if (info->fd == p->in_buff_info[i].buf_fd) {
-            init = true;
+            in_init = true;
             buf = p->in_buff_info[i].buf;
             break;
         }
     }
 
-    if (init == false) {
+    if (in_init == false) {
         MppBufferInfo inputCommit;
         inputCommit.type = MPP_BUFFER_TYPE_ION;
         inputCommit.size = info->size;
@@ -928,6 +929,7 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
                 p->in_buff_info[i].buf_fd = info->fd;
                 p->in_buff_info[i].buf = buf;
                 p->in_buff_info[i].pkt_buf_out = pkt_buf_out;
+                in_init = true;
                 break;
             }
         }
@@ -1147,6 +1149,26 @@ RET:
         mpp_frame_deinit(&frame);
         frame = NULL;
     }
+    if (in_init == false)
+    {
+        if (buf)
+        {
+            mpp_buffer_put(buf);
+            buf = NULL;
+        }
+    }
+#ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+    if (out_init == false)
+    {
+        if (pkt_buf_out)
+        {
+            mpp_buffer_put(pkt_buf_out);
+            pkt_buf_out = NULL;
+        }
+        if (packet)
+            mpp_packet_deinit(&packet);
+    }
+#endif
 
     return ret;
 #else

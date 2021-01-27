@@ -267,7 +267,7 @@ typedef struct MppBuffNode
     bool init;
 } MppBuffInfo;
 
-#define IN_BUF_COUNT_MAX 6
+#define IN_BUF_COUNT_MAX 10
 #define OUT_BUF_COUNT_MAX 3
 
 #if RK_MPP_MJPEG_FPS_CONTROL
