@@ -3730,7 +3730,7 @@ uvc_events_process_control_data(struct uvc_device *dev,
     LOG_DEBUG("Control Request data phase (cs %02x  data %d entity %02x)\n", cs, *val, entity_id);
     return 0;
 }
-
+#if USE_RK_AISERVER
 void uvc_enc_format_to_ipc_enc_type(unsigned int fcc, struct CAMERA_INFO *camera_info)
 {
     switch (fcc) {
@@ -3754,6 +3754,7 @@ void uvc_enc_format_to_ipc_enc_type(unsigned int fcc, struct CAMERA_INFO *camera
             break;
     }
 }
+#endif
 
 static int
 uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
