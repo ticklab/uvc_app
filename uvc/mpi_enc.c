@@ -61,7 +61,7 @@ extern void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd);
 #endif
 
 #if RK_MPP_MJPEG_FPS_CONTROL
-extern void *mpp_mjpeg_fps_init(bool *enable, int mode, int fps);
+extern void *mpp_mjpeg_fps_init(bool *enable, int mode, int fps, int width, int height);
 extern void mpp_mjpeg_fps_deinit(void *fps_handle);
 extern bool mpp_mjpeg_encode_data_set(void *fps_handle, void *data, size_t len);
 #endif
@@ -1266,11 +1266,11 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     }
     pthread_create(&p->check_cfg_change_hd, NULL, thread_check_mpp_enc_chenge_loop, p);
 #if RK_MPP_MJPEG_FPS_CONTROL
-    if (mjpeg_is_high_solution(p) == true || p->mjpeg_cfg.enc_mode == 2)
+    if (mjpeg_is_high_solution(p) == true || p->mjpeg_cfg.enc_mode >= 2)
     {
         if (p->mjpeg_cfg.enc_mode == 0)
             p->fps_ctr_enable = true;
-        p->fps_handle = mpp_mjpeg_fps_init(&p->fps_ctr_enable, p->mjpeg_cfg.enc_mode, p->fps);
+        p->fps_handle = mpp_mjpeg_fps_init(&p->fps_ctr_enable, p->mjpeg_cfg.enc_mode, p->fps, p->width, p->height);
     }
 #endif
 
@@ -2001,7 +2001,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                 {
                     p->mjpeg_cfg.enc_mode = child_mjpeg_enc_mode->valueint;
                     p->mjpeg_cfg.enc_mode = p->mjpeg_cfg.enc_mode < 0 ? 0 :
-                                             p->mjpeg_cfg.enc_mode > 2 ? 2 :
+                                             p->mjpeg_cfg.enc_mode > 3 ? 3 :
                                              p->mjpeg_cfg.enc_mode;
                    // p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9); //not need.
                 }

@@ -4063,9 +4063,10 @@ uvc_events_process(struct uvc_device *dev)
             dev->is_streaming = 0;
             dev->first_buffer_queued = 0;
         }
-        uvc_buffer_deinit(dev->video_id);
         //join mpp thread
         uvc_control_exit();
+        uvc_buffer_deinit(dev->video_id);
+
         DBG("uvc_events_process:UVC_EVENT_STREAMOFF exit\n");
         return;
     case UVC_EVENT_RESUME:
@@ -4629,12 +4630,12 @@ uvc_gadget_main(int id)
         v4l2_close(vdev);
 
     uvc_close(udev);
+    //join mpp thread
+    uvc_control_exit();
     uvc_buffer_deinit(id);
 #if USE_RK_AISERVER
     uvc_ipc_event(UVC_IPC_EVENT_STOP, NULL);
 #endif
-    //join mpp thread
-    uvc_control_exit();
     set_uvc_control_restart();
 
     return 0;

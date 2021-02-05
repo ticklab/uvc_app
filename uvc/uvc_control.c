@@ -331,9 +331,16 @@ int uvc_control_loop(void)
         uvc_ctrl[2].start = false;
 #ifdef CAMERA_CONTROL
         // set fps later
+        int set_fps = uvc_ctrl[2].fps;
         if (access("/tmp/uvc_no_set_fps", 0)){
            sleep(1);
-           camera_pu_control_set(UVC_PU_FPS_CONTROL,uvc_ctrl[2].fps);// set camera fps
+           if (access("/tmp/uvc_no_reduce_fps", 0) &&
+               uvc_ctrl[2].format == V4L2_PIX_FMT_MJPEG && uvc_ctrl[2].height > 1440) {
+               if (set_fps > 24)
+                   set_fps = 24; // should >= 22
+           }
+
+           camera_pu_control_set(UVC_PU_FPS_CONTROL, set_fps);// set camera fps
         }
 #endif
     }
