@@ -296,14 +296,6 @@ void update_camera_ip(struct uvc_device *dev)
     }
 }
 
-static int g_suspend;
-static int g_uvc_cnt = 0;
-static pthread_mutex_t g_suspend_lock = PTHREAD_MUTEX_INITIALIZER;
-
-void uvc_clear_suspend(void)
-{
-    g_suspend = 0;
-}
 /* ---------------------------------------------------------------------------
  * V4L2 streaming related
  */
@@ -1099,7 +1091,6 @@ uvc_open(struct uvc_device **uvc, char *devname)
     memset(dev->ex_tool_ctrl1, 0, sizeof(dev->ex_tool_ctrl1));
 
     *uvc = dev;
-    g_uvc_cnt++;
     return 0;
 
 err:
@@ -1110,7 +1101,6 @@ err:
 static void
 uvc_close(struct uvc_device *dev)
 {
-    g_uvc_cnt--;
     close(dev->uvc_fd);
 #if (UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF)
     free(dev->vbuf_info);
@@ -4107,6 +4097,10 @@ uvc_events_process(struct uvc_device *dev)
 
     case UVC_EVENT_SETUP:
         LOG_DEBUG("uvc_events_process:UVC_EVENT_SETUP \n");
+        if(dev->suspend){
+           dev->suspend = 0;
+           set_uvc_control_suspend(0);
+        }
         uvc_events_process_setup(dev, &uvc_event->req, &resp);
         break;
 
@@ -4173,11 +4167,15 @@ uvc_events_process(struct uvc_device *dev)
         DBG("uvc_events_process:UVC_EVENT_STREAMOFF exit\n");
         return;
     case UVC_EVENT_RESUME:
-        LOG_INFO("UVC_EVENT_RESUME: reset ispserver\n");
-        system("killall ispserver &");
+        LOG_INFO("UVC_EVENT_RESUME:\n");
+        if(dev->suspend){
+           dev->suspend = 0;
+           set_uvc_control_suspend(0);
+        }
         return;
     case UVC_EVENT_SUSPEND:
         LOG_INFO("UVC_EVENT_SUSPEND\n");
+        set_uvc_control_suspend(1);
         dev->suspend = 1;
         return;
     }
@@ -4608,34 +4606,6 @@ uvc_gadget_main(int id)
 
     while (uvc_get_user_run_state(udev->video_id))
     {
-        if (udev->suspend)
-        {
-            udev->suspend = 0;
-            if (!uvc_video_get_uvc_process(udev->video_id))
-            {
-                pthread_mutex_lock(&g_suspend_lock);
-                LOG_INFO("g_suspend is %d\n", g_suspend);
-                if (g_suspend >= 0)
-                    g_suspend++;
-                if (g_suspend == g_uvc_cnt)
-                {
-                    g_suspend = 0;
-                    LOG_INFO("g_suspend is %d\n", g_suspend);
-                    system("echo mem > /sys/power/state");
-                }
-                pthread_mutex_unlock(&g_suspend_lock);
-                while (g_suspend > 0)
-                    usleep(100000);
-            }
-            else
-            {
-                pthread_mutex_lock(&g_suspend_lock);
-                g_suspend = -1;
-                pthread_mutex_unlock(&g_suspend_lock);
-                uvc_control_signal();
-            }
-        }
-
         if (!dummy_data_gen_mode && !mjpeg_image)
             FD_ZERO(&fdsv);
 

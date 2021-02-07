@@ -286,9 +286,16 @@ extern "C" int camera_pu_control_set(int type, int value)
 {
     LOG_DEBUG("%s! type is %d,value is %d\n", __func__,type,value);
 #if DBSERVER_SUPPORT
-    if(check_ispserver_work() == 0) {
-        LOG_INFO("check ispserver is deinit,pu set fail!\n");
-        return 0;
+    int timeout = 0;
+    while(timeout < 10) {
+        if(check_ispserver_work())
+           break;
+        timeout++;
+        if(timeout == 10){
+          LOG_INFO("check ispserver is no ready,pu set fail!\n");
+          return 0;
+        }
+        usleep(500000);
     }
     switch (type) {
         case UVC_PU_BRIGHTNESS_CONTROL:

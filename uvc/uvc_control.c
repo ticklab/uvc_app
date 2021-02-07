@@ -69,13 +69,14 @@ struct uvc_ctrl
     int fps;
     int format;
     int eptz;
+    int suspend;
 };
 
 static struct uvc_ctrl uvc_ctrl[3] =
 {
-    { -1, false, false, -1, -1, -1, 1, 0},
-    { -1, false, false, -1, -1, -1, 1, 0},
-    { -1, false, false, -1, -1, -1, 1, 0}, //isp
+    { -1, false, false, -1, -1, -1, 1, 0, 0},
+    { -1, false, false, -1, -1, -1, 1, 0, 0},
+    { -1, false, false, -1, -1, -1, 1, 0, 0}, //isp
 };
 
 struct uvc_encode uvc_enc;
@@ -306,7 +307,6 @@ static void *uvc_control_thread(void *arg)
 
     while (run_flag)
     {
-        uvc_clear_suspend();
         if (!check_uvc_video_id())
         {
             add_uvc_video();
@@ -361,7 +361,7 @@ int uvc_control_loop(void)
         // set fps later
         int set_fps = uvc_ctrl[2].fps;
         if (access("/tmp/uvc_no_set_fps", 0)){
-           sleep(1);
+           //sleep(1);
            if (access("/tmp/uvc_no_reduce_fps", 0) &&
                uvc_ctrl[2].format == V4L2_PIX_FMT_MJPEG && uvc_ctrl[2].height > 1440) {
                if (set_fps > 24)
@@ -371,6 +371,21 @@ int uvc_control_loop(void)
            camera_pu_control_set(UVC_PU_FPS_CONTROL, set_fps);// set camera fps
         }
 #endif
+    }
+
+    if(uvc_ctrl[2].suspend)
+    {
+       if (access("/tmp/uvc_no_suspend", 0)){
+           sleep(5);
+           if(uvc_ctrl[2].suspend){
+              if (!uvc_video_get_uvc_process(uvc_ctrl[2].id))
+            {
+                LOG_INFO("uvc ready to suspend...\n");
+                uvc_ctrl[2].suspend = 0;
+                system("touch /tmp/uvc_goto_suspend");
+            }
+           }
+       }
     }
     return 1;
 }
@@ -417,6 +432,14 @@ void uvc_control_join(uint32_t flags)
             ;
         uvc_video_id_exit_all();
     }
+}
+
+void set_uvc_control_suspend(int suspend)
+{
+    LOG_INFO("suspend is %d\n",suspend);
+    uvc_ctrl[2].suspend = suspend;
+    if ( (suspend == 0) && !access("/tmp/uvc_goto_suspend", 0))
+          system("rm /tmp/uvc_goto_suspend");
 }
 
 void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz)
