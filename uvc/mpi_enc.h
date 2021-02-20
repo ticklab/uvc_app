@@ -38,7 +38,7 @@ extern "C" {
 //#include "printf.h"
 //#include "mpp_time.h"
 #include "mpp_common.h"
-#if MPP_ENC_OSD_ENABLE
+#if USE_RK_AISERVER
 #include "mpp_osd.h"
 #endif
 
