@@ -1059,11 +1059,7 @@ void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd)
     rga_buffer_t src;
     IM_STATUS STATUS;
     src = wrapbuffer_fd(src_fd, p->width, p->height, RK_FORMAT_YCbCr_420_SP);
-#if 0
     pat = wrapbuffer_fd(p->osd_cfg[id].rga_osd_fd, p->osd_cfg[id].width, p->osd_cfg[id].height, RK_FORMAT_BGRA_8888);
-#else
-    pat = wrapbuffer_virtualaddr(p->osd_cfg[id].buffer, p->osd_cfg[id].width, p->osd_cfg[id].height, RK_FORMAT_BGRA_8888);
-#endif
     //RK_FORMAT_RGBA_8888 // RK_FORMAT_BGRA_8888
 
     im_rect pat_rect = {0, 0, p->osd_cfg[id].width, p->osd_cfg[id].height};
