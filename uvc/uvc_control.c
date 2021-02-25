@@ -44,8 +44,8 @@
 //#include "camera_control.h"
 
 #define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/bInterfaceNumber"
-//#define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_intf"
 
+#define UVC_STREAMING_MAXPACKET_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket"
 int enable_minilog;
 int uvc_app_log_level;
 int app_quit;
@@ -81,6 +81,7 @@ static struct uvc_ctrl uvc_ctrl[3] =
 struct uvc_encode uvc_enc;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int uvc_streaming_intf = -1;
+static int uvc_streaming_maxpacket = 1024;
 
 bool uvc_encode_init_flag = false;
 
@@ -99,6 +100,32 @@ static bool is_uvc_video(void *buf)
         return true;
     else
         return false;
+}
+
+static void query_uvc_streaming_maxpacket(void)
+{
+    int fd;
+
+    fd = open(UVC_STREAMING_MAXPACKET_PATH, O_RDONLY);
+    if (fd >= 0)
+    {
+        char intf[32] = {0};
+        read(fd, intf, sizeof(intf) - 1);
+        uvc_streaming_maxpacket = atoi(intf);
+        if(uvc_streaming_maxpacket < 1023)
+             uvc_streaming_maxpacket = 1024;
+        LOG_DEBUG("uvc_streaming_maxpacket = %d\n", uvc_streaming_maxpacket);
+        close(fd);
+    }
+    else
+    {
+        LOG_ERROR("open %s failed!\n", UVC_STREAMING_MAXPACKET_PATH);
+    }
+}
+
+int get_uvc_streaming_maxpacket(void)
+{
+    return uvc_streaming_maxpacket;
 }
 
 static void query_uvc_streaming_intf(void)
@@ -176,6 +203,7 @@ int check_uvc_video_id(void)
         return -1;
     }
     query_uvc_streaming_intf();
+    query_uvc_streaming_maxpacket();
     return 0;
 }
 

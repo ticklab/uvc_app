@@ -1865,8 +1865,9 @@ uvc_fill_streaming_control(struct uvc_device *dev,
      */
     if (!dev->bulk)
     {
-        ctrl->dwMaxPayloadTransferSize = (dev->maxpkt) *
-                                         (dev->mult + 1) * (dev->burst + 1);
+        ctrl->dwMaxPayloadTransferSize = get_uvc_streaming_maxpacket();/*(dev->maxpkt) *
+                                         (dev->mult + 1) * (dev->burst + 1);*/
+        LOG_INFO("+++++++++dwMaxPayloadTransferSize:%d",ctrl->dwMaxPayloadTransferSize);
     }
     else
     {
