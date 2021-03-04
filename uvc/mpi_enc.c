@@ -1404,7 +1404,7 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         p->osd_data.buf = NULL;
     }
 #if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
-    else if (p->rga_osd_drm_fd >= 0 &&
+    else if (p->rga_osd_drm_fd > 0 &&
              ((p->type == MPP_VIDEO_CodingMJPEG && MJPEG_RGA_OSD_ENABLE) ||
               (p->type == 0 && YUV_RGA_OSD_ENABLE))) {
         for (int i = 0; i < p->osd_count; i++) {
