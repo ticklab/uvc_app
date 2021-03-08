@@ -186,12 +186,13 @@ typedef struct
 {
     RK_U32 change;
     RK_U32 fbc;
-    RK_U32 split_mode;
-    RK_U32 split_arg;
-    RK_U32 force_idr_count;
-    RK_U32 force_idr_period;
-    RK_U32 frc_fps;
-    enum SIMPLE_FRC_MODE frc_mode;
+    RK_U32 split_mode;// 1
+    RK_U32 split_arg;// 2
+    RK_U32 force_idr_count; // 3
+    RK_U32 force_idr_period;// 4
+    RK_U32 frc_fps;// 5
+    enum SIMPLE_FRC_MODE frc_mode; // 6
+    MppEncRotationCfg rotation;// 7
     RK_U32 enc_time;
     RK_U32 try_count;
 } MpiEncCommonCfg;
@@ -412,7 +413,10 @@ typedef struct
     int cfg_notify_wd;
     MppBuffInfo out_buff_info[OUT_BUF_COUNT_MAX];
     MppBuffInfo in_buff_info[IN_BUF_COUNT_MAX];
-//    pthread_mutex_t destory_mutex;
+    int yuv_rotation_drm_fd;
+    int yuv_rotation_fd;
+    unsigned int yuv_rotation_handle; // for drm handle
+    int yuv_rotation_drm_size;
 } MpiEncTestData;
 
 typedef struct MPP_ENC_INFO {

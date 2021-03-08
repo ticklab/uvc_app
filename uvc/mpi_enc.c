@@ -1308,6 +1308,29 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
         p->in_buff_info[i].buf_fd = -1;
     }
 
+    p->yuv_rotation_drm_fd = -1;
+    p->yuv_rotation_fd = -1;
+    if ((p->type == 0 && p->common_cfg.rotation) || (p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.rotation == 2)) {
+        p->yuv_rotation_drm_fd = drm_open();
+        if (p->yuv_rotation_drm_fd < 0) {
+            LOG_ERROR("yuv_rotation_drm_fd open fail\n");
+            return MPP_NOK;
+        }
+        p->yuv_rotation_drm_size = p->width * p->height * 2;
+        ret = drm_alloc(p->yuv_rotation_drm_fd,  p->yuv_rotation_drm_size, 16, &p->yuv_rotation_handle, 0);
+        if (ret)
+        {
+            LOG_ERROR("yuv_rotation drm_alloc fail\n");
+            return MPP_NOK;
+        }
+        ret = drm_handle_to_fd(p->yuv_rotation_drm_fd, p->yuv_rotation_handle, &p->yuv_rotation_fd, 0);
+        if (ret)
+        {
+            LOG_ERROR("yuv_rotation drm_handle_to_fd fail\n");
+            return MPP_NOK;
+        }
+    }
+
     LOG_INFO("fps_ctr_enable:%d,roi:%d,enc_osd:%d,rga_osd:%d\n",
               p->fps_ctr_enable, MPP_ENC_ROI_ENABLE,
               MPP_ENC_OSD_ENABLE, MJPEG_RGA_OSD_ENABLE);
@@ -1350,6 +1373,12 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
 #if RK_MPP_MJPEG_FPS_CONTROL
     mpp_mjpeg_fps_deinit(p->fps_handle);
 #endif
+    if (p->yuv_rotation_drm_fd >= 0) {
+        if (p->yuv_rotation_fd >= 0)
+            close(p->yuv_rotation_fd);
+        drm_free(p->yuv_rotation_drm_fd, p->yuv_rotation_handle);
+        drm_close(p->yuv_rotation_drm_fd);
+    }
 
     for (int i = 0; i < OUT_BUF_COUNT_MAX; i++) {
         if (p->out_buff_info[i].init) {
@@ -1607,6 +1636,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->common_cfg.force_idr_period = RK_MPP_H264_FORCE_IDR_PERIOD;
     p->common_cfg.frc_fps = p->fps; // use frame rate control
     p->common_cfg.frc_mode = FRC_ONLY_LOW;
+    p->common_cfg.rotation = 0;
     if (p->type == MPP_VIDEO_CodingMJPEG)
         p->common_cfg.enc_time = p->width * p->height / 110000;
     else
@@ -1693,13 +1723,14 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
     LOG_DEBUG("### dump_mpp_enc_cfg for common cfg:\n");
     LOG_DEBUG("fbc=%d,split_mode=%d,split_arg=%d,force_idr_count=%d,force_idr_period=%d,frc_fps=%d\n"
              "frc_mode=%d,enc_time=%d,try_count=%d,frc_use_mpp=%d,fps:%d\n"
-             "p->streamin_save_dir=%s,p->streamout_save_dir=%s\n",
+             "p->streamin_save_dir=%s,p->streamout_save_dir=%s,rotation=%d\n",
              p->common_cfg.fbc, p->common_cfg.split_mode, p->common_cfg.split_arg,
              p->common_cfg.force_idr_count, p->common_cfg.force_idr_period,
              p->common_cfg.frc_fps, p->common_cfg.frc_mode,
              p->common_cfg.enc_time, p->common_cfg.try_count,
              MPP_ENC_MJPEG_FRC_USE_MPP, p->fps,
-             p->streamin_save_dir, p->streamout_save_dir);
+             p->streamin_save_dir, p->streamout_save_dir,
+             p->common_cfg.rotation*90);
 
     LOG_DEBUG("###dump_mpp_enc_cfg for mjpeg cfg:\n");
     LOG_DEBUG("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d,enc_mode:%d\n",
@@ -1835,8 +1866,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
             {
                 p->common_cfg.frc_fps = child_common_frc_fps->valueint;
                 p->common_cfg.frc_fps = p->common_cfg.frc_fps < 0 ? 0 :
-                p->common_cfg.frc_fps > 100 ? 100 :
-                p->common_cfg.frc_fps;
+                p->common_cfg.frc_fps > 100 ? 100 : p->common_cfg.frc_fps;
                 p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(5);
             }
             cJSON *child_common_frc_mode = cJSON_GetObjectItem(child_common_param, "frc_mode");
@@ -1844,9 +1874,31 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
             {
                 p->common_cfg.frc_mode = child_common_frc_mode->valueint;
                 p->common_cfg.frc_mode = p->common_cfg.frc_mode < FRC_OFF ? FRC_OFF :
-                p->common_cfg.frc_mode > FRC_BOTH_UP_LOW ? FRC_BOTH_UP_LOW :
-                p->common_cfg.frc_mode;
+                p->common_cfg.frc_mode > FRC_BOTH_UP_LOW ? FRC_BOTH_UP_LOW : p->common_cfg.frc_mode;
                 p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(6);
+            }
+            cJSON *child_common_rotation = cJSON_GetObjectItem(child_common_param, "rotation");
+            if (child_common_rotation)
+            {
+                switch (child_common_rotation->valueint) {
+                    case 0:
+                        p->common_cfg.rotation = 0;
+                    break;
+                    case 90:
+                        p->common_cfg.rotation = 1;
+                    break;
+                    case 180:
+                        p->common_cfg.rotation = 2;
+                    break;
+                    case 270:
+                        p->common_cfg.rotation = 3;
+                    break;
+                    default:
+                        LOG_WARN("rotation:%d not support\n", child_common_rotation->valueint);
+                        p->common_cfg.rotation = 0;
+                    break;
+                }
+                p->common_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(7); //not support change after enc
             }
             cJSON *child_common_stream_save_dir = cJSON_GetObjectItem(child_common_param, "stream_save_dir");
             if (child_common_stream_save_dir)
@@ -2994,6 +3046,8 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         mpp_enc_cfg_set_s32(cfg, "prep:height", p->height);
         mpp_enc_cfg_set_s32(cfg, "prep:hor_stride", p->hor_stride);
         mpp_enc_cfg_set_s32(cfg, "prep:ver_stride", p->ver_stride);
+        if (!(p->type == MPP_VIDEO_CodingMJPEG && p->common_cfg.rotation == 2))
+            mpp_enc_cfg_set_s32(cfg, "prep:rotation",  p->common_cfg.rotation);
     }
     if (init || (p->common_cfg.change & BIT(0)))
     {
