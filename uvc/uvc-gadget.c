@@ -1241,7 +1241,7 @@ uvc_video_process(struct uvc_device *dev)
             do {
                 get_ok = false;
                 uvc_video_fill_buffer(dev, &dev->ubuf);
-                if (!dev->ubuf.bytesused)
+                if (!dev->ubuf.bytesused && !dev->ubuf.m.fd)
                 {
                     struct uvc_buffer *uvc_buf;
                     dev->abandon_count ++;

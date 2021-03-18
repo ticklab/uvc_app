@@ -2704,17 +2704,16 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             /* setup default parameter */
             if (p->mjpeg_cfg.framerate)
             {
-                LOG_ERROR("warnning!!!mjpeg_cfg fps set %d to %d, if not want to change fps "
+                LOG_WARN("warnning!!!mjpeg_cfg fps set %d to %d, if not want to change fps "
                           "do not set framerate at file of mpp_enc_cfg.conf \n",
                            p->fps, p->mjpeg_cfg.framerate);
-                p->fps = p->mjpeg_cfg.framerate;
             }
             else
             {
                 p->mjpeg_cfg.framerate = p->fps;
             }
             p->fps_in_den = 1;
-            p->fps_in_num = p->mjpeg_cfg.framerate;
+            p->fps_in_num = p->fps;
             p->fps_out_den = 1;
             p->fps_out_num = p->mjpeg_cfg.framerate;
             mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
@@ -2723,6 +2722,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+						p->fps = p->mjpeg_cfg.framerate;
         }
     }
     break;
@@ -2745,10 +2745,9 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         {
             if (p->h264_cfg.framerate)
             {
-                LOG_ERROR("warnning!!!h264_cfg fps set %d to %d, if not want to change fps "
+                LOG_WARN("warnning!!!h264_cfg fps set %d to %d, if not want to change fps "
                           "do not set framerate at file of mpp_enc_cfg.conf \n",
                            p->fps, p->h264_cfg.framerate);
-                p->fps = p->h264_cfg.framerate;
             }
             else
             {
@@ -2756,7 +2755,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             }
             /* setup default parameter */
             p->fps_in_den = 1;
-            p->fps_in_num = p->h264_cfg.framerate;
+            p->fps_in_num = p->fps;
             p->fps_out_den = 1;
             p->fps_out_num = p->h264_cfg.framerate;
             mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
@@ -2765,6 +2764,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+						p->fps = p->h264_cfg.framerate;
         }
         if (init || (p->h264_cfg.change & BIT(3)))
         {
@@ -2848,10 +2848,9 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         {
             if (p->h265_cfg.framerate)
             {
-                LOG_ERROR("warnning!!!h265_cfg fps set %d to %d, if not want to change fps "
+                LOG_WARN("warnning!!!h265_cfg fps set %d to %d, if not want to change fps "
                           "do not set framerate at file of mpp_enc_cfg.conf \n",
                            p->fps, p->h265_cfg.framerate);
-                p->fps = p->h265_cfg.framerate;
             }
             else
             {
@@ -2859,7 +2858,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             }
             /* setup default parameter */
             p->fps_in_den = 1;
-            p->fps_in_num = p->h265_cfg.framerate;
+            p->fps_in_num = p->fps;
             p->fps_out_den = 1;
             p->fps_out_num = p->h265_cfg.framerate;
             mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
@@ -2868,6 +2867,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+						p->fps = p->h265_cfg.framerate;
         }
         if (init || (p->h265_cfg.change & BIT(3)))
         {
