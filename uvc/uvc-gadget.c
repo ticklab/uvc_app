@@ -1214,6 +1214,7 @@ uvc_video_process(struct uvc_device *dev)
        else
 #endif
        {
+REDQBUF:
             /* UVC stanalone setup. */
             do {
                 ret = ioctl(dev->uvc_fd, VIDIOC_DQBUF, &dev->ubuf);
@@ -1251,7 +1252,8 @@ uvc_video_process(struct uvc_device *dev)
                     if (!uvc_buf)
                     {
                         LOG_ERROR("uvc_buffer_write_get failed\n");
-                        return 0;
+                        goto REDQBUF;
+                        //return 0;
                     }
                     for (int i = 0; i < dev->nbufs; i++)
                     {

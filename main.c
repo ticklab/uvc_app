@@ -24,7 +24,7 @@ enum {
 
 #define ALIGN(size, align) ((size + align - 1) & (~(align - 1)))
 
-#define UVC_VERSION "SDK V1.34"
+#define UVC_VERSION "SDK V1.35"
 
 void sigterm_handler(int sig) {
   LOG_INFO("signal %d\n", sig);

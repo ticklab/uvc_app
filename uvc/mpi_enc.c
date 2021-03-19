@@ -1054,8 +1054,9 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
             if (p->fps_ctr_enable == true) {
 #if (RK_MPP_MJPEG_FPS_CONTROL && MJPEG_FPS_CONTROL_V2)
                 if (!mpp_mjpeg_encode_data_set(p->fps_handle, (void *)uvc_buf, len)) {
-                    LOG_INFO("mpp_mjpeg_encode_data_set fail\n");
-                    uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
+                    uvc_buffer_write_set(uvc_enc.video_id, uvc_buf);
+                    LOG_WARN("mpp_mjpeg_encode_data_set fail, giveback the uvc_buf:%d\n", uvc_buf->fd);
+                    //uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
                 }
 #endif
             } else {
