@@ -1063,6 +1063,7 @@ uvc_open(struct uvc_device **uvc, char *devname)
     camera_pu_control_init(UVC_PU_HUE_AUTO_CONTROL, 1
                            , 0, 1);
     dev->hue_auto_val = camera_pu_control_get(UVC_PU_HUE_AUTO_CONTROL, 1);
+    camera_pu_control_set(UVC_PU_POWER_LINE_FREQUENCY_CONTROL,1);// set default AntiFlickerMode 1:50hz,2:60hz
 #else
     dev->brightness_val = PU_BRIGHTNESS_DEFAULT_VAL;
     dev->contrast_val = PU_CONTRAST_DEFAULT_VAL;
