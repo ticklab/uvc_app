@@ -54,6 +54,7 @@
 #include "dbserver.h"
 
 extern "C" int video_record_set_brightness(int brightness) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -63,12 +64,14 @@ extern "C" int video_record_set_brightness(int brightness) {
         return -1;
    }
    json_object_object_add(js, "iBrightness", json_object_new_int(brightness));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_contrast(int contrast) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -78,12 +81,14 @@ extern "C" int video_record_set_contrast(int contrast) {
         return -1;
    }
    json_object_object_add(js, "iContrast", json_object_new_int(contrast));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_hue(int hue) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -93,12 +98,14 @@ extern "C" int video_record_set_hue(int hue) {
         return -1;
    }
    json_object_object_add(js, "iHue", json_object_new_int(hue));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_staturation(int staturation) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -108,12 +115,14 @@ extern "C" int video_record_set_staturation(int staturation) {
         return -1;
    }
    json_object_object_add(js, "iSaturation", json_object_new_int(staturation));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_sharpness(int sharpness) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -123,12 +132,14 @@ extern "C" int video_record_set_sharpness(int sharpness) {
         return -1;
    }
    json_object_object_add(js, "iSharpness", json_object_new_int(sharpness));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_fps(int fixfps) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -138,12 +149,14 @@ extern "C" int video_record_set_fps(int fixfps) {
         return -1;
    }
    json_object_object_add(js, "iFPS", json_object_new_int(fixfps));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_gamma(int gamma) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -153,12 +166,14 @@ extern "C" int video_record_set_gamma(int gamma) {
         return -1;
    }
    json_object_object_add(js, "iGamma", json_object_new_int(gamma));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_white_balance_temperature(int balance) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_WHITE_BLANCE;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -171,12 +186,14 @@ extern "C" int video_record_set_white_balance_temperature(int balance) {
    int bg_level = (balance - 2800)/((6500 - 2800)/100);
    LOG_INFO("iWhiteBalanceRed is %d",bg_level);
    json_object_object_add(js, "iWhiteBalanceRed", json_object_new_int(bg_level));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_white_balance_temperature_auto(int balance) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_WHITE_BLANCE;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -189,12 +206,14 @@ extern "C" int video_record_set_white_balance_temperature_auto(int balance) {
      json_object_object_add(js, "sWhiteBlanceStyle", json_object_new_string("autoWhiteBalance"));
    else
      json_object_object_add(js, "sWhiteBlanceStyle", json_object_new_string("manualWhiteBalance"));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_gain(int gain) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -204,12 +223,14 @@ extern "C" int video_record_set_gain(int gain) {
         return -1;
    }
    json_object_object_add(js, "iGain", json_object_new_int(gain));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_hue_auto(int hue_auto) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_ADJUSTMENT;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -219,12 +240,14 @@ extern "C" int video_record_set_hue_auto(int hue_auto) {
         return -1;
    }
    json_object_object_add(js, "iHueAuto", json_object_new_int(hue_auto));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 
 extern "C" int video_record_set_frequency_mode(int mode) {
+   char *ret = NULL;
    char *table = TABLE_IMAGE_VIDEO_ADJUSTMEN;
    struct json_object *js = NULL;
    js = json_object_new_object();
@@ -237,8 +260,9 @@ extern "C" int video_record_set_frequency_mode(int mode) {
      json_object_object_add(js, "sPowerLineFrequencyMode", json_object_new_string("PAL(50HZ)"));
    else
      json_object_object_add(js, "sPowerLineFrequencyMode", json_object_new_string("PAL(60HZ)"));
-   dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
    json_object_put(js);
+   dbserver_free(ret);
    return 0;
 }
 #endif
