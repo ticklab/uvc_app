@@ -122,7 +122,8 @@ int uvc_encode_init(struct uvc_encode *e, int width, int height, int fcc, int h2
 
 void uvc_encode_inbuf_deinit(struct uvc_encode *e)
 {
-    if(e->fcc != V4L2_PIX_FMT_YUYV)
+    if((e->fcc != V4L2_PIX_FMT_YUYV)
+       && (e->fcc != V4L2_PIX_FMT_NV12))
         mpi_enc_inbuf_deinit(e->mpi_data);
 }
 
@@ -157,7 +158,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
 #endif
 
 #if RK_MPP_RANGE_DEBUG_ON
-    if(fcc != V4L2_PIX_FMT_YUYV)
+    if((fcc != V4L2_PIX_FMT_YUYV) && (fcc != V4L2_PIX_FMT_NV12))
     {
         if (!access(RK_MPP_RANGE_DEBUG_IN_CHECK, 0))
         {
@@ -248,6 +249,7 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
     switch (fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         if (virt) {
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
            int try_count = 25;
@@ -330,9 +332,14 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
                   IM_STATUS STATUS;
                   int dst_fd = buffer->fd;
                   src = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
-                  dst = wrapbuffer_fd(dst_fd, width, height, RK_FORMAT_YUYV_422);//buffer->fd
                   src.format = RK_FORMAT_YCbCr_420_SP;
-                  dst.format = RK_FORMAT_YUYV_422;
+                  if( fcc == V4L2_PIX_FMT_YUYV) {
+                    dst = wrapbuffer_fd(dst_fd, width, height, RK_FORMAT_YUYV_422);//buffer->fd
+                    dst.format = RK_FORMAT_YUYV_422;
+                  } else {
+                    dst = wrapbuffer_fd(dst_fd, width, height, RK_FORMAT_YCbCr_420_SP);//buffer->fd
+                    dst.format = RK_FORMAT_YCbCr_420_SP;
+                  }
 #if 0 //for check
                   im_rect src_rect = {0, 0, 240, 160};
                   im_rect pat_rect = {0, 0, width, height};

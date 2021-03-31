@@ -199,6 +199,13 @@ static const struct uvc_frame_info uvc_frames_yuyv[] =
     { 0, 0, { 0, }, },
 };
 
+static const struct uvc_frame_info uvc_frames_nv12[] =
+{
+    {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
+    {  640, 480, { 333333, 666666, 1000000, 2000000, 0 }, },
+    { 0, 0, { 0, }, },
+};
+
 static const struct uvc_frame_info uvc_frames_mjpeg[] =
 {
     {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
@@ -236,6 +243,7 @@ static const struct uvc_frame_info uvc_frames_h265[] =
 static const struct uvc_format_info uvc_formats[] =
 {
     { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
+   // { V4L2_PIX_FMT_NV12, uvc_frames_nv12 },
     { V4L2_PIX_FMT_MJPEG, uvc_frames_mjpeg },
     { V4L2_PIX_FMT_H264, uvc_frames_h264 },
     { V4L2_PIX_FMT_H265, uvc_frames_h265 },
@@ -882,6 +890,8 @@ uvc_video_set_format(struct uvc_device *dev)
     fmt.fmt.pix.width = dev->width;
     fmt.fmt.pix.height = dev->height;
     fmt.fmt.pix.pixelformat = dev->fcc;
+    if(dev->fcc == V4L2_PIX_FMT_NV12)
+       fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
     if (dev->fcc == V4L2_PIX_FMT_MJPEG)
         fmt.fmt.pix.sizeimage = dev->width * dev->height * 2/*1.5*/;
@@ -1665,6 +1675,7 @@ uvc_video_reqbufs_userptr(struct uvc_device *dev, int nbufs)
         switch (dev->fcc)
         {
         case V4L2_PIX_FMT_YUYV:
+        case V4L2_PIX_FMT_NV12:
             bpl = dev->width * 2;
             payload_size = dev->width * dev->height * 2;
             break;
@@ -1840,6 +1851,7 @@ uvc_fill_streaming_control(struct uvc_device *dev,
     switch (format->fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         ctrl->dwMaxVideoFrameSize = frame->width * frame->height * 2;
         break;
     case V4L2_PIX_FMT_MJPEG:
@@ -3829,6 +3841,7 @@ void uvc_enc_format_to_ipc_enc_type(unsigned int fcc, struct CAMERA_INFO *camera
 {
     switch (fcc) {
         case V4L2_PIX_FMT_YUYV:
+        case V4L2_PIX_FMT_NV12:
             camera_info->encode_type = UVC_IPC_ENC_YUV;
             break;
         case V4L2_PIX_FMT_MJPEG:
@@ -3934,6 +3947,7 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
     switch (format->fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         target->dwMaxVideoFrameSize = frame->width * frame->height * 2;
         break;
     case V4L2_PIX_FMT_MJPEG:
@@ -4021,6 +4035,7 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
         switch (format->fcc)
         {
         case V4L2_PIX_FMT_YUYV:
+        case V4L2_PIX_FMT_NV12:
             fmt.fmt.pix.sizeimage = (fmt.fmt.pix.width * fmt.fmt.pix.height * 2);
             break;
         case V4L2_PIX_FMT_MJPEG:
@@ -4199,6 +4214,7 @@ uvc_events_init(struct uvc_device *dev)
     switch (dev->fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         payload_size = dev->width * dev->height * 2;
         break;
     case V4L2_PIX_FMT_MJPEG:

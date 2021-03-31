@@ -1497,6 +1497,7 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
     switch (fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         LOG_DEBUG("%s: yuyv not need mpp encodec: %d\n", __func__, fcc);
         break;
     case V4L2_PIX_FMT_MJPEG:
