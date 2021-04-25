@@ -369,8 +369,19 @@ int uvc_control_loop(void)
                if (set_fps > 24)
                    set_fps = 24; // should >= 22
            }
-
-           camera_pu_control_set(UVC_PU_FPS_CONTROL, set_fps);// set camera fps
+           int timeout = 0;
+           while(timeout < 4) {
+              if(check_ispserver_work()) {
+                camera_pu_control_set(UVC_PU_FPS_CONTROL, set_fps);// set camera fps
+                break;
+              }
+              timeout++;
+              if(timeout == 4){
+                LOG_INFO("check ispserver is no ready,pu set fail!\n");
+                break;
+              }
+              usleep(500000);
+           }
         }
 #endif
     }
