@@ -76,7 +76,11 @@ extern struct uvc_encode uvc_enc;
 #define RK_MPP_ENC_CFG_ORIGINAL_PATH "/etc/mpp_enc_cfg.conf"
 #define RK_MPP_ENC_CFG_MODIFY_PATH "/data/mpp_enc_cfg.conf"
 
+#ifdef USE_ARM64
+#define RK_MPP_MJPEG_FPS_CONTROL 0
+#else
 #define RK_MPP_MJPEG_FPS_CONTROL 1
+#endif
 
 //#define DEBUG_OUTPUT 1
 #if RK_MPP_ENC_TEST_NATIVE

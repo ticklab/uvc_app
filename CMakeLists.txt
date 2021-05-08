@@ -22,7 +22,7 @@ set(LIB_SOURCE
 )
 
 add_library(rkuvc SHARED ${LIB_SOURCE})
-target_link_libraries(rkuvc pthread drm rockchip_mpp ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a)
+target_link_libraries(rkuvc pthread drm rockchip_mpp)
 
 set(SOURCE
     main.c
@@ -35,7 +35,6 @@ set(UVC_APP_DEPENDENT_LIBS
     rockchip_mpp
     rt
     rga
-    ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a
 )
 
 set(UVC_APP_INC
@@ -96,12 +95,22 @@ if (${DBSERVER_SUPPORT})
     set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} IPCProtocol)
 endif()
 
-option(ENABLE_MINILOGGER  "enbale minilogger" ON)
-if (${ENABLE_MINILOGGER})
-    find_package(MiniLogger REQUIRED)
-    add_definitions(-DENABLE_MINILOGGER)
-    set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} MiniLogger::MiniLogger)
-    target_link_libraries(rkuvc MiniLogger::MiniLogger)
+if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+    add_definitions(-DUSE_ARM64)
+else()
+    target_link_libraries(rkuvc ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a)
+    SET(UVC_APP_DEPENDENT_LIBS
+                   ${UVC_APP_DEPENDENT_LIBS}
+                   ${CMAKE_SOURCE_DIR}/libs/libmjpeg_fps_ctr.a
+                   )
+
+    option(ENABLE_MINILOGGER  "enbale minilogger" ON)
+    if (${ENABLE_MINILOGGER})
+        find_package(MiniLogger REQUIRED)
+        add_definitions(-DENABLE_MINILOGGER)
+        set(UVC_APP_DEPENDENT_LIBS ${UVC_APP_DEPENDENT_LIBS} MiniLogger::MiniLogger)
+        target_link_libraries(rkuvc MiniLogger::MiniLogger)
+    endif()
 endif()
 
 option(COMPILES_CAMERA "compile:with rkmedia v4l2 flow " OFF)
