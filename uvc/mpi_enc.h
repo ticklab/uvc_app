@@ -138,6 +138,15 @@ typedef struct  {
     uint8_t  abs_qp_en;    /**< absolute qp enable flag*/
 } EncROIRegion;
 
+//***************GOP MODE*********************//
+typedef enum {
+  GOP_MODE_NORMALP = 0, // normal p mode
+  GOP_MODE_TSVC2,       // tsvc: 2 layer
+  GOP_MODE_TSVC3,       // tsvc: 3 layer
+  GOP_MODE_TSVC4,       // tsvc: 4 layer
+  GOP_MODE_SMARTP,      // smart p mode
+} MpiEncGopMode;
+
 //************************************//
 
 enum SIMPLE_FRC_MODE
@@ -224,6 +233,8 @@ typedef struct
     RK_U32 level;
     RK_U32 bps;//15
     RK_U32 idr_bps;//16
+    RK_U32 vi_len;//17
+    MpiEncGopMode gop_mode; //18
 } MpiEncH264Cfg;
 
 typedef struct
@@ -237,7 +248,9 @@ typedef struct
     bool sei;//5
     MpiEncQqCfg qp;//6-11
     RK_U32 bps;//12
-    RK_U32 idr_bps;//12
+    RK_U32 idr_bps;//13
+    RK_U32 vi_len;//14
+    MpiEncGopMode gop_mode; // 15
 } MpiEncH265Cfg;
 
 #if MPP_ENC_OSD_ENABLE
@@ -262,6 +275,7 @@ typedef struct
 } MpiEncOSDCfg;
 
 #endif
+
 /***************************o not change the order above**************************************/
 typedef struct MppBuffNode
 {
@@ -381,7 +395,6 @@ typedef struct
     RK_S32 fps_out_den;
     RK_S32 fps_out_num;
     RK_S32 bps;
-    RK_U32 gop_mode;
 
     MppFrame frame;
     MppPacket packet;

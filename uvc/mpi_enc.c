@@ -36,6 +36,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init);
 static void dump_mpp_enc_cfg(MpiEncTestData *p);
 static int read_mpp_enc_cfg_modify_file(MpiEncTestData *p, bool init);
 static MPP_RET mpp_enc_bps_set(MpiEncTestData *p, RK_U32 bps);
+static MPP_RET mpp_set_ref_param(MpiEncTestData *p, MpiEncGopMode gop_mode);
 
 #if MPP_ENC_ROI_ENABLE
 static int mpp_roi_config(MpiEncTestData *p, EncROIRegion *regions, int region_cnt);
@@ -54,7 +55,6 @@ extern void mpp_osd_enable_set(MpiEncTestData *p, bool enable);
 extern bool mpp_osd_enable_get(MpiEncTestData *p);
 extern MPP_RET mpp_osd_default_set(MpiEncTestData *p);
 void mpp_osd_run(MpiEncTestData *p, int fd, MppFrame frame);
-
 #if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
 extern void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd);
 #endif
@@ -958,11 +958,13 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
                 {
                     mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h264_cfg.gop);
                     mpp_enc_bps_set(p, p->h264_cfg.bps);
+                    mpp_set_ref_param(p, p->h264_cfg.gop_mode);
                 }
                 else
                 {
                     mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h265_cfg.gop);
                     mpp_enc_bps_set(p, p->h265_cfg.bps);
+                    mpp_set_ref_param(p, p->h265_cfg.gop_mode);
                 }
                 ret = mpi->control(ctx, MPP_ENC_SET_CFG, p->cfg);
                 if (ret)
@@ -1646,6 +1648,8 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->h264_cfg.level = MPP_ENC_CFG_H264_DEFAULT_LEVEL;
     p->h264_cfg.bps = p->width * p->height / 8 * p->h264_cfg.framerate / 2;
     p->h264_cfg.idr_bps = p->width * p->height / 8 * p->h264_cfg.framerate;
+    p->h264_cfg.vi_len = p->h264_cfg.gop / 2;
+    p->h264_cfg.gop_mode = GOP_MODE_NORMALP;
 
     //h265 set
     p->h265_cfg.gop = 60;
@@ -1662,6 +1666,8 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->h265_cfg.qp.min_i_qp = 24;
     p->h265_cfg.bps = p->width * p->height / 8 * p->h265_cfg.framerate / 2;
     p->h265_cfg.idr_bps = p->width * p->height / 8 * p->h265_cfg.framerate;
+    p->h265_cfg.vi_len = p->h265_cfg.gop / 2;
+    p->h265_cfg.gop_mode = GOP_MODE_NORMALP;
 
 #if MPP_ENC_OSD_ENABLE
     p->osd_count = 0;
@@ -1705,7 +1711,8 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
     LOG_DEBUG("### dump_mpp_enc_cfg for h264 cfg:\n");
     LOG_DEBUG("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
              "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,profile=%d \n"
-             "cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d idr_bps=%d\n",
+             "cabac_en=%d,cabac_idc=%d,trans_8x8=%d,level=%d,bps=%d idr_bps=%d \n"
+             "vi_len=%d,gop_mode=%d\n",
              p->h264_cfg.gop, p->h264_cfg.rc_mode, p->h264_cfg.framerate,
              p->h264_cfg.range, p->h264_cfg.head_each_idr,
              p->h264_cfg.sei, p->h264_cfg.qp.init,
@@ -1713,18 +1720,21 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              p->h264_cfg.qp.step, p->h264_cfg.profile,
              p->h264_cfg.cabac_en, p->h264_cfg.cabac_idc,
              p->h264_cfg.trans_8x8, p->h264_cfg.level,
-             p->h264_cfg.bps, p->h264_cfg.idr_bps);
+             p->h264_cfg.bps, p->h264_cfg.idr_bps,
+             p->h264_cfg.vi_len, p->h264_cfg.gop_mode);
 
     LOG_DEBUG("### dump_mpp_enc_cfg for h265 cfg:\n");
     LOG_DEBUG("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
              "sei=%d,qp.init=%d,qp.max=%d,qp.min=%d,qp.step=%d,max_i_qp=%d \n"
-             "min_i_qp=%d,bps=%d idr_bps=%d\n",
+             "min_i_qp=%d,bps=%d idr_bps=%d vi_len=%d,gop_mode=%d\n",
              p->h265_cfg.gop, p->h265_cfg.rc_mode, p->h265_cfg.framerate,
              p->h265_cfg.range, p->h265_cfg.head_each_idr,
              p->h265_cfg.sei, p->h265_cfg.qp.init,
              p->h265_cfg.qp.max, p->h265_cfg.qp.min,
              p->h265_cfg.qp.step, p->h265_cfg.qp.max_i_qp,
-             p->h265_cfg.qp.min_i_qp, p->h265_cfg.bps, p->h265_cfg.idr_bps);
+             p->h265_cfg.qp.min_i_qp, p->h265_cfg.bps, p->h265_cfg.idr_bps,
+             p->h265_cfg.vi_len, p->h265_cfg.gop_mode);
+
 #if MPP_ENC_OSD_ENABLE
     LOG_DEBUG("### dump_mpp_enc_cfg for osd cfg:\n");
     LOG_DEBUG("osd_enable=%d, count=%d, osd_plt_user=%d\n",
@@ -2203,6 +2213,23 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                           p->h264_cfg.idr_bps;
                     p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(16);
                 }
+                cJSON *child_h264_vi_eln = cJSON_GetObjectItem(child_h264_param, "vi_len");
+                if (child_h264_vi_eln)
+                {
+                    p->h264_cfg.vi_len = child_h264_vi_eln->valueint;
+                    p->h264_cfg.vi_len = p->h264_cfg.vi_len < 0 ? 0 :
+                                         p->h264_cfg.vi_len;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(17);
+                }
+                cJSON *child_h264_gop_mode = cJSON_GetObjectItem(child_h264_param, "gop_mode");
+                if (child_h264_gop_mode)
+                {
+                    p->h264_cfg.gop_mode = child_h264_gop_mode->valueint;
+                    p->h264_cfg.gop_mode = p->h264_cfg.gop_mode < GOP_MODE_NORMALP ? GOP_MODE_NORMALP :
+                                           p->h264_cfg.gop_mode > GOP_MODE_SMARTP ? GOP_MODE_SMARTP :
+                                           p->h264_cfg.gop_mode;
+                    p->h264_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(18);
+                }
 
                 LOG_INFO("h264_cfg.change:0x%x\n", p->h264_cfg.change);
             }
@@ -2366,6 +2393,23 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                           p->h265_cfg.idr_bps > MPP_ENC_CFG_MAX_BPS ? MPP_ENC_CFG_MAX_BPS :
                                           p->h265_cfg.idr_bps;
                     p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(13);
+                }
+                cJSON *child_h265_vi_eln = cJSON_GetObjectItem(child_h265_param, "vi_len");
+                if (child_h265_vi_eln)
+                {
+                    p->h265_cfg.vi_len = child_h265_vi_eln->valueint;
+                    p->h265_cfg.vi_len = p->h265_cfg.vi_len < 0 ? 0 :
+                                         p->h265_cfg.vi_len;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(14);
+                }
+                cJSON *child_h265_gop_mode = cJSON_GetObjectItem(child_h265_param, "gop_mode");
+                if (child_h265_gop_mode)
+                {
+                    p->h265_cfg.gop_mode = child_h265_gop_mode->valueint;
+                    p->h265_cfg.gop_mode = p->h265_cfg.gop_mode < GOP_MODE_NORMALP ? GOP_MODE_NORMALP :
+                                           p->h265_cfg.gop_mode > GOP_MODE_SMARTP ? GOP_MODE_SMARTP :
+                                           p->h265_cfg.gop_mode;
+                    p->h265_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(15);
                 }
 
                 LOG_INFO("h265_cfg.change:0x%x\n", p->h265_cfg.change);
@@ -2613,6 +2657,305 @@ static MPP_RET mpp_enc_bps_set(MpiEncTestData *p, RK_U32 bps)
     return ret;
 }
 
+static MPP_RET mpi_enc_gen_ref_cfg(MppEncRefCfg ref, MpiEncGopMode gop_mode)
+{
+    MppEncRefLtFrmCfg lt_ref[4];
+    MppEncRefStFrmCfg st_ref[16];
+    RK_S32 lt_cnt = 0;
+    RK_S32 st_cnt = 0;
+    MPP_RET ret = MPP_OK;
+
+    memset(&lt_ref, 0, sizeof(lt_ref));
+    memset(&st_ref, 0, sizeof(st_ref));
+
+    switch (gop_mode) {
+    case GOP_MODE_TSVC4: {
+        // tsvc4
+        //      /-> P1      /-> P3        /-> P5      /-> P7
+        //     /           /             /           /
+        //    //--------> P2            //--------> P6
+        //   //                        //
+        //  ///---------------------> P4
+        // ///
+        // P0 ------------------------------------------------> P8
+        lt_cnt = 1;
+
+        /* set 8 frame lt-ref gap */
+        lt_ref[0].lt_idx        = 0;
+        lt_ref[0].temporal_id   = 0;
+        lt_ref[0].ref_mode      = REF_TO_PREV_LT_REF;
+        lt_ref[0].lt_gap        = 8;
+        lt_ref[0].lt_delay      = 0;
+
+        st_cnt = 9;
+        /* set tsvc4 st-ref struct */
+        /* st 0 layer 0 - ref */
+        st_ref[0].is_non_ref    = 0;
+        st_ref[0].temporal_id   = 0;
+        st_ref[0].ref_mode      = REF_TO_TEMPORAL_LAYER;
+        st_ref[0].ref_arg       = 0;
+        st_ref[0].repeat        = 0;
+        /* st 1 layer 3 - non-ref */
+        st_ref[1].is_non_ref    = 1;
+        st_ref[1].temporal_id   = 3;
+        st_ref[1].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[1].ref_arg       = 0;
+        st_ref[1].repeat        = 0;
+        /* st 2 layer 2 - ref */
+        st_ref[2].is_non_ref    = 0;
+        st_ref[2].temporal_id   = 2;
+        st_ref[2].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[2].ref_arg       = 0;
+        st_ref[2].repeat        = 0;
+        /* st 3 layer 3 - non-ref */
+        st_ref[3].is_non_ref    = 1;
+        st_ref[3].temporal_id   = 3;
+        st_ref[3].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[3].ref_arg       = 0;
+        st_ref[3].repeat        = 0;
+        /* st 4 layer 1 - ref */
+        st_ref[4].is_non_ref    = 0;
+        st_ref[4].temporal_id   = 1;
+        st_ref[4].ref_mode      = REF_TO_PREV_LT_REF;
+        st_ref[4].ref_arg       = 0;
+        st_ref[4].repeat        = 0;
+        /* st 5 layer 3 - non-ref */
+        st_ref[5].is_non_ref    = 1;
+        st_ref[5].temporal_id   = 3;
+        st_ref[5].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[5].ref_arg       = 0;
+        st_ref[5].repeat        = 0;
+        /* st 6 layer 2 - ref */
+        st_ref[6].is_non_ref    = 0;
+        st_ref[6].temporal_id   = 2;
+        st_ref[6].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[6].ref_arg       = 0;
+        st_ref[6].repeat        = 0;
+        /* st 7 layer 3 - non-ref */
+        st_ref[7].is_non_ref    = 1;
+        st_ref[7].temporal_id   = 3;
+        st_ref[7].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[7].ref_arg       = 0;
+        st_ref[7].repeat        = 0;
+        /* st 8 layer 0 - ref */
+        st_ref[8].is_non_ref    = 0;
+        st_ref[8].temporal_id   = 0;
+        st_ref[8].ref_mode      = REF_TO_TEMPORAL_LAYER;
+        st_ref[8].ref_arg       = 0;
+        st_ref[8].repeat        = 0;
+    } break;
+    case GOP_MODE_TSVC3: {
+        // tsvc3
+        //     /-> P1      /-> P3
+        //    /           /
+        //   //--------> P2
+        //  //
+        // P0/---------------------> P4
+        lt_cnt = 0;
+
+        st_cnt = 5;
+        /* set tsvc4 st-ref struct */
+        /* st 0 layer 0 - ref */
+        st_ref[0].is_non_ref    = 0;
+        st_ref[0].temporal_id   = 0;
+        st_ref[0].ref_mode      = REF_TO_TEMPORAL_LAYER;
+        st_ref[0].ref_arg       = 0;
+        st_ref[0].repeat        = 0;
+        /* st 1 layer 2 - non-ref */
+        st_ref[1].is_non_ref    = 1;
+        st_ref[1].temporal_id   = 2;
+        st_ref[1].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[1].ref_arg       = 0;
+        st_ref[1].repeat        = 0;
+        /* st 2 layer 1 - ref */
+        st_ref[2].is_non_ref    = 0;
+        st_ref[2].temporal_id   = 1;
+        st_ref[2].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[2].ref_arg       = 0;
+        st_ref[2].repeat        = 0;
+        /* st 3 layer 2 - non-ref */
+        st_ref[3].is_non_ref    = 1;
+        st_ref[3].temporal_id   = 2;
+        st_ref[3].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[3].ref_arg       = 0;
+        st_ref[3].repeat        = 0;
+        /* st 4 layer 0 - ref */
+        st_ref[4].is_non_ref    = 0;
+        st_ref[4].temporal_id   = 0;
+        st_ref[4].ref_mode      = REF_TO_TEMPORAL_LAYER;
+        st_ref[4].ref_arg       = 0;
+        st_ref[4].repeat        = 0;
+    } break;
+    case GOP_MODE_TSVC2: {
+        // tsvc2
+        //   /-> P1
+        //  /
+        // P0--------> P2
+        lt_cnt = 0;
+
+        st_cnt = 3;
+        /* set tsvc4 st-ref struct */
+        /* st 0 layer 0 - ref */
+        st_ref[0].is_non_ref    = 0;
+        st_ref[0].temporal_id   = 0;
+        st_ref[0].ref_mode      = REF_TO_TEMPORAL_LAYER;
+        st_ref[0].ref_arg       = 0;
+        st_ref[0].repeat        = 0;
+        /* st 1 layer 2 - non-ref */
+        st_ref[1].is_non_ref    = 1;
+        st_ref[1].temporal_id   = 1;
+        st_ref[1].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[1].ref_arg       = 0;
+        st_ref[1].repeat        = 0;
+        /* st 2 layer 1 - ref */
+        st_ref[2].is_non_ref    = 0;
+        st_ref[2].temporal_id   = 0;
+        st_ref[2].ref_mode      = REF_TO_PREV_REF_FRM;
+        st_ref[2].ref_arg       = 0;
+        st_ref[2].repeat        = 0;
+    } break;
+    default : {
+        LOG_ERROR("unsupport gop mode %d\n", gop_mode);
+        return MPP_NOK;
+    } break;
+    }
+
+    if (lt_cnt || st_cnt) {
+        ret = mpp_enc_ref_cfg_set_cfg_cnt(ref, lt_cnt, st_cnt);
+
+        if (lt_cnt)
+            ret = mpp_enc_ref_cfg_add_lt_cfg(ref, lt_cnt, lt_ref);
+
+        if (st_cnt)
+            ret = mpp_enc_ref_cfg_add_st_cfg(ref, st_cnt, st_ref);
+
+        /* check and get dpb size */
+        ret = mpp_enc_ref_cfg_check(ref);
+    }
+
+    return ret;
+}
+
+static MPP_RET mpi_enc_gen_smart_gop_ref_cfg(MppEncRefCfg ref, RK_S32 gop_len, RK_S32 vi_len)
+{
+    MppEncRefLtFrmCfg lt_ref[4];
+    MppEncRefStFrmCfg st_ref[16];
+    RK_S32 lt_cnt = 1;
+    RK_S32 st_cnt = 8;
+    RK_S32 pos = 0;
+    MPP_RET ret = MPP_OK;
+
+    memset(&lt_ref, 0, sizeof(lt_ref));
+    memset(&st_ref, 0, sizeof(st_ref));
+
+    ret = mpp_enc_ref_cfg_set_cfg_cnt(ref, lt_cnt, st_cnt);
+
+    /* set 8 frame lt-ref gap */
+    lt_ref[0].lt_idx        = 0;
+    lt_ref[0].temporal_id   = 0;
+    lt_ref[0].ref_mode      = REF_TO_PREV_LT_REF;
+    lt_ref[0].lt_gap        = gop_len;
+    lt_ref[0].lt_delay      = 0;
+
+    ret = mpp_enc_ref_cfg_add_lt_cfg(ref, 1, lt_ref);
+
+    /* st 0 layer 0 - ref */
+    st_ref[pos].is_non_ref  = 0;
+    st_ref[pos].temporal_id = 0;
+    st_ref[pos].ref_mode    = REF_TO_PREV_INTRA;
+    st_ref[pos].ref_arg     = 0;
+    st_ref[pos].repeat      = 0;
+    pos++;
+
+    /* st 1 layer 1 - non-ref */
+    if (vi_len > 1) {
+        st_ref[pos].is_non_ref  = 0;
+        st_ref[pos].temporal_id = 1;
+        st_ref[pos].ref_mode    = REF_TO_PREV_REF_FRM;
+        st_ref[pos].ref_arg     = 0;
+        st_ref[pos].repeat      = vi_len - 2;
+        //LOG_ERROR("pos:%d vi_len= %d gop_len=%d st_ref[pos].repeat=%d\n", pos, vi_len, gop_len, st_ref[pos].repeat);
+        pos++;
+    }
+
+    st_ref[pos].is_non_ref  = 0;
+    st_ref[pos].temporal_id = 0;
+    st_ref[pos].ref_mode    = REF_TO_PREV_INTRA;
+    st_ref[pos].ref_arg     = 0;
+    st_ref[pos].repeat      = 0;
+    pos++;
+
+    ret = mpp_enc_ref_cfg_add_st_cfg(ref, pos, st_ref);
+
+    /* check and get dpb size */
+    ret = mpp_enc_ref_cfg_check(ref);
+
+    return ret;
+}
+
+static MPP_RET mpp_set_ref_param(MpiEncTestData *p, MpiEncGopMode gop_mode)
+{
+    MPP_RET ret = MPP_OK;
+    MppEncRefCfg ref = NULL;
+    MppApi *mpi = p->mpi;
+    MppCtx ctx = p->ctx;
+
+    if (p->type != MPP_VIDEO_CodingAVC && p->type != MPP_VIDEO_CodingHEVC) {
+        LOG_ERROR("MPP Encoder: encode:%d not support set ref param\n", p->type);
+        return ret;
+    }
+
+    RK_U32 gop_len = (p->type == MPP_VIDEO_CodingAVC ? p->h264_cfg.gop : p->h265_cfg.gop);
+    RK_U32 vi_len = (p->type == MPP_VIDEO_CodingAVC ? p->h264_cfg.vi_len : p->h265_cfg.vi_len);
+
+    if (gop_mode <= GOP_MODE_SMARTP && gop_mode > GOP_MODE_NORMALP) {
+        if (mpp_enc_ref_cfg_init(&ref)) {
+            LOG_ERROR("MPP Encoder: ref cfg init failed!\n");
+            goto RET;
+        }
+        if (gop_mode == GOP_MODE_SMARTP) {
+            if (mpi_enc_gen_smart_gop_ref_cfg(ref, gop_len, vi_len)) {
+                LOG_ERROR("MPP Encoder: ref cfg gen smart gop failed!\n");
+                goto RET;
+            }
+        } else {  // tsvc for h264
+            if (p->type != MPP_VIDEO_CodingAVC) {
+                LOG_ERROR("MPP Encoder: encode:%d not support gop_mode:%d\n", p->type, gop_mode);
+                return ret;
+            }
+
+            if (mpi_enc_gen_ref_cfg(ref, gop_mode)) {
+                LOG_ERROR("MPP Encoder: ref cfg gen failed!\n");
+                goto RET;
+            }
+
+        }
+        ret = mpi->control(ctx, MPP_ENC_SET_REF_CFG, ref);
+        if (ret) {
+            LOG_ERROR("mpi control enc set ref cfg failed ret %d\n", ret);
+            goto RET;
+        }
+    }
+
+    if (gop_mode == GOP_MODE_NORMALP || gop_mode == GOP_MODE_SMARTP) {
+        if (gop_mode == GOP_MODE_NORMALP)
+            ret = mpi->control(ctx, MPP_ENC_SET_REF_CFG, NULL);
+        ret |= mpp_enc_cfg_set_s32(p->cfg, "rc:gop", gop_len);
+        if (ret) {
+            LOG_ERROR("MPP Encoder: gop mode: cfg set s32 failed ret %d\n", ret);
+            goto RET;
+        }
+        if (mpi->control(ctx, MPP_ENC_SET_CFG, p->cfg) != 0) {
+            LOG_ERROR("MPP Encoder: change gop cfg failed!\n");
+            goto RET;
+        }
+    }
+
+RET:
+    if (ref)
+        mpp_enc_ref_cfg_deinit(&ref);
+    return ret;
+}
 
 static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 {
@@ -2724,7 +3067,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
-						p->fps = p->mjpeg_cfg.framerate;
+            p->fps = p->mjpeg_cfg.framerate;
         }
     }
     break;
@@ -2766,7 +3109,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
-						p->fps = p->h264_cfg.framerate;
+            p->fps = p->h264_cfg.framerate;
         }
         if (init || (p->h264_cfg.change & BIT(3)))
         {
@@ -2826,6 +3169,11 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
                 mpp_enc_bps_set(p, p->h264_cfg.bps);
             }
         }
+        if (init || (p->h264_cfg.change & BIT(17)))
+        {
+            mpp_set_ref_param(p, p->h264_cfg.gop_mode);
+        }
+
     }
     break;
     case MPP_VIDEO_CodingVP8 :
@@ -2869,7 +3217,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
-						p->fps = p->h265_cfg.framerate;
+            p->fps = p->h265_cfg.framerate;
         }
         if (init || (p->h265_cfg.change & BIT(3)))
         {
@@ -2921,6 +3269,11 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
                 mpp_enc_bps_set(p, p->h265_cfg.bps);
             }
         }
+        if (init || (p->h265_cfg.change & BIT(15)))
+        {
+            mpp_set_ref_param(p, p->h265_cfg.gop_mode);
+        }
+
     }
     break;
     default :
@@ -2935,6 +3288,8 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
         goto RET;
     }
+    //mpp_set_ref_param(p, GOP_MODE_TSVC3);  // for test tsvc
+    //mpp_set_ref_param(p, GOP_MODE_SMARTP);   // for test smartp
 
 #if MPP_ENC_ROI_ENABLE
     mpp_env_get_u32("roi_enable", &p->roi_enable, 0);
