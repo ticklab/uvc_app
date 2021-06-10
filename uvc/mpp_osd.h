@@ -38,7 +38,6 @@ extern "C"
 #endif
 #include <stdio.h>
 #include <stdlib.h>
-
 //***************OSD*********************//
 #define MPP_ENC_OSD_ENABLE 0
 
@@ -174,7 +173,7 @@ enum OSD_REGION_TYPE {
 };
 
 //************************************//
-
+/*
 typedef struct rkMB_IMAGE_INFO {
     uint32_t u32Width;
     uint32_t u32Height;
@@ -182,7 +181,7 @@ typedef struct rkMB_IMAGE_INFO {
     uint32_t u32VerStride;
   //IMAGE_TYPE_E enImgType;
 } MB_IMAGE_INFO_S;
-
+*/
 #ifdef __cplusplus
 }
 #endif
