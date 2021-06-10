@@ -355,6 +355,8 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
 #else
                NV12_to_YUYV(width, height, virt, buffer->buffer);
 #endif
+               if(fcc == V4L2_PIX_FMT_NV12)
+                 buffer->size = width * height * 3 / 2;
                uvc_buffer_read_set(e->video_id, buffer);
                //uvc_user_unlock();
            } else {
