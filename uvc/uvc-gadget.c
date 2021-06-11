@@ -52,12 +52,12 @@
 #include "uvc_encode.h"
 
 #ifdef CAMERA_CONTROL
-#include "camera_pu_control.h"
-#include "camera_control.h"
 #endif
 #if USE_RK_AISERVER
-#include "uvc_ipc_ext.h"
 #endif
+#include "camera_pu_control.h"
+#include "camera_control.h"
+#include "uvc_ipc_ext.h"
 extern void camera_control_set_eptz(int val);
 extern void camera_control_set_zoom(int val);
 
