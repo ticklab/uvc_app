@@ -159,10 +159,10 @@ static int silent = 1;
 #define CT_PANTILT_ABSOLUTE_CONTROL_DEFAULT_VAL      0
 
 //ROLL
-#define CT_ROLL_ABSOLUTE_CONTROL_MIN_VAL         -180
-#define CT_ROLL_ABSOLUTE_CONTROL_MAX_VAL         180
-#define CT_ROLL_ABSOLUTE_CONTROL_STEP_SIZE        1
-#define CT_ROLL_ABSOLUTE_CONTROL_DEFAULT_VAL      0
+#define CT_ROLL_ABSOLUTE_CONTROL_MIN_VAL         0
+#define CT_ROLL_ABSOLUTE_CONTROL_MAX_VAL         3
+#define CT_ROLL_ABSOLUTE_CONTROL_STEP_SIZE       1
+#define CT_ROLL_ABSOLUTE_CONTROL_DEFAULT_VAL     0
 
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MIN_VAL         10
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MAX_VAL         50
@@ -3616,7 +3616,8 @@ uvc_events_process_control_data(struct uvc_device *dev,
                 memcpy(&dev->roll_val, data->data, data->length);
                 LOG_INFO("set roll :%d \n", dev->roll_val);
 #ifdef CAMERA_CONTROL
-                camera_control_set_roll(dev->roll_val);
+                //camera_control_set_roll(dev->roll_val);
+                camera_pu_control_set(UVC_PU_ROLL_CONTROL,dev->roll_val);
 #endif
             }
             break;

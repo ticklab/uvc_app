@@ -265,6 +265,44 @@ extern "C" int video_record_set_frequency_mode(int mode) {
    dbserver_free(ret);
    return 0;
 }
+
+extern "C" int video_record_set_roll_mode(int mode) {
+   char *ret = NULL;
+   char *table = TABLE_IMAGE_VIDEO_ADJUSTMEN;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+        LOG_DEBUG("+++new json object failed.\n");
+        return -1;
+   }
+    switch (mode) {
+    case 0: {
+       json_object_object_add(js, "sImageFlip", json_object_new_string("close"));
+       break;
+    }
+    case 1: {
+       json_object_object_add(js, "sImageFlip", json_object_new_string("flip"));
+       break;
+    }
+    case 2: {
+       json_object_object_add(js, "sImageFlip", json_object_new_string("centrosymmetric"));
+       break;
+    }
+    case 3: {
+       json_object_object_add(js, "sImageFlip", json_object_new_string("mirror"));
+       break;
+    }
+    default: {
+       json_object_object_add(js, "sImageFlip", json_object_new_string("close"));
+       break;
+    }
+    }
+   ret = dbserver_media_set(table, (char*)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   dbserver_free(ret);
+   return 0;
+}
 #endif
 
 extern "C" void camera_pu_control_init(int type,int def,int min,int max)
@@ -350,6 +388,9 @@ extern "C" int camera_pu_control_set(int type, int value)
             break;
         case UVC_PU_FPS_CONTROL:
             video_record_set_fps(value);
+            break;
+        case UVC_PU_ROLL_CONTROL:
+            video_record_set_roll_mode(value);
             break;
       default:
          LOG_DEBUG("====unknow pu cmd.\n");
