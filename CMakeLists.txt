@@ -41,6 +41,11 @@ set(UVC_APP_INC
     ${CMAKE_CURRENT_SOURCE_DIR}/uvc/
 )
 
+option(ENABLE_USB3  "support usb3.0 config" OFF)
+if (${ENABLE_USB3})
+    add_definitions(-DUSE_USB3)
+endif()
+
 option(ENABLE_AISERVER  "rockchip aiserver" OFF)
 if (${ENABLE_AISERVER})
     add_definitions(-DUSE_RK_AISERVER)
