@@ -215,6 +215,7 @@ typedef struct
     RK_U32 framerate; // 8
     RK_U32 enc_mode; //enc_mode no have change bit   0:mean auto select 1:close the mjpeg_frc 2: use mjpeg_frc
     RK_U32 qfactor_frc_min;
+    MppEncSeiMode sei;  // 11
 } MpiEncMjpegCfg;
 
 typedef struct
@@ -246,7 +247,7 @@ typedef struct
     RK_U32 framerate;
     MppFrameColorRange range; //full: MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
     MppEncHeaderMode head_each_idr;
-    bool sei;//5
+    MppEncSeiMode sei;//5
     MpiEncQqCfg qp;//6-11
     RK_U32 bps;//12
     RK_U32 idr_bps;//13
@@ -417,6 +418,7 @@ typedef struct
     int yuv_rotation_fd;
     unsigned int yuv_rotation_handle; // for drm handle
     int yuv_rotation_drm_size;
+    MppEncUserData user_data;
 } MpiEncTestData;
 
 typedef struct MPP_ENC_INFO {

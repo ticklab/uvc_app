@@ -27,6 +27,8 @@
 #include <rga/rga.h>
 #endif
 
+#define TEST_MPP_SEI 0
+
 void *thread_check_mpp_enc_chenge_loop(void *user);
 
 static int mpp_enc_cfg_set(MpiEncTestData *p, bool init);
@@ -37,6 +39,11 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p);
 static int read_mpp_enc_cfg_modify_file(MpiEncTestData *p, bool init);
 static MPP_RET mpp_enc_bps_set(MpiEncTestData *p, RK_U32 bps);
 static MPP_RET mpp_set_ref_param(MpiEncTestData *p, MpiEncGopMode gop_mode);
+static MPP_RET mpp_enc_set_sei(MpiEncTestData *p, MppEncSeiMode mode);
+static MPP_RET mpp_enc_send_sei(MpiEncTestData *p, MppMeta meta, char *sei_data);
+#if TEST_MPP_SEI
+static MPP_RET mpp_test_send_user_data(MpiEncTestData *p, MppFrame frame);
+#endif
 
 #if MPP_ENC_ROI_ENABLE
 static int mpp_roi_config(MpiEncTestData *p, EncROIRegion *regions, int region_cnt);
@@ -988,6 +995,10 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
     mpp_osd_run(p, info->fd, frame);
 #endif
 
+#if TEST_MPP_SEI
+    mpp_test_send_user_data(p, frame);    // test sei
+#endif
+
     ret = mpi->poll(ctx, MPP_PORT_INPUT, MPP_POLL_BLOCK);
     if (ret)
     {
@@ -1651,6 +1662,7 @@ static void mpp_enc_cfg_default(MpiEncTestData *p)
     p->mjpeg_cfg.qfactor_max = 99;
     p->mjpeg_cfg.framerate = 0; // use host set
     p->mjpeg_cfg.gop = 30;
+    p->mjpeg_cfg.sei = MPP_ENC_SEI_MODE_DISABLE;
 #if MPP_ENC_MJPEG_FRC_USE_MPP
     p->mjpeg_cfg.rc_mode = MPP_ENC_RC_MODE_CBR;
 #else
@@ -1733,11 +1745,12 @@ static void dump_mpp_enc_cfg(MpiEncTestData *p)
              p->common_cfg.rotation*90);
 
     LOG_DEBUG("###dump_mpp_enc_cfg for mjpeg cfg:\n");
-    LOG_DEBUG("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d,bps=%d,framerate=%d,enc_mode:%d\n",
+    LOG_DEBUG("quant=%d,q_fator=%d,range=%d,q_min=%d,q_max=%d,gop=%d,rc_mode=%d \n"
+             "bps=%d,framerate=%d,enc_mode:%d sei:%d\n",
              p->mjpeg_cfg.quant, p->mjpeg_cfg.qfactor, p->mjpeg_cfg.range,
              p->mjpeg_cfg.qfactor_min, p->mjpeg_cfg.qfactor_max,
              p->mjpeg_cfg.gop, p->mjpeg_cfg.rc_mode, p->mjpeg_cfg.bps,
-             p->mjpeg_cfg.framerate, p->mjpeg_cfg.enc_mode);
+             p->mjpeg_cfg.framerate, p->mjpeg_cfg.enc_mode, p->mjpeg_cfg.sei);
 
     LOG_DEBUG("### dump_mpp_enc_cfg for h264 cfg:\n");
     LOG_DEBUG("gop=%d,rc_mode=%d,framerate=%d,range=%d,head_each_idr=%d \n"
@@ -2068,6 +2081,14 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                                              p->mjpeg_cfg.enc_mode > 3 ? 3 :
                                              p->mjpeg_cfg.enc_mode;
                    // p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9); //not need.
+                }
+                cJSON *child_mjpeg_sei = cJSON_GetObjectItem(child_mjpeg_param, "sei");
+                if (child_mjpeg_sei)
+                {
+                    p->mjpeg_cfg.sei = strstr(child_mjpeg_sei->valuestring, "SEQ") ? MPP_ENC_SEI_MODE_ONE_SEQ :
+                                       strstr(child_mjpeg_sei->valuestring, "FRAME") ? MPP_ENC_SEI_MODE_ONE_FRAME :
+                                       MPP_ENC_SEI_MODE_DISABLE;
+                    p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(11);
                 }
 
                 LOG_INFO("mjpeg_cfg.change:0x%x\n", p->mjpeg_cfg.change);
@@ -3009,6 +3030,70 @@ RET:
     return ret;
 }
 
+//cfg sei/change the sei cfg
+static MPP_RET mpp_enc_set_sei(MpiEncTestData *p, MppEncSeiMode mode)
+{
+    MPP_RET ret = MPP_NOK;
+
+    if (p->type == MPP_VIDEO_CodingAVC) {
+        p->h264_cfg.sei = mode;
+    } else if (p->type == MPP_VIDEO_CodingHEVC) {
+        p->h265_cfg.sei = mode;
+    } else if (p->type == MPP_VIDEO_CodingMJPEG) {
+        p->mjpeg_cfg.sei = mode;
+    } else {
+        LOG_ERROR("this type:%d not suppor set sei!\n", p->type);
+        return ret;
+    }
+    ret = p->mpi->control(p->ctx, MPP_ENC_SET_SEI_CFG, &mode);
+    if (ret) {
+        LOG_ERROR("mpi control enc set sei cfg failed ret %d\n", ret);
+        return ret;
+    }
+    LOG_ERROR("this type:%d set sei:%d!\n", p->type, mode);
+
+    return ret;
+}
+
+//send sei data, need call this func every frame
+static MPP_RET mpp_enc_send_sei(MpiEncTestData *p, MppMeta meta, char *sei_data)
+{
+    MPP_RET ret = MPP_NOK;
+
+    if ((p->type == MPP_VIDEO_CodingAVC && p->h264_cfg.sei) ||
+        (p->type == MPP_VIDEO_CodingHEVC && p->h265_cfg.sei) ||
+        (p->type == MPP_VIDEO_CodingMJPEG && p->mjpeg_cfg.sei)) {
+        p->user_data.pdata = sei_data;
+        p->user_data.len = strlen(sei_data) + 1;
+        LOG_ERROR("this type:%d set sei:%s!\n", p->type, p->user_data.pdata);
+        return mpp_meta_set_ptr(meta, KEY_USER_DATA, &p->user_data);
+    }
+
+    return ret;
+}
+
+#if TEST_MPP_SEI
+static MPP_RET mpp_test_send_user_data(MpiEncTestData *p, MppFrame frame)
+{
+    MppMeta meta = NULL;
+    meta = mpp_frame_get_meta(frame);
+    if (!access("/tmp/sei1", 0)) {
+        system("rm /tmp/sei1");
+        mpp_enc_set_sei(p, MPP_ENC_SEI_MODE_ONE_SEQ);
+        mpp_enc_send_sei(p, meta, "lxh-test-seq-123456");
+    } else if (!access("/tmp/sei2", 0)) {
+        //system("rm /tmp/sei2");
+        mpp_enc_set_sei(p, MPP_ENC_SEI_MODE_ONE_FRAME);
+        mpp_enc_send_sei(p, meta, "lxh-test-frame-123456");
+    }
+    if (!access("/tmp/sei3", 0)) {
+        system("rm /tmp/sei2");
+        system("rm /tmp/sei3");
+        mpp_enc_set_sei(p, MPP_ENC_SEI_MODE_DISABLE);
+    }
+}
+#endif
+
 static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
 {
     MPP_RET ret;
@@ -3123,6 +3208,16 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
             p->fps = p->mjpeg_cfg.framerate;
         }
+        if (init || (p->mjpeg_cfg.change & BIT(11)))
+        {
+            ret = mpi->control(ctx, MPP_ENC_SET_SEI_CFG, &p->mjpeg_cfg.sei);
+            if (ret)
+            {
+                LOG_ERROR("mpi control enc set sei cfg failed ret %d\n", ret);
+                goto RET;
+            }
+        }
+
     }
     break;
     case MPP_VIDEO_CodingAVC :
