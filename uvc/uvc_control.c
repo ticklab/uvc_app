@@ -44,8 +44,8 @@
 //#include "camera_control.h"
 
 #define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/bInterfaceNumber"
-//#define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_intf"
 
+#define UVC_STREAMING_MAXPACKET_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming_maxpacket"
 int enable_minilog;
 int uvc_app_log_level;
 int app_quit;
@@ -69,18 +69,20 @@ struct uvc_ctrl
     int fps;
     int format;
     int eptz;
+    int suspend;
 };
 
 static struct uvc_ctrl uvc_ctrl[3] =
 {
-    { -1, false, false, -1, -1, -1, 1, 0},
-    { -1, false, false, -1, -1, -1, 1, 0},
-    { -1, false, false, -1, -1, -1, 1, 0}, //isp
+    { -1, false, false, -1, -1, -1, 1, 0, 0},
+    { -1, false, false, -1, -1, -1, 1, 0, 0},
+    { -1, false, false, -1, -1, -1, 1, 0, 0}, //isp
 };
 
 struct uvc_encode uvc_enc;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int uvc_streaming_intf = -1;
+static int uvc_streaming_maxpacket = 1024;
 
 bool uvc_encode_init_flag = false;
 
@@ -99,6 +101,32 @@ static bool is_uvc_video(void *buf)
         return true;
     else
         return false;
+}
+
+static void query_uvc_streaming_maxpacket(void)
+{
+    int fd;
+
+    fd = open(UVC_STREAMING_MAXPACKET_PATH, O_RDONLY);
+    if (fd >= 0)
+    {
+        char intf[32] = {0};
+        read(fd, intf, sizeof(intf) - 1);
+        uvc_streaming_maxpacket = atoi(intf);
+        if(uvc_streaming_maxpacket < 1023)
+             uvc_streaming_maxpacket = 1024;
+        LOG_DEBUG("uvc_streaming_maxpacket = %d\n", uvc_streaming_maxpacket);
+        close(fd);
+    }
+    else
+    {
+        LOG_ERROR("open %s failed!\n", UVC_STREAMING_MAXPACKET_PATH);
+    }
+}
+
+int get_uvc_streaming_maxpacket(void)
+{
+    return uvc_streaming_maxpacket;
 }
 
 static void query_uvc_streaming_intf(void)
@@ -164,6 +192,8 @@ int check_uvc_video_id(void)
                     else if (uvc_ctrl[2].id < 0)
                         uvc_ctrl[2].id = i;
                     LOG_DEBUG("found uvc video port.\n");
+                    pclose(fp);
+                    break;
                 }
             }
             pclose(fp);
@@ -176,6 +206,7 @@ int check_uvc_video_id(void)
         return -1;
     }
     query_uvc_streaming_intf();
+    query_uvc_streaming_maxpacket();
     return 0;
 }
 
@@ -278,7 +309,6 @@ static void *uvc_control_thread(void *arg)
 
     while (run_flag)
     {
-        uvc_clear_suspend();
         if (!check_uvc_video_id())
         {
             add_uvc_video();
@@ -331,11 +361,44 @@ int uvc_control_loop(void)
         uvc_ctrl[2].start = false;
 #ifdef CAMERA_CONTROL
         // set fps later
+        int set_fps = uvc_ctrl[2].fps;
         if (access("/tmp/uvc_no_set_fps", 0)){
-           sleep(1);
-           camera_pu_control_set(UVC_PU_FPS_CONTROL,uvc_ctrl[2].fps);// set camera fps
+           //sleep(1);
+           if (access("/tmp/uvc_no_reduce_fps", 0) &&
+               uvc_ctrl[2].format == V4L2_PIX_FMT_MJPEG && uvc_ctrl[2].height > 1440) {
+               if (set_fps > 24)
+                   set_fps = 24; // should >= 22
+           }
+           int timeout = 0;
+           while(timeout < 4) {
+              if(check_ispserver_work()) {
+                camera_pu_control_set(UVC_PU_FPS_CONTROL, set_fps);// set camera fps
+                break;
+              }
+              timeout++;
+              if(timeout == 4){
+                LOG_INFO("check ispserver is no ready,pu set fail!\n");
+                break;
+              }
+              usleep(500000);
+           }
         }
 #endif
+    }
+
+    if(uvc_ctrl[2].suspend)
+    {
+       if (access("/tmp/uvc_no_suspend", 0)){
+           sleep(5);
+           if(uvc_ctrl[2].suspend){
+              if (!uvc_video_get_uvc_process(uvc_ctrl[2].id))
+            {
+                LOG_INFO("uvc ready to suspend...\n");
+                uvc_ctrl[2].suspend = 0;
+                system("touch /tmp/uvc_goto_suspend");
+            }
+           }
+       }
     }
     return 1;
 }
@@ -382,6 +445,14 @@ void uvc_control_join(uint32_t flags)
             ;
         uvc_video_id_exit_all();
     }
+}
+
+void set_uvc_control_suspend(int suspend)
+{
+    LOG_INFO("suspend is %d\n",suspend);
+    uvc_ctrl[2].suspend = suspend;
+    if ( (suspend == 0) && !access("/tmp/uvc_goto_suspend", 0))
+          system("rm /tmp/uvc_goto_suspend");
 }
 
 void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz)

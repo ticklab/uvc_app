@@ -61,7 +61,7 @@ extern void mjpeg_rga_osd_process(MpiEncTestData *p, int id, int src_fd);
 #endif
 
 #if RK_MPP_MJPEG_FPS_CONTROL
-extern void *mpp_mjpeg_fps_init(bool *enable, int mode, int fps);
+extern void *mpp_mjpeg_fps_init(bool *enable, int mode, int fps, int width, int height);
 extern void mpp_mjpeg_fps_deinit(void *fps_handle);
 extern bool mpp_mjpeg_encode_data_set(void *fps_handle, void *data, size_t len);
 #endif
@@ -1054,8 +1054,9 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
             if (p->fps_ctr_enable == true) {
 #if (RK_MPP_MJPEG_FPS_CONTROL && MJPEG_FPS_CONTROL_V2)
                 if (!mpp_mjpeg_encode_data_set(p->fps_handle, (void *)uvc_buf, len)) {
-                    LOG_INFO("mpp_mjpeg_encode_data_set fail\n");
-                    uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
+                    uvc_buffer_write_set(uvc_enc.video_id, uvc_buf);
+                    LOG_WARN("mpp_mjpeg_encode_data_set fail, giveback the uvc_buf:%d\n", uvc_buf->fd);
+                    //uvc_buffer_read_set(uvc_enc.video_id, uvc_buf);
                 }
 #endif
             } else {
@@ -1266,11 +1267,11 @@ MPP_RET mpi_enc_test_init(MpiEncTestCmd *cmd, MpiEncTestData **data)
     }
     pthread_create(&p->check_cfg_change_hd, NULL, thread_check_mpp_enc_chenge_loop, p);
 #if RK_MPP_MJPEG_FPS_CONTROL
-    if (mjpeg_is_high_solution(p) == true || p->mjpeg_cfg.enc_mode == 2)
+    if (mjpeg_is_high_solution(p) == true || p->mjpeg_cfg.enc_mode >= 2)
     {
         if (p->mjpeg_cfg.enc_mode == 0)
             p->fps_ctr_enable = true;
-        p->fps_handle = mpp_mjpeg_fps_init(&p->fps_ctr_enable, p->mjpeg_cfg.enc_mode, p->fps);
+        p->fps_handle = mpp_mjpeg_fps_init(&p->fps_ctr_enable, p->mjpeg_cfg.enc_mode, p->fps, p->width, p->height);
     }
 #endif
 
@@ -1404,7 +1405,7 @@ MPP_RET mpi_enc_test_deinit(MpiEncTestData **data)
         p->osd_data.buf = NULL;
     }
 #if MJPEG_RGA_OSD_ENABLE || YUV_RGA_OSD_ENABLE
-    else if (p->rga_osd_drm_fd >= 0 &&
+    else if (p->rga_osd_drm_fd > 0 &&
              ((p->type == MPP_VIDEO_CodingMJPEG && MJPEG_RGA_OSD_ENABLE) ||
               (p->type == 0 && YUV_RGA_OSD_ENABLE))) {
         for (int i = 0; i < p->osd_count; i++) {
@@ -1496,6 +1497,7 @@ void mpi_enc_cmd_config(MpiEncTestCmd *cmd, int width, int height, int fcc, int 
     switch (fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         LOG_DEBUG("%s: yuyv not need mpp encodec: %d\n", __func__, fcc);
         break;
     case V4L2_PIX_FMT_MJPEG:
@@ -2001,7 +2003,7 @@ static int parse_check_mpp_enc_cfg(cJSON *root, MpiEncTestData *p, bool init)
                 {
                     p->mjpeg_cfg.enc_mode = child_mjpeg_enc_mode->valueint;
                     p->mjpeg_cfg.enc_mode = p->mjpeg_cfg.enc_mode < 0 ? 0 :
-                                             p->mjpeg_cfg.enc_mode > 2 ? 2 :
+                                             p->mjpeg_cfg.enc_mode > 3 ? 3 :
                                              p->mjpeg_cfg.enc_mode;
                    // p->mjpeg_cfg.change |= MPP_ENC_CFG_CHANGE_BIT(9); //not need.
                 }
@@ -2704,17 +2706,16 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             /* setup default parameter */
             if (p->mjpeg_cfg.framerate)
             {
-                LOG_ERROR("warnning!!!mjpeg_cfg fps set %d to %d, if not want to change fps "
+                LOG_WARN("warnning!!!mjpeg_cfg fps set %d to %d, if not want to change fps "
                           "do not set framerate at file of mpp_enc_cfg.conf \n",
                            p->fps, p->mjpeg_cfg.framerate);
-                p->fps = p->mjpeg_cfg.framerate;
             }
             else
             {
                 p->mjpeg_cfg.framerate = p->fps;
             }
             p->fps_in_den = 1;
-            p->fps_in_num = p->mjpeg_cfg.framerate;
+            p->fps_in_num = p->fps;
             p->fps_out_den = 1;
             p->fps_out_num = p->mjpeg_cfg.framerate;
             mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
@@ -2723,6 +2724,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+						p->fps = p->mjpeg_cfg.framerate;
         }
     }
     break;
@@ -2745,10 +2747,9 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         {
             if (p->h264_cfg.framerate)
             {
-                LOG_ERROR("warnning!!!h264_cfg fps set %d to %d, if not want to change fps "
+                LOG_WARN("warnning!!!h264_cfg fps set %d to %d, if not want to change fps "
                           "do not set framerate at file of mpp_enc_cfg.conf \n",
                            p->fps, p->h264_cfg.framerate);
-                p->fps = p->h264_cfg.framerate;
             }
             else
             {
@@ -2756,7 +2757,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             }
             /* setup default parameter */
             p->fps_in_den = 1;
-            p->fps_in_num = p->h264_cfg.framerate;
+            p->fps_in_num = p->fps;
             p->fps_out_den = 1;
             p->fps_out_num = p->h264_cfg.framerate;
             mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
@@ -2765,6 +2766,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+						p->fps = p->h264_cfg.framerate;
         }
         if (init || (p->h264_cfg.change & BIT(3)))
         {
@@ -2848,10 +2850,9 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
         {
             if (p->h265_cfg.framerate)
             {
-                LOG_ERROR("warnning!!!h265_cfg fps set %d to %d, if not want to change fps "
+                LOG_WARN("warnning!!!h265_cfg fps set %d to %d, if not want to change fps "
                           "do not set framerate at file of mpp_enc_cfg.conf \n",
                            p->fps, p->h265_cfg.framerate);
-                p->fps = p->h265_cfg.framerate;
             }
             else
             {
@@ -2859,7 +2860,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             }
             /* setup default parameter */
             p->fps_in_den = 1;
-            p->fps_in_num = p->h265_cfg.framerate;
+            p->fps_in_num = p->fps;
             p->fps_out_den = 1;
             p->fps_out_num = p->h265_cfg.framerate;
             mpp_enc_cfg_set_s32(cfg, "rc:fps_in_flex", p->fps_in_flex);
@@ -2868,6 +2869,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_flex", p->fps_out_flex);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_num", p->fps_out_num);
             mpp_enc_cfg_set_s32(cfg, "rc:fps_out_denorm", p->fps_out_den);
+						p->fps = p->h265_cfg.framerate;
         }
         if (init || (p->h265_cfg.change & BIT(3)))
         {

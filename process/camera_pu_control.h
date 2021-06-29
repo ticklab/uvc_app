@@ -44,6 +44,7 @@ extern "C"
     int camera_pu_control_get(int type,int def);
     int camera_pu_control_set(int type,int value);
     int camera_pu_control_check(int deviceid);
+    int check_ispserver_work();
 
 #ifdef __cplusplus
 }

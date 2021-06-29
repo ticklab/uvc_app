@@ -1497,6 +1497,7 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
                 memcpy(dev->mem[buf->index].start, v->buffer_s->buffer, v->buffer_s->size);
 #elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF
                 buf->bytesused = 0;
+                buf->m.fd = 0;
 #else
                 dev->mem[buf->index].start = v->buffer_s->buffer;
 #endif
@@ -1505,7 +1506,8 @@ static void _uvc_user_fill_buffer(struct uvc_video *v, struct uvc_device *dev, s
     }
     else
     {
-        buf->bytesused = 0;// buf->length;
+        buf->bytesused = 0;
+        buf->m.fd = 0;
 #if UVC_IO_METHOD == UVC_IO_METHOD_MMAP
         memset(dev->mem[buf->index].start, 0, buf->length);
 #elif UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF

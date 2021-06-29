@@ -199,6 +199,13 @@ static const struct uvc_frame_info uvc_frames_yuyv[] =
     { 0, 0, { 0, }, },
 };
 
+static const struct uvc_frame_info uvc_frames_nv12[] =
+{
+    {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
+    {  640, 480, { 333333, 666666, 1000000, 2000000, 0 }, },
+    { 0, 0, { 0, }, },
+};
+
 static const struct uvc_frame_info uvc_frames_mjpeg[] =
 {
     {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
@@ -236,6 +243,7 @@ static const struct uvc_frame_info uvc_frames_h265[] =
 static const struct uvc_format_info uvc_formats[] =
 {
     { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
+   // { V4L2_PIX_FMT_NV12, uvc_frames_nv12 },
     { V4L2_PIX_FMT_MJPEG, uvc_frames_mjpeg },
     { V4L2_PIX_FMT_H264, uvc_frames_h264 },
     { V4L2_PIX_FMT_H265, uvc_frames_h265 },
@@ -296,14 +304,6 @@ void update_camera_ip(struct uvc_device *dev)
     }
 }
 
-static int g_suspend;
-static int g_uvc_cnt = 0;
-static pthread_mutex_t g_suspend_lock = PTHREAD_MUTEX_INITIALIZER;
-
-void uvc_clear_suspend(void)
-{
-    g_suspend = 0;
-}
 /* ---------------------------------------------------------------------------
  * V4L2 streaming related
  */
@@ -890,6 +890,8 @@ uvc_video_set_format(struct uvc_device *dev)
     fmt.fmt.pix.width = dev->width;
     fmt.fmt.pix.height = dev->height;
     fmt.fmt.pix.pixelformat = dev->fcc;
+    if(dev->fcc == V4L2_PIX_FMT_NV12)
+       fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
     if (dev->fcc == V4L2_PIX_FMT_MJPEG)
         fmt.fmt.pix.sizeimage = dev->width * dev->height * 2/*1.5*/;
@@ -1071,6 +1073,7 @@ uvc_open(struct uvc_device **uvc, char *devname)
     camera_pu_control_init(UVC_PU_HUE_AUTO_CONTROL, 1
                            , 0, 1);
     dev->hue_auto_val = camera_pu_control_get(UVC_PU_HUE_AUTO_CONTROL, 1);
+    camera_pu_control_set(UVC_PU_POWER_LINE_FREQUENCY_CONTROL,1);// set default AntiFlickerMode 1:50hz,2:60hz
 #else
     dev->brightness_val = PU_BRIGHTNESS_DEFAULT_VAL;
     dev->contrast_val = PU_CONTRAST_DEFAULT_VAL;
@@ -1099,7 +1102,6 @@ uvc_open(struct uvc_device **uvc, char *devname)
     memset(dev->ex_tool_ctrl1, 0, sizeof(dev->ex_tool_ctrl1));
 
     *uvc = dev;
-    g_uvc_cnt++;
     return 0;
 
 err:
@@ -1110,7 +1112,6 @@ err:
 static void
 uvc_close(struct uvc_device *dev)
 {
-    g_uvc_cnt--;
     close(dev->uvc_fd);
 #if (UVC_IO_METHOD == UVC_IO_METHOD_DMA_BUFF)
     free(dev->vbuf_info);
@@ -1214,6 +1215,7 @@ uvc_video_process(struct uvc_device *dev)
        else
 #endif
        {
+REDQBUF:
             /* UVC stanalone setup. */
             do {
                 ret = ioctl(dev->uvc_fd, VIDIOC_DQBUF, &dev->ubuf);
@@ -1241,7 +1243,7 @@ uvc_video_process(struct uvc_device *dev)
             do {
                 get_ok = false;
                 uvc_video_fill_buffer(dev, &dev->ubuf);
-                if (!dev->ubuf.bytesused)
+                if (!dev->ubuf.bytesused && !dev->ubuf.m.fd)
                 {
                     struct uvc_buffer *uvc_buf;
                     dev->abandon_count ++;
@@ -1251,7 +1253,8 @@ uvc_video_process(struct uvc_device *dev)
                     if (!uvc_buf)
                     {
                         LOG_ERROR("uvc_buffer_write_get failed\n");
-                        return 0;
+                        goto REDQBUF;
+                        //return 0;
                     }
                     for (int i = 0; i < dev->nbufs; i++)
                     {
@@ -1672,6 +1675,7 @@ uvc_video_reqbufs_userptr(struct uvc_device *dev, int nbufs)
         switch (dev->fcc)
         {
         case V4L2_PIX_FMT_YUYV:
+        case V4L2_PIX_FMT_NV12:
             bpl = dev->width * 2;
             payload_size = dev->width * dev->height * 2;
             break;
@@ -1847,6 +1851,7 @@ uvc_fill_streaming_control(struct uvc_device *dev,
     switch (format->fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         ctrl->dwMaxVideoFrameSize = frame->width * frame->height * 2;
         break;
     case V4L2_PIX_FMT_MJPEG:
@@ -1865,8 +1870,9 @@ uvc_fill_streaming_control(struct uvc_device *dev,
      */
     if (!dev->bulk)
     {
-        ctrl->dwMaxPayloadTransferSize = (dev->maxpkt) *
-                                         (dev->mult + 1) * (dev->burst + 1);
+        ctrl->dwMaxPayloadTransferSize = get_uvc_streaming_maxpacket();/*(dev->maxpkt) *
+                                         (dev->mult + 1) * (dev->burst + 1);*/
+        LOG_INFO("+++++++++dwMaxPayloadTransferSize:%d",ctrl->dwMaxPayloadTransferSize);
     }
     else
     {
@@ -2250,17 +2256,67 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             break;
 
         default:
-            /*
-             * We don't support this control, so STALL the control
-             * ep.
-             */
-            resp->length = -EL2HLT;
-            /*
-             * If we were not supposed to handle this
-             * 'cs', prepare a Request Error Code response.
-             */
-            dev->request_error_code.data[0] = 0x06;
-            dev->request_error_code.length = 1;
+            switch (req)
+            {
+            case UVC_GET_LEN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = sizeof(resp->data);
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_SET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                memset(resp->data, 0xFF, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 1;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
             break;
         }
         break;
@@ -2931,17 +2987,67 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             }
             break;
         default:
-            /*
-             * We don't support this control, so STALL the control
-             * ep.
-             */
-            resp->length = -EL2HLT;
-            /*
-             * If we were not supposed to handle this
-             * 'cs', prepare a Request Error Code response.
-             */
-            dev->request_error_code.data[0] = 0x06;
-            dev->request_error_code.length = 1;
+            switch (req)
+            {
+            case UVC_GET_LEN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = sizeof(resp->data);
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_SET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MIN:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_MAX:
+                memset(resp->data, 0xFF, sizeof(resp->data));
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_CUR:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0x0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = 1;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 0;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = 1;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            default:
+                resp->length = -EL2HLT;
+                dev->request_error_code.data[0] = 0x07;
+                dev->request_error_code.length = 1;
+                break;
+            }
             break;
         }
 
@@ -3735,6 +3841,7 @@ void uvc_enc_format_to_ipc_enc_type(unsigned int fcc, struct CAMERA_INFO *camera
 {
     switch (fcc) {
         case V4L2_PIX_FMT_YUYV:
+        case V4L2_PIX_FMT_NV12:
             camera_info->encode_type = UVC_IPC_ENC_YUV;
             break;
         case V4L2_PIX_FMT_MJPEG:
@@ -3840,6 +3947,7 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
     switch (format->fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         target->dwMaxVideoFrameSize = frame->width * frame->height * 2;
         break;
     case V4L2_PIX_FMT_MJPEG:
@@ -3927,6 +4035,7 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
         switch (format->fcc)
         {
         case V4L2_PIX_FMT_YUYV:
+        case V4L2_PIX_FMT_NV12:
             fmt.fmt.pix.sizeimage = (fmt.fmt.pix.width * fmt.fmt.pix.height * 2);
             break;
         case V4L2_PIX_FMT_MJPEG:
@@ -4004,6 +4113,10 @@ uvc_events_process(struct uvc_device *dev)
 
     case UVC_EVENT_SETUP:
         LOG_DEBUG("uvc_events_process:UVC_EVENT_SETUP \n");
+        if(dev->suspend){
+           dev->suspend = 0;
+           set_uvc_control_suspend(0);
+        }
         uvc_events_process_setup(dev, &uvc_event->req, &resp);
         break;
 
@@ -4063,17 +4176,22 @@ uvc_events_process(struct uvc_device *dev)
             dev->is_streaming = 0;
             dev->first_buffer_queued = 0;
         }
-        uvc_buffer_deinit(dev->video_id);
         //join mpp thread
         uvc_control_exit();
+        uvc_buffer_deinit(dev->video_id);
+
         DBG("uvc_events_process:UVC_EVENT_STREAMOFF exit\n");
         return;
     case UVC_EVENT_RESUME:
-        LOG_INFO("UVC_EVENT_RESUME: reset ispserver\n");
-        system("killall ispserver &");
+        LOG_INFO("UVC_EVENT_RESUME:\n");
+        if(dev->suspend){
+           dev->suspend = 0;
+           set_uvc_control_suspend(0);
+        }
         return;
     case UVC_EVENT_SUSPEND:
         LOG_INFO("UVC_EVENT_SUSPEND\n");
+        set_uvc_control_suspend(1);
         dev->suspend = 1;
         return;
     }
@@ -4096,6 +4214,7 @@ uvc_events_init(struct uvc_device *dev)
     switch (dev->fcc)
     {
     case V4L2_PIX_FMT_YUYV:
+    case V4L2_PIX_FMT_NV12:
         payload_size = dev->width * dev->height * 2;
         break;
     case V4L2_PIX_FMT_MJPEG:
@@ -4504,34 +4623,6 @@ uvc_gadget_main(int id)
 
     while (uvc_get_user_run_state(udev->video_id))
     {
-        if (udev->suspend)
-        {
-            udev->suspend = 0;
-            if (!uvc_video_get_uvc_process(udev->video_id))
-            {
-                pthread_mutex_lock(&g_suspend_lock);
-                LOG_INFO("g_suspend is %d\n", g_suspend);
-                if (g_suspend >= 0)
-                    g_suspend++;
-                if (g_suspend == g_uvc_cnt)
-                {
-                    g_suspend = 0;
-                    LOG_INFO("g_suspend is %d\n", g_suspend);
-                    system("echo mem > /sys/power/state");
-                }
-                pthread_mutex_unlock(&g_suspend_lock);
-                while (g_suspend > 0)
-                    usleep(100000);
-            }
-            else
-            {
-                pthread_mutex_lock(&g_suspend_lock);
-                g_suspend = -1;
-                pthread_mutex_unlock(&g_suspend_lock);
-                uvc_control_signal();
-            }
-        }
-
         if (!dummy_data_gen_mode && !mjpeg_image)
             FD_ZERO(&fdsv);
 
@@ -4629,12 +4720,12 @@ uvc_gadget_main(int id)
         v4l2_close(vdev);
 
     uvc_close(udev);
+    //join mpp thread
+    uvc_control_exit();
     uvc_buffer_deinit(id);
 #if USE_RK_AISERVER
     uvc_ipc_event(UVC_IPC_EVENT_STOP, NULL);
 #endif
-    //join mpp thread
-    uvc_control_exit();
     set_uvc_control_restart();
 
     return 0;
