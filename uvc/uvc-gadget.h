@@ -91,6 +91,8 @@ extern "C" {
 #define V4L2_PIX_FMT_H265     v4l2_fourcc('H', '2', '6', '5') /* H265 with start codes */
 #define UVC_PU_FPS_CONTROL 0xff
 #define UVC_PU_ROLL_CONTROL 0xfd
+#define UVC_PU_EXPOSURE_TIME_CONTROL 0xfc
+#define UVC_PU_AE_MODE_CONTROL 0xfb
 
 /* ---------------------------------------------------------------------------
  * Generic stuff
@@ -183,6 +185,8 @@ struct uvc_device
     int pan_val;
     int tilt_val;
     short roll_val;
+    int exposure_time_val;
+    unsigned char ae_mode_val;
     unsigned char power_line_frequency_val;
     unsigned char ex_tool_ctrl1[4];
     unsigned char ex_sn_data[MAX_UVC_REQUEST_DATA_LENGTH];

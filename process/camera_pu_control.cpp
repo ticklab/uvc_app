@@ -303,6 +303,19 @@ extern "C" int video_record_set_roll_mode(int mode) {
    dbserver_free(ret);
    return 0;
 }
+extern "C" int video_record_set_exposure_time(int time) {
+   //todo
+   return 0;
+}
+extern "C" int video_record_set_ae_mode(int mode) {
+   if ( mode == 2){
+       LOG_DEBUG("AE:set auto mode!!\n");
+   }else {
+       LOG_DEBUG("AE:set  manual mode!!\n");
+   }
+   //todo
+   return 0;
+}
 #endif
 
 extern "C" void camera_pu_control_init(int type,int def,int min,int max)
@@ -391,6 +404,12 @@ extern "C" int camera_pu_control_set(int type, int value)
             break;
         case UVC_PU_ROLL_CONTROL:
             video_record_set_roll_mode(value);
+            break;
+        case UVC_PU_EXPOSURE_TIME_CONTROL:
+            video_record_set_exposure_time(value);
+            break;
+        case UVC_PU_AE_MODE_CONTROL:
+            video_record_set_ae_mode(value);
             break;
       default:
          LOG_DEBUG("====unknow pu cmd.\n");
