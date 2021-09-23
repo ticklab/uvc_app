@@ -175,6 +175,7 @@ struct uvc_device
     char *uvc_devname;
     struct uvc_function_config *fc;
     int suspend;
+    int need_bypass;
     /* uvc control request specific */
     struct uvc_streaming_control probe;
     struct uvc_streaming_control commit;

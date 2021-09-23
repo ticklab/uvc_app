@@ -4081,7 +4081,17 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
             need_full_range = atoi(full_range);
             LOG_INFO("uvc full_range use env setting:%d \n", need_full_range);
         }
-
+#ifndef USE_ARM64
+        if (dev->width == 2560 && dev->height == 1440) {
+            int needBYPASS = 1;
+            dev->need_bypass = 1;
+            uvc_ipc_event(UVC_IPC_EVENT_ENABLE_BYPASS, (void *)&needBYPASS);
+        } else if (dev->need_bypass){
+            int needBYPASS = 0;
+            dev->need_bypass = 0;
+            uvc_ipc_event(UVC_IPC_EVENT_ENABLE_BYPASS, (void *)&needBYPASS);
+        }
+#endif
         if (needEPTZ)
             uvc_ipc_event(UVC_IPC_EVENT_ENABLE_ETPTZ, (void *)&needEPTZ);
         uvc_ipc_event(UVC_IPC_EVENT_START, NULL); //after the camera config
