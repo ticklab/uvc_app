@@ -41,6 +41,8 @@
 #include "uvc_video.h"
 #include "uevent.h"
 #include "uvc_log.h"
+#include "uvc_configfs.h"
+
 //#include "camera_control.h"
 
 #define UVC_STREAMING_INTF_PATH "/sys/kernel/config/usb_gadget/rockchip/functions/uvc.gs6/streaming/bInterfaceNumber"
@@ -49,6 +51,9 @@
 int enable_minilog;
 int uvc_app_log_level;
 int app_quit;
+int uvc_depth_cnt;
+int uvc_rgb_cnt;
+
 
 static void (*camera_start_callback)(int fd, int width, int height, int fps, int format, int eptz);
 static void (*camera_stop_callback)();
@@ -70,13 +75,14 @@ struct uvc_ctrl
     int format;
     int eptz;
     int suspend;
+    struct uvc_function_config *fc;
 };
 
 static struct uvc_ctrl uvc_ctrl[3] =
 {
-    { -1, false, false, -1, -1, -1, 1, 0, 0},
-    { -1, false, false, -1, -1, -1, 1, 0, 0},
-    { -1, false, false, -1, -1, -1, 1, 0, 0}, //isp
+    { -1, false, false, -1, -1, -1, 1, 0, 0, NULL},
+    { -1, false, false, -1, -1, -1, 1, 0, 0, NULL},
+    { -1, false, false, -1, -1, -1, 1, 0, 0, NULL}, //isp
 };
 
 struct uvc_encode uvc_enc;
@@ -163,40 +169,29 @@ void uvc_control_stop_setcallback(void (*callback)())
     camera_stop_callback = callback;
 }
 
+static void get_uvc_index_to_name(unsigned int index, char *name)
+{
+    if (strstr(name, "depth") || strstr(name, "DEPTH") || strstr(name, "ir") || strstr(name, "IR")) {
+        uvc_depth_cnt = index;
+        LOG_DEBUG("uvc_depth_cnt = %d, name:%s\n",uvc_depth_cnt, name);
+    } else if (strstr(name, "rgb") || strstr(name, "RGB")) {
+        uvc_rgb_cnt = index;
+        LOG_DEBUG("uvc_rgb_cnt = %d, name:%s\n",uvc_rgb_cnt,name);
+    }
+}
+
+
 int check_uvc_video_id(void)
 {
-    FILE *fp = NULL;
-    char buf[1024];
-    int i;
-    char cmd[128];
-
-    uvc_ctrl[0].id = -1;
-    uvc_ctrl[1].id = -1;
-    for (i = 0; i < 50; i++)
-    {
-        snprintf(cmd, sizeof(cmd), "/sys/class/video4linux/video%d/name", i);
-        if (access(cmd, F_OK))
-            continue;
-        snprintf(cmd, sizeof(cmd), "cat /sys/class/video4linux/video%d/name", i);
-        fp = popen(cmd, "r");
-        if (fp)
-        {
-            if (fgets(buf, sizeof(buf), fp))
-            {
-                if (is_uvc_video(buf))
-                {
-                    if (uvc_ctrl[0].id < 0)
-                        uvc_ctrl[0].id = i;
-                    else if (uvc_ctrl[1].id < 0)
-                        uvc_ctrl[1].id = i;
-                    else if (uvc_ctrl[2].id < 0)
-                        uvc_ctrl[2].id = i;
-                    LOG_DEBUG("found uvc video port.\n");
-                    pclose(fp);
-                    break;
-                }
-            }
-            pclose(fp);
+    struct uvc_function_config *fc[CAM_MAX_NUM];
+    unsigned int i;
+    for (i = 0; i < CAM_MAX_NUM; i++) {
+        fc[i] = configfs_parse_uvc_function(i);
+        if (fc[i]) {
+            get_uvc_index_to_name(fc[i]->index, fc[i]->dev_name);
+             uvc_ctrl[i].id = fc[i]->video;
+             uvc_ctrl[i].fc = fc[i];
+             LOG_DEBUG("uvc_function_config fc->video:%d,fc->streaming.num_formats:%d",fc[i]->video,uvc_ctrl[i].fc->streaming.num_formats);
         }
     }
 
@@ -205,20 +200,25 @@ int check_uvc_video_id(void)
         LOG_WARN("Please configure uvc...\n");
         return -1;
     }
-    query_uvc_streaming_intf();
-    query_uvc_streaming_maxpacket();
+    //query_uvc_streaming_intf();
+    //query_uvc_streaming_maxpacket();
     return 0;
 }
 
 void add_uvc_video()
 {
     if (uvc_ctrl[0].id >= 0)
-        uvc_video_id_add(uvc_ctrl[0].id);
-    if (uvc_ctrl[1].id >= 0)
-        uvc_video_id_add(uvc_ctrl[1].id);
+    {
+        uvc_video_id_add(uvc_ctrl[0].fc);
+        LOG_INFO("uvc_ctrl[0].id:%d, uvc_ctrl[0].fc->video:%d\n",uvc_ctrl[0].id,uvc_ctrl[0].fc->video);
+    }
+
+    if (uvc_ctrl[1].id >= 0) {
+        uvc_video_id_add(uvc_ctrl[1].fc);
+    }
 }
 
-void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps)
+void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps, int id)
 {
     pthread_mutex_lock(&lock);
     memset(&uvc_enc, 0, sizeof(uvc_enc));
@@ -227,6 +227,8 @@ void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps
         LOG_ERROR("%s fail!\n", __func__);
         abort();
     }
+    uvc_enc.video_id = id;
+    LOG_INFO("uvc_enc.video_id:%d",uvc_enc.video_id);
     uvc_encode_init_flag = true;
     pthread_mutex_unlock(&lock);
 }
@@ -260,7 +262,7 @@ void uvc_read_camera_buffer(void *cam_buf, MPP_ENC_INFO_DEF *info,
     pthread_mutex_lock(&lock);
     if (info->size <= uvc_enc.width * uvc_enc.height * 2)
     {
-        uvc_enc.video_id = uvc_video_id_get(0);
+        //uvc_enc.video_id = uvc_video_id_get(0);
         uvc_enc.extra_data = extra_data;
         uvc_enc.extra_size = extra_size;
         uvc_encode_process(&uvc_enc, cam_buf, info);
@@ -405,6 +407,8 @@ int uvc_control_loop(void)
 
 int uvc_control_run(uint32_t flags)
 {
+    uvc_depth_cnt = -1;
+    uvc_rgb_cnt = -1;
     uvc_flags = flags;
     if ((flags & UVC_CONTROL_CHECK_STRAIGHT) || (flags & UVC_CONTROL_CAMERA))
     {
@@ -458,7 +462,7 @@ void set_uvc_control_suspend(int suspend)
 void set_uvc_control_start(int video_id, int width, int height, int fps, int format, int eptz)
 {
     LOG_DEBUG("%s!\n", __func__);
-    if (uvc_video_id_get(0) == video_id)
+    if (/*uvc_video_id_get(0) == video_id*/ 1)
     {
         LOG_DEBUG("%s: video_id:%d, width:%d,height:%d,fps:%d,eptz:%d!\n", __func__, video_id, width, height, fps, eptz);
         uvc_ctrl[2].id = video_id;

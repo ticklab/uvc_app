@@ -51,6 +51,13 @@
 
 #define MAX_UVC_REQUEST_DATA_LENGTH 60
 
+#define UVC_CTRL_INTERFACE_ID        0x00
+#define UVC_CTRL_CAMERA_TERMINAL_ID  0x01
+#define UVC_CTRL_PROCESSING_UNIT_ID  0x02
+#define UVC_CTRL_EXTENSION_UNIT_ID   0x03
+#define UVC_CTRL_OUTPUT_TERMINAL_ID  0x04
+#define UVC_CTRL_XU_UNIT_ID          0x06
+
 struct uvc_request_data
 {
     __s32 length;
@@ -87,6 +94,7 @@ extern "C" {
 #include <linux/usb/ch9.h>
 #include <linux/usb/video.h>
 #include <linux/videodev2.h>
+#include "uvc_configfs.h"
 
 #define V4L2_PIX_FMT_H265     v4l2_fourcc('H', '2', '6', '5') /* H265 with start codes */
 #define UVC_PU_FPS_CONTROL 0xff
@@ -165,6 +173,7 @@ struct uvc_device
     int is_streaming;
     int run_standalone;
     char *uvc_devname;
+    struct uvc_function_config *fc;
     int suspend;
     /* uvc control request specific */
     struct uvc_streaming_control probe;
@@ -243,7 +252,7 @@ struct uvc_device
 
 
 
-int uvc_gadget_main(int id);
+int uvc_gadget_main(struct uvc_function_config *fc);
 int uvc_video_reqbufs(struct uvc_device *dev, int nbufs);
 int uvc_video_stream(struct uvc_device *dev, int enable);
 

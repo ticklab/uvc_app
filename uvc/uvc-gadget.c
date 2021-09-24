@@ -45,6 +45,8 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include <limits.h>
+#include <math.h>
 
 #include "uvc-gadget.h"
 #include "uvc_log.h"
@@ -183,83 +185,6 @@ static int silent = 1;
  * UVC specific stuff
  */
 extern struct uvc_encode uvc_enc;
-
-struct uvc_frame_info
-{
-    unsigned int width;
-    unsigned int height;
-    unsigned int intervals[8];
-};
-
-struct uvc_format_info
-{
-    unsigned int fcc;
-    const struct uvc_frame_info *frames;
-};
-
-static const struct uvc_frame_info uvc_frames_yuyv[] =
-{
-    {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
-    {  640, 360, { 333333, 666666, 1000000, 2000000, 0 }, },
-    {  640, 480, { 333333, 666666, 1000000, 2000000, 0 }, },
-#ifdef USE_USB3
-    {  1280, 720, { 333333, 666666, 1000000, 2000000, 0 }, },
-    {  1920, 1080, { 333333, 666666, 1000000, 2000000, 0 }, },
-#else
-    { 1280, 720, { 1000000, 2000000, 0 }, },
-#endif
-    { 0, 0, { 0, }, },
-};
-
-static const struct uvc_frame_info uvc_frames_nv12[] =
-{
-    {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
-    {  640, 480, { 333333, 666666, 1000000, 2000000, 0 }, },
-    { 0, 0, { 0, }, },
-};
-
-static const struct uvc_frame_info uvc_frames_mjpeg[] =
-{
-    {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
-    {  640, 360, { 333333, 666666, 1000000, 2000000, 0 }, },
-    {  640, 480, { 333333, 666666, 1000000, 2000000, 0 }, },
-    {  768, 448, { 333333, 666666, 1000000, 2000000, 0 }, },
-    { 1280, 720, { 333333, 666666, 1000000, 2000000, 0 }, },
-    { 1024, 768, { 333333, 666666, 1000000, 2000000, 0 }, },
-    { 1920, 1080, { 333333, 666666, 1000000, 2000000, 0 }, },
-    { 2560, 1440, { 333333, 666666, 1000000, 2000000, 0 }, },
-    // { 2592, 1944, { 333333, 666666, 1000000, 2000000, 0 }, },
-    { 0, 0, { 0, }, },
-};
-
-static const struct uvc_frame_info uvc_frames_h264[] =
-{
-    {  640, 480, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
-    { 1280, 720, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
-    { 1920, 1080, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
-    { 2560, 1440, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
-    { 3840, 2160, { 333333, 400000, 500000, 666666, 1000000, 2000000, 0 }, },
-    { 0, 0, { 0, }, },
-};
-
-static const struct uvc_frame_info uvc_frames_h265[] =
-{
-    {  640, 480, { 333333, 400000, 500000, 0 }, },
-    { 1280, 720, { 333333, 400000, 500000, 0 }, },
-    { 1920, 1080, { 333333, 400000, 500000, 0 }, },
-    { 2560, 1440, { 333333, 400000, 500000, 0 }, },
-    { 3840, 2160, { 333333, 400000, 500000, 0 }, },
-    { 0, 0, { 0, }, },
-};
-
-static const struct uvc_format_info uvc_formats[] =
-{
-    { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
-//    { V4L2_PIX_FMT_NV12, uvc_frames_nv12 },
-    { V4L2_PIX_FMT_MJPEG, uvc_frames_mjpeg },
-    { V4L2_PIX_FMT_H264, uvc_frames_h264 },
-    { V4L2_PIX_FMT_H265, uvc_frames_h265 },
-};
 
 /* ---------------------------------------------------------------------------
  * V4L2 and UVC device instances
@@ -1817,7 +1742,7 @@ uvc_handle_streamon_event(struct uvc_device *dev)
         dev->is_streaming = 1;
     }
 
-    uvc_control_init(dev->width, dev->height, dev->fcc, dev->xu_h265, dev->fps);
+    uvc_control_init(dev->width, dev->height, dev->fcc, dev->xu_h265, dev->fps, dev->video_id);
 
     set_uvc_control_start(dev->video_id, dev->width, dev->height,
                           dev->fps, dev->fcc, dev->eptz_flag);
@@ -1834,34 +1759,43 @@ err:
 static void
 uvc_fill_streaming_control(struct uvc_device *dev,
                            struct uvc_streaming_control *ctrl,
-                           int iframe, int iformat)
+                           int iformat, int iframe, unsigned int ival)
 {
-    const struct uvc_format_info *format;
-    const struct uvc_frame_info *frame;
-    unsigned int nframes;
+    const struct uvc_function_config_format *format;
+    const struct uvc_function_config_frame *frame;
+    unsigned int i;
 
-    if (iformat < 0)
-        iformat = ARRAY_SIZE(uvc_formats) + iformat;
-    if (iformat < 0 || iformat >= (int)ARRAY_SIZE(uvc_formats))
-        return;
-    format = &uvc_formats[iformat];
+    /*
+     * Restrict the iformat, iframe and ival to valid values. Negative
+     * values for iformat or iframe will result in the maximum valid value
+     * being selected.
+     */
+    iformat = clamp((unsigned int)iformat, 1U,
+                    dev->fc->streaming.num_formats);
+    format = &dev->fc->streaming.formats[iformat-1];
 
-    nframes = 0;
-    while (format->frames[nframes].width != 0)
-        ++nframes;
+    iframe = clamp((unsigned int)iframe, 1U, format->num_frames);
+    frame = &format->frames[iframe-1];
 
-    if (iframe < 0)
-        iframe = nframes + iframe;
-    if (iframe < 0 || iframe >= (int)nframes)
-        return;
-    frame = &format->frames[iframe];
+    for (i = 0; i < frame->num_intervals; ++i) {
+        if (ival <= frame->intervals[i]) {
+            ival = frame->intervals[i];
+            break;
+        }
+    }
+    if (i == frame->num_intervals)
+        ival = frame->intervals[frame->num_intervals-1];
 
     memset(ctrl, 0, sizeof * ctrl);
 
     ctrl->bmHint = 1;
-    ctrl->bFormatIndex = iformat + 1;
-    ctrl->bFrameIndex = iframe + 1;
-    ctrl->dwFrameInterval = frame->intervals[0];
+    ctrl->bFormatIndex = iformat;
+    ctrl->bFrameIndex = iframe;
+    ctrl->dwFrameInterval = ival;
+
+    dev->width = frame->width;
+    dev->height = frame->height;
+    dev->fcc = format->fcc;
     switch (format->fcc)
     {
     case V4L2_PIX_FMT_YUYV:
@@ -1871,22 +1805,21 @@ uvc_fill_streaming_control(struct uvc_device *dev,
     case V4L2_PIX_FMT_MJPEG:
     case V4L2_PIX_FMT_H264:
     case V4L2_PIX_FMT_H265:
-        dev->width = frame->width;
-        dev->height = frame->height;
         dev->imgsize = frame->width * frame->height * 2/*1.5*/;
-        DBG("uvc_fill_streaming_control:dev->width:%d,dev->imgsize:%d\n", dev->width, dev->imgsize);
         ctrl->dwMaxVideoFrameSize = dev->imgsize;
         break;
     }
+    LOG_INFO("dev->fcc:%d,dev->width:%d,dev->height:%d,dev->imgsize:%d,ctrl->dwFrameInterval:%d\n",
+              dev->fcc,dev->width, dev->height, dev->imgsize, ctrl->dwFrameInterval);
 
     /* TODO: the UVC maxpayload transfer size should be filled
      * by the driver.
      */
     if (!dev->bulk)
     {
-        ctrl->dwMaxPayloadTransferSize = get_uvc_streaming_maxpacket();/*(dev->maxpkt) *
+        ctrl->dwMaxPayloadTransferSize = dev->fc->streaming.ep.wMaxPacketSize;/*get_uvc_streaming_maxpacket();/*(dev->maxpkt) *
                                          (dev->mult + 1) * (dev->burst + 1);*/
-        LOG_INFO("+++++++++dwMaxPayloadTransferSize:%d",ctrl->dwMaxPayloadTransferSize);
+        LOG_INFO("+++++++++dwMaxPayloadTransferSize:%d\n",ctrl->dwMaxPayloadTransferSize);
     }
     else
     {
@@ -1920,7 +1853,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
 
     switch (entity_id)
     {
-    case 0:
+    case UVC_CTRL_INTERFACE_ID:
         switch (cs)
         {
         case UVC_VC_REQUEST_ERROR_CODE_CONTROL:
@@ -1941,7 +1874,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
         break;
 
     /* Camera terminal unit 'UVC_VC_INPUT_TERMINAL'. */
-    case 1:
+    case UVC_CTRL_CAMERA_TERMINAL_ID:
         switch (cs)
         {
         case UVC_CT_ZOOM_ABSOLUTE_CONTROL:
@@ -2480,7 +2413,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
         break;
 
     /* processing unit 'UVC_VC_PROCESSING_UNIT' */
-    case 2:
+    case UVC_CTRL_PROCESSING_UNIT_ID:
         switch (cs)
         {
         case UVC_PU_BRIGHTNESS_CONTROL:
@@ -3213,7 +3146,7 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
         break;
 
     /* Extension unit 'UVC_VC_Extension_Unit'. */
-    case 6:
+    case UVC_CTRL_XU_UNIT_ID:
         switch (cs)
         {
         case CMD_TOOLS_CTRL_1:
@@ -3655,33 +3588,33 @@ uvc_events_process_streaming(struct uvc_device *dev, uint8_t req, uint8_t cs,
             memcpy(ctrl, &dev->probe, sizeof * ctrl);
         else
             memcpy(ctrl, &dev->commit, sizeof * ctrl);
-#if 0
-        LOG_INFO("bmHint: %u\n", ctrl->bmHint);
-        LOG_INFO("bFormatIndex: %u\n", ctrl->bFormatIndex);
-        LOG_INFO("bFrameIndex: %u\n", ctrl->bFrameIndex);
-        LOG_INFO("dwFrameInterval: %u\n", ctrl->dwFrameInterval);
-        LOG_INFO("wKeyFrameRate: %u\n", ctrl->wKeyFrameRate);
-        LOG_INFO("wPFrameRate: %u\n", ctrl->wPFrameRate);
-        LOG_INFO("wCompQuality: %u\n", ctrl->wCompQuality);
-        LOG_INFO("wCompWindowSize: %u\n", ctrl->wCompWindowSize);
-        LOG_INFO("wDelay: %u\n", ctrl->wDelay);
-        LOG_INFO("dwMaxVideoFrameSize: %u\n", ctrl->dwMaxVideoFrameSize);
-        LOG_INFO("dwMaxPayloadTransferSize: %u\n", ctrl->dwMaxPayloadTransferSize);
-        LOG_INFO("dwClockFrequency: %u\n", ctrl->dwClockFrequency);
-        LOG_INFO("bmFramingInfo: %u\n", ctrl->bmFramingInfo);
-        LOG_INFO("bPreferedVersion: %u\n", ctrl->bPreferedVersion);
-        LOG_INFO("bMinVersion: %u\n", ctrl->bMinVersion);
-        LOG_INFO("bMaxVersion: %u\n", ctrl->bMaxVersion);
+#if 1
+        LOG_DEBUG("bmHint: %u\n", ctrl->bmHint);
+        LOG_DEBUG("bFormatIndex: %u\n", ctrl->bFormatIndex);
+        LOG_DEBUG("bFrameIndex: %u\n", ctrl->bFrameIndex);
+        LOG_DEBUG("dwFrameInterval: %u\n", ctrl->dwFrameInterval);
+        LOG_DEBUG("wKeyFrameRate: %u\n", ctrl->wKeyFrameRate);
+        LOG_DEBUG("wPFrameRate: %u\n", ctrl->wPFrameRate);
+        LOG_DEBUG("wCompQuality: %u\n", ctrl->wCompQuality);
+        LOG_DEBUG("wCompWindowSize: %u\n", ctrl->wCompWindowSize);
+        LOG_DEBUG("wDelay: %u\n", ctrl->wDelay);
+        LOG_DEBUG("dwMaxVideoFrameSize: %u\n", ctrl->dwMaxVideoFrameSize);
+        LOG_DEBUG("dwMaxPayloadTransferSize: %u\n", ctrl->dwMaxPayloadTransferSize);
+        LOG_DEBUG("dwClockFrequency: %u\n", ctrl->dwClockFrequency);
+        LOG_DEBUG("bmFramingInfo: %u\n", ctrl->bmFramingInfo);
+        LOG_DEBUG("bPreferedVersion: %u\n", ctrl->bPreferedVersion);
+        LOG_DEBUG("bMinVersion: %u\n", ctrl->bMinVersion);
+        LOG_DEBUG("bMaxVersion: %u\n", ctrl->bMaxVersion);
 #endif
         break;
 
     case UVC_GET_MIN:
-        uvc_fill_streaming_control(dev, ctrl, 0, 0);
-        break;
     case UVC_GET_MAX:
     case UVC_GET_DEF:
-        uvc_fill_streaming_control(dev, ctrl, req == UVC_GET_MAX ? -1 : 0,
-                                   req == UVC_GET_MAX ? -1 : 0);
+        if (req == UVC_GET_MAX)
+            uvc_fill_streaming_control(dev, ctrl, -1, -1, UINT_MAX);
+        else
+            uvc_fill_streaming_control(dev, ctrl, 1, 1, 0);
         break;
 
     case UVC_GET_RES:
@@ -3707,15 +3640,16 @@ uvc_events_process_class(struct uvc_device *dev, struct usb_ctrlrequest *ctrl,
 {
     if ((ctrl->bRequestType & USB_RECIP_MASK) != USB_RECIP_INTERFACE)
         return;
+    unsigned int interface = ctrl->wIndex & 0xff;
 
-    if ((ctrl->wIndex & 0xff) % 2 != get_uvc_streaming_intf() % 2)
+    if (interface == dev->fc->control.intf.bInterfaceNumber)
     {
         uvc_events_process_control(dev, ctrl->bRequest,
                                    ctrl->wValue >> 8,
                                    ctrl->wIndex >> 8,
                                    ctrl->wLength, resp);
     }
-    else
+    else if (interface == dev->fc->streaming.intf.bInterfaceNumber)
     {
         uvc_events_process_streaming(dev, ctrl->bRequest,
                                      ctrl->wValue >> 8, resp);
@@ -4050,12 +3984,6 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
     struct uvc_streaming_control *target;
     struct uvc_streaming_control *ctrl;
     struct v4l2_format fmt;
-    const struct uvc_format_info *format;
-    const struct uvc_frame_info *frame;
-    const unsigned int *interval;
-    unsigned int iformat, iframe;
-    unsigned int nframes;
-    //unsigned int *val = (unsigned int *)data->data;
     int ret = 0;
 
     switch (dev->control)
@@ -4086,68 +4014,30 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
     ctrl = (struct uvc_streaming_control *)&data->data;
     if (dev->control == UVC_VS_PROBE_CONTROL)
     {
-#if 0
-        LOG_INFO("host probe want ++++vs config:\n");
-        LOG_INFO("bmHint: %u\n", ctrl->bmHint);
-        LOG_INFO("bFormatIndex: %u\n", ctrl->bFormatIndex);
-        LOG_INFO("bFrameIndex: %u\n", ctrl->bFrameIndex);
-        LOG_INFO("dwFrameInterval: %u\n", ctrl->dwFrameInterval);
-        LOG_INFO("wKeyFrameRate: %u\n", ctrl->wKeyFrameRate);
-        LOG_INFO("wPFrameRate: %u\n", ctrl->wPFrameRate);
-        LOG_INFO("wCompQuality: %u\n", ctrl->wCompQuality);
-        LOG_INFO("wCompWindowSize: %u\n", ctrl->wCompWindowSize);
-        LOG_INFO("wDelay: %u\n", ctrl->wDelay);
-        LOG_INFO("dwMaxVideoFrameSize: %u\n", ctrl->dwMaxVideoFrameSize);
-        LOG_INFO("dwMaxPayloadTransferSize: %u\n", ctrl->dwMaxPayloadTransferSize);
-        LOG_INFO("dwClockFrequency: %u\n", ctrl->dwClockFrequency);
-        LOG_INFO("bmFramingInfo: %u\n", ctrl->bmFramingInfo);
-        LOG_INFO("bPreferedVersion: %u\n", ctrl->bPreferedVersion);
-        LOG_INFO("bMinVersion: %u\n", ctrl->bMinVersion);
-        LOG_INFO("bMaxVersion: %u\n", ctrl->bMaxVersion);
+#if 1
+        LOG_DEBUG("host probe want ++++vs config:\n");
+        LOG_DEBUG("bmHint: %u\n", ctrl->bmHint);
+        LOG_DEBUG("bFormatIndex: %u\n", ctrl->bFormatIndex);
+        LOG_DEBUG("bFrameIndex: %u\n", ctrl->bFrameIndex);
+        LOG_DEBUG("dwFrameInterval: %u\n", ctrl->dwFrameInterval);
+        LOG_DEBUG("wKeyFrameRate: %u\n", ctrl->wKeyFrameRate);
+        LOG_DEBUG("wPFrameRate: %u\n", ctrl->wPFrameRate);
+        LOG_DEBUG("wCompQuality: %u\n", ctrl->wCompQuality);
+        LOG_DEBUG("wCompWindowSize: %u\n", ctrl->wCompWindowSize);
+        LOG_DEBUG("wDelay: %u\n", ctrl->wDelay);
+        LOG_DEBUG("dwMaxVideoFrameSize: %u\n", ctrl->dwMaxVideoFrameSize);
+        LOG_DEBUG("dwMaxPayloadTransferSize: %u\n", ctrl->dwMaxPayloadTransferSize);
+        LOG_DEBUG("dwClockFrequency: %u\n", ctrl->dwClockFrequency);
+        LOG_DEBUG("bmFramingInfo: %u\n", ctrl->bmFramingInfo);
+        LOG_DEBUG("bPreferedVersion: %u\n", ctrl->bPreferedVersion);
+        LOG_DEBUG("bMinVersion: %u\n", ctrl->bMinVersion);
+        LOG_DEBUG("bMaxVersion: %u\n", ctrl->bMaxVersion);
 #endif
 
     }
+    uvc_fill_streaming_control(dev, target, ctrl->bFormatIndex,
+                               ctrl->bFrameIndex, ctrl->dwFrameInterval);
 
-    iformat = clamp((unsigned int)ctrl->bFormatIndex, 1U,
-                    (unsigned int)ARRAY_SIZE(uvc_formats));
-    format = &uvc_formats[iformat - 1];
-
-    nframes = 0;
-    while (format->frames[nframes].width != 0)
-        ++nframes;
-
-    iframe = clamp((unsigned int)ctrl->bFrameIndex, 1U, nframes);
-    frame = &format->frames[iframe - 1];
-    interval = frame->intervals;
-
-    while (interval[0] < ctrl->dwFrameInterval && interval[1])
-        ++interval;
-
-    target->bFormatIndex = iformat;
-    target->bFrameIndex = iframe;
-    switch (format->fcc)
-    {
-    case V4L2_PIX_FMT_YUYV:
-    case V4L2_PIX_FMT_NV12:
-        target->dwMaxVideoFrameSize = frame->width * frame->height * 2;
-        break;
-    case V4L2_PIX_FMT_MJPEG:
-    case V4L2_PIX_FMT_H264:
-    case V4L2_PIX_FMT_H265:
-        if (dev->imgsize == 0)
-            LOG_INFO("WARNING: MJPEG/h.264 requested and no image loaded.\n");
-        dev->width = frame->width;
-        dev->height = frame->height;
-        dev->imgsize = frame->width * frame->height * 2/*1.5*/;
-        LOG_DEBUG("uvc_events_process_data:format->fcc:%d,dev->width:%d,dev->imgsize:%d\n", format->fcc, dev->width, dev->imgsize);
-        target->dwMaxVideoFrameSize = dev->imgsize;
-        break;
-    }
-
-    target->dwFrameInterval = *interval;
-    dev->fcc = format->fcc;
-    dev->width = frame->width;
-    dev->height = frame->height;
     dev->fps = 10000000 / target->dwFrameInterval;
 
 #if USE_RK_AISERVER
@@ -4159,14 +4049,14 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
         LOG_INFO("uvc full_range use env setting:%d \n", need_full_range);
     }
     struct CAMERA_INFO camera_info;
-    camera_info.width = frame->width;
-    camera_info.height = frame->height;
-    camera_info.vir_width = frame->width;
-    camera_info.vir_height = frame->height;
-    camera_info.buf_size = frame->width * frame->height * 2;
+    camera_info.width = dev->width;
+    camera_info.height = dev->height;
+    camera_info.vir_width = dev->width;
+    camera_info.vir_height = dev->height;
+    camera_info.buf_size = dev->width * dev->height * 2;
     camera_info.range = need_full_range;
     camera_info.uvc_fps_set = dev->fps;
-    uvc_enc_format_to_ipc_enc_type(format->fcc, &camera_info);
+    uvc_enc_format_to_ipc_enc_type(dev->fcc, &camera_info);
     uvc_ipc_event(UVC_IPC_EVENT_CONFIG_CAMERA, (void *)&camera_info);
 #endif
 
@@ -4209,11 +4099,11 @@ uvc_events_process_data(struct uvc_device *dev, struct uvc_request_data *data)
 
         fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         fmt.fmt.pix.field = V4L2_FIELD_ANY;
-        fmt.fmt.pix.width = frame->width;
-        fmt.fmt.pix.height = frame->height;
-        fmt.fmt.pix.pixelformat = format->fcc;
+        fmt.fmt.pix.width = dev->width;
+        fmt.fmt.pix.height = dev->height;
+        fmt.fmt.pix.pixelformat = dev->fcc;
 
-        switch (format->fcc)
+        switch (dev->fcc)
         {
         case V4L2_PIX_FMT_YUYV:
         case V4L2_PIX_FMT_NV12:
@@ -4310,7 +4200,7 @@ uvc_events_process(struct uvc_device *dev)
         return;
 
     case UVC_EVENT_STREAMON:
-        LOG_INFO("uvc_events_process:UVC_EVENT_STREAMON dev->io=%d\n", dev->io);
+        LOG_INFO("uvc_events_process:UVC_EVENT_STREAMON dev->io=%d， dev->bulk:%d, video_id:%d\n", dev->io,dev->bulk, dev->video_id);
 #ifdef ENABLE_BUFFER_TIME_DEBUG
     struct timeval buffer_time;
     gettimeofday(&buffer_time, NULL);
@@ -4344,6 +4234,8 @@ uvc_events_process(struct uvc_device *dev)
         {
             /* UVC - V4L2 integrated path. */
             v4l2_stop_capturing(dev->vdev);
+            v4l2_uninit_device(dev->vdev);
+            v4l2_reqbufs(dev->vdev, 0);
             dev->vdev->is_streaming = 0;
         }
 
@@ -4361,7 +4253,7 @@ uvc_events_process(struct uvc_device *dev)
         uvc_control_exit();
         uvc_buffer_deinit(dev->video_id);
 
-        DBG("uvc_events_process:UVC_EVENT_STREAMOFF exit\n");
+        LOG_INFO("UVC_EVENT_STREAMOFF exit\n");
         return;
     case UVC_EVENT_RESUME:
         LOG_INFO("UVC_EVENT_RESUME:\n");
@@ -4407,8 +4299,8 @@ uvc_events_init(struct uvc_device *dev)
         return;
     }
 
-    uvc_fill_streaming_control(dev, &dev->probe, 0, 0);
-    uvc_fill_streaming_control(dev, &dev->commit, 0, 0);
+    uvc_fill_streaming_control(dev, &dev->probe, 1, 1, 0);
+    uvc_fill_streaming_control(dev, &dev->commit, 1, 1, 0);
 
     if (dev->bulk)
     {
@@ -4500,7 +4392,7 @@ static void usage(const char *argv0)
 extern int app_quit;
 
 int
-uvc_gadget_main(int id)
+uvc_gadget_main(struct uvc_function_config *fc)
 {
     struct uvc_device *udev = NULL;
     struct v4l2_device *vdev;
@@ -4528,10 +4420,8 @@ uvc_gadget_main(int id)
 #else
     enum io_method uvc_io_method = IO_METHOD_DMA_BUFF;
 #endif
-    LOG_DEBUG("uvc_gadget_main io_method=%d\n", uvc_io_method);
+    int id = fc->video;
     snprintf(uvc_devname, sizeof(uvc_devname), "/dev/video%d", id);
-    int num_uvc_frame = 0;
-
     /************************************************************************************
      * int opt;
     while ((opt = getopt(argc, argv, "bdf:hi:m:n:o:r:s:t:u:v:")) != -1) {
@@ -4684,6 +4574,7 @@ uvc_gadget_main(int id)
 
     udev->uvc_devname = uvc_devname;
     udev->video_id = id;
+    udev->fc = fc;
 
     if (!dummy_data_gen_mode && !mjpeg_image)
     {
@@ -4694,8 +4585,8 @@ uvc_gadget_main(int id)
     }
 
     /* Set parameters as passed by user. */
-    udev->width = (default_resolution == 0) ? 640 : uvc_frames_mjpeg[num_uvc_frame].width;
-    udev->height = (default_resolution == 0) ? 480 : uvc_frames_mjpeg[num_uvc_frame].height;
+    udev->width = (default_resolution == 0) ? 640 : 1280;
+    udev->height = (default_resolution == 0) ? 480 : 720;
     udev->imgsize = (default_format == 0) ?
                     (udev->width * udev->height * 2) :
                     (udev->width * udev->height * 2/*1.5*/);
@@ -4908,6 +4799,8 @@ uvc_gadget_main(int id)
     uvc_ipc_event(UVC_IPC_EVENT_STOP, NULL);
 #endif
     set_uvc_control_restart();
+
+    LOG_INFO("uvc_gadget_main exit");
 
     return 0;
 }
