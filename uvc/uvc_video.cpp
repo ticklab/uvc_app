@@ -84,13 +84,16 @@ static struct uvc_buffer *uvc_buffer_create(int width, int height, struct uvc_vi
     buffer->height = height;
     buffer->size = buffer->width * buffer->height * 2;
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+    unsigned int drm_flag = 0;
     buffer->drm_buf_size = buffer->size;
     if (v->drm_fd == -1)
         v->drm_fd = drm_open();
     if (v->drm_fd < 0)
         return NULL;
+    if (v->uvc_user.fcc == V4L2_PIX_FMT_YUYV || v->uvc_user.fcc == V4L2_PIX_FMT_NV12)
+        drm_flag = ROCKCHIP_BO_CACHABLE;
 
-    int ret = drm_alloc(v->drm_fd, buffer->drm_buf_size, 16, &buffer->handle, 0);
+    int ret = drm_alloc(v->drm_fd, buffer->drm_buf_size, 16, &buffer->handle, drm_flag);
     if (ret)
     {
         LOG_ERROR("drm_alloc fail\n");

@@ -35,6 +35,17 @@ extern "C"
 {
 #endif
 
+enum drm_rockchip_gem_mem_type {
+    /* Physically Continuous memory and used as default. */
+    ROCKCHIP_BO_CONTIG   = 1 << 0,
+    /* cachable mapping. */
+    ROCKCHIP_BO_CACHABLE = 1 << 1,
+    /* write-combine mapping. */
+    ROCKCHIP_BO_WC       = 1 << 2,
+    ROCKCHIP_BO_SECURE   = 1 << 3,
+    ROCKCHIP_BO_MASK     = ROCKCHIP_BO_CONTIG | ROCKCHIP_BO_CACHABLE | ROCKCHIP_BO_WC
+};
+
 int drm_open(void);
 void drm_close(int fd);
 int drm_alloc(int fd, size_t len, size_t align, unsigned int *handle, unsigned int flags);
