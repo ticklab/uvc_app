@@ -681,6 +681,8 @@ struct uvc_function_config *configfs_parse_uvc_function(unsigned int index)
     function = basename(fpath);
 
     fc->dev_name = attribute_read_str(fpath, "device_name");
+    if(fc->dev_name == NULL)
+       fc->dev_name = "UVC CAMERA";
     fc->udc = attribute_read_str(fpath, "../../UDC");
     fc->video = udc_find_video_device(fc->udc, function);
     printf("fc->dev_name:%s, fc->udc:%s, fc->video:%d \n",fc->dev_name,fc->udc,fc->video);
