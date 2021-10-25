@@ -172,6 +172,12 @@ static int silent = 1;
 #define CT_EXPOSURE_TIME_ABSOLUTE_CONTROL_STEP_SIZE       1    //100us
 #define CT_EXPOSURE_TIME_ABSOLUTE_CONTROL_DEFAULT_VAL     156  // 5 10 20 39 78 156 312 625 1250 2500 (-11 ~ -2)
 
+//IRIS_ABSOLUTE
+#define CT_IRIS_ABSOLUTE_CONTROL_MIN_VAL         0
+#define CT_IRIS_ABSOLUTE_CONTROL_MAX_VAL         10
+#define CT_IRIS_ABSOLUTE_CONTROL_STEP_SIZE       1
+#define CT_IRIS_ABSOLUTE_CONTROL_DEFAULT_VAL     5
+
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MIN_VAL         10
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MAX_VAL         50
 #define PU_DIGITAL_MULTIPLIER_CONTROL_STEP_SIZE       1
@@ -2315,20 +2321,69 @@ uvc_events_process_control(struct uvc_device *dev, uint8_t req,
             }
             break;
         case UVC_CT_IRIS_ABSOLUTE_CONTROL:
+             LOG_DEBUG("++++++++UVC_CT_IRIS_ABSOLUTE_CONTROL req:%d",req);
             switch (req)
             {
-            case UVC_GET_INFO:
-            case UVC_GET_CUR:
-            case UVC_GET_MIN:
-            case UVC_GET_MAX:
-            case UVC_GET_DEF:
-            case UVC_GET_RES:
-                resp->data[0] = 10;
+            case UVC_SET_CUR:
+                //resp->data[0] = 0x0;
                 resp->length = len;
-
                 dev->request_error_code.data[0] = 0x00;
                 dev->request_error_code.length = 1;
                 break;
+            case UVC_GET_MIN:
+               {
+                int min_time = CT_IRIS_ABSOLUTE_CONTROL_MIN_VAL;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                memcpy(&resp->data, &min_time,
+                        resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+               }
+            case UVC_GET_MAX:
+               {
+                int max_time = CT_IRIS_ABSOLUTE_CONTROL_MAX_VAL;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                memcpy(&resp->data, &max_time,
+                        resp->length);
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+               }
+            case UVC_GET_CUR:
+                resp->length = len;
+                memcpy(&resp->data[0], &dev->iris_val,
+                       resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_INFO:
+                resp->data[0] = 0x03;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_RES:
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->data[0] = CT_IRIS_ABSOLUTE_CONTROL_STEP_SIZE;
+                resp->length = len;
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+            case UVC_GET_DEF:
+                {
+                int def_time = CT_IRIS_ABSOLUTE_CONTROL_DEFAULT_VAL;
+                memset(resp->data, 0, sizeof(resp->data));
+                resp->length = len;
+                memcpy(&resp->data, &def_time,
+                        resp->length);
+                dev->request_error_code.data[0] = 0x00;
+                dev->request_error_code.length = 1;
+                break;
+                }
             default:
                 /*
                  * We don't support this control, so STALL the
@@ -3746,6 +3801,13 @@ uvc_events_process_control_data(struct uvc_device *dev,
 #ifdef CAMERA_CONTROL
                 camera_pu_control_set(UVC_PU_EXPOSURE_TIME_CONTROL,dev->exposure_time_val);
 #endif
+            }
+            break;
+        case UVC_CT_IRIS_ABSOLUTE_CONTROL:
+            if (sizeof(dev->iris_val) >= data->length)
+            {
+                memcpy(&dev->iris_val, data->data, data->length);
+                LOG_INFO("set iris value :%d \n", dev->iris_val);
             }
             break;
         case UVC_CT_AE_MODE_CONTROL:

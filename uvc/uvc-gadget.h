@@ -195,6 +195,7 @@ struct uvc_device
     int pan_val;
     int tilt_val;
     short roll_val;
+    short iris_val;
     int exposure_time_val;
     unsigned char ae_mode_val;
     unsigned char power_line_frequency_val;
