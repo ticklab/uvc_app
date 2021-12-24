@@ -76,7 +76,11 @@ extern struct uvc_encode uvc_enc;
 #define RK_MPP_ENC_CFG_ORIGINAL_PATH "/etc/mpp_enc_cfg.conf"
 #define RK_MPP_ENC_CFG_MODIFY_PATH "/data/mpp_enc_cfg.conf"
 
+#ifdef USE_ARM64
+#define RK_MPP_MJPEG_FPS_CONTROL 0
+#else
 #define RK_MPP_MJPEG_FPS_CONTROL 1
+#endif
 
 //#define DEBUG_OUTPUT 1
 #if RK_MPP_ENC_TEST_NATIVE
@@ -134,6 +138,15 @@ typedef struct  {
     uint8_t  abs_qp_en;    /**< absolute qp enable flag*/
 } EncROIRegion;
 
+//***************GOP MODE*********************//
+typedef enum {
+  GOP_MODE_NORMALP = 0, // normal p mode
+  GOP_MODE_TSVC2,       // tsvc: 2 layer
+  GOP_MODE_TSVC3,       // tsvc: 3 layer
+  GOP_MODE_TSVC4,       // tsvc: 4 layer
+  GOP_MODE_SMARTP,      // smart p mode
+} MpiEncGopMode;
+
 //************************************//
 
 enum SIMPLE_FRC_MODE
@@ -173,12 +186,13 @@ typedef struct
 {
     RK_U32 change;
     RK_U32 fbc;
-    RK_U32 split_mode;
-    RK_U32 split_arg;
-    RK_U32 force_idr_count;
-    RK_U32 force_idr_period;
-    RK_U32 frc_fps;
-    enum SIMPLE_FRC_MODE frc_mode;
+    RK_U32 split_mode;// 1
+    RK_U32 split_arg;// 2
+    RK_U32 force_idr_count; // 3
+    RK_U32 force_idr_period;// 4
+    RK_U32 frc_fps;// 5
+    enum SIMPLE_FRC_MODE frc_mode; // 6
+    MppEncRotationCfg rotation;// 7
     RK_U32 enc_time;
     RK_U32 try_count;
 } MpiEncCommonCfg;
@@ -201,6 +215,7 @@ typedef struct
     RK_U32 framerate; // 8
     RK_U32 enc_mode; //enc_mode no have change bit   0:mean auto select 1:close the mjpeg_frc 2: use mjpeg_frc
     RK_U32 qfactor_frc_min;
+    MppEncSeiMode sei;  // 11
 } MpiEncMjpegCfg;
 
 typedef struct
@@ -220,6 +235,8 @@ typedef struct
     RK_U32 level;
     RK_U32 bps;//15
     RK_U32 idr_bps;//16
+    RK_U32 vi_len;//17
+    MpiEncGopMode gop_mode; //18
 } MpiEncH264Cfg;
 
 typedef struct
@@ -230,10 +247,12 @@ typedef struct
     RK_U32 framerate;
     MppFrameColorRange range; //full: MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
     MppEncHeaderMode head_each_idr;
-    bool sei;//5
+    MppEncSeiMode sei;//5
     MpiEncQqCfg qp;//6-11
     RK_U32 bps;//12
-    RK_U32 idr_bps;//12
+    RK_U32 idr_bps;//13
+    RK_U32 vi_len;//14
+    MpiEncGopMode gop_mode; // 15
 } MpiEncH265Cfg;
 
 #if MPP_ENC_OSD_ENABLE
@@ -258,6 +277,7 @@ typedef struct
 } MpiEncOSDCfg;
 
 #endif
+
 /***************************o not change the order above**************************************/
 typedef struct MppBuffNode
 {
@@ -377,7 +397,6 @@ typedef struct
     RK_S32 fps_out_den;
     RK_S32 fps_out_num;
     RK_S32 bps;
-    RK_U32 gop_mode;
 
     MppFrame frame;
     MppPacket packet;
@@ -395,7 +414,11 @@ typedef struct
     int cfg_notify_wd;
     MppBuffInfo out_buff_info[OUT_BUF_COUNT_MAX];
     MppBuffInfo in_buff_info[IN_BUF_COUNT_MAX];
-//    pthread_mutex_t destory_mutex;
+    int yuv_rotation_drm_fd;
+    int yuv_rotation_fd;
+    unsigned int yuv_rotation_handle; // for drm handle
+    int yuv_rotation_drm_size;
+    MppEncUserData user_data;
 } MpiEncTestData;
 
 typedef struct MPP_ENC_INFO {

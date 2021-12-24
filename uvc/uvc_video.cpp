@@ -42,6 +42,8 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/ioctl.h>
+#include <fcntl.h>
+#include <drm/drm.h>
 
 #include <list>
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
@@ -95,7 +97,7 @@ static struct uvc_buffer *uvc_buffer_create(int width, int height, struct uvc_vi
         return NULL;
     }
 
-    ret = drm_handle_to_fd(v->drm_fd, buffer->handle, &buffer->fd, 0);
+    ret = drm_handle_to_fd(v->drm_fd, buffer->handle, &buffer->fd, DRM_CLOEXEC | DRM_RDWR);
     if (ret)
     {
         LOG_ERROR("drm_handle_to_fd fail\n");

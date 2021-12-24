@@ -159,10 +159,10 @@ static int silent = 1;
 #define CT_PANTILT_ABSOLUTE_CONTROL_DEFAULT_VAL      0
 
 //ROLL
-#define CT_ROLL_ABSOLUTE_CONTROL_MIN_VAL         -180
-#define CT_ROLL_ABSOLUTE_CONTROL_MAX_VAL         180
-#define CT_ROLL_ABSOLUTE_CONTROL_STEP_SIZE        1
-#define CT_ROLL_ABSOLUTE_CONTROL_DEFAULT_VAL      0
+#define CT_ROLL_ABSOLUTE_CONTROL_MIN_VAL         0
+#define CT_ROLL_ABSOLUTE_CONTROL_MAX_VAL         3
+#define CT_ROLL_ABSOLUTE_CONTROL_STEP_SIZE       1
+#define CT_ROLL_ABSOLUTE_CONTROL_DEFAULT_VAL     0
 
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MIN_VAL         10
 #define PU_DIGITAL_MULTIPLIER_CONTROL_MAX_VAL         50
@@ -195,7 +195,12 @@ static const struct uvc_frame_info uvc_frames_yuyv[] =
 {
     {  320, 240, { 333333, 666666, 1000000, 2000000, 0 }, },
     {  640, 480, { 333333, 666666, 1000000, 2000000, 0 }, },
+#ifdef USE_USB3
+    {  1280, 720, { 333333, 666666, 1000000, 2000000, 0 }, },
+    {  1920, 1080, { 333333, 666666, 1000000, 2000000, 0 }, },
+#else
     { 1280, 720, { 1000000, 2000000, 0 }, },
+#endif
     { 0, 0, { 0, }, },
 };
 
@@ -243,7 +248,7 @@ static const struct uvc_frame_info uvc_frames_h265[] =
 static const struct uvc_format_info uvc_formats[] =
 {
     { V4L2_PIX_FMT_YUYV, uvc_frames_yuyv },
-   // { V4L2_PIX_FMT_NV12, uvc_frames_nv12 },
+//    { V4L2_PIX_FMT_NV12, uvc_frames_nv12 },
     { V4L2_PIX_FMT_MJPEG, uvc_frames_mjpeg },
     { V4L2_PIX_FMT_H264, uvc_frames_h264 },
     { V4L2_PIX_FMT_H265, uvc_frames_h265 },
@@ -890,8 +895,6 @@ uvc_video_set_format(struct uvc_device *dev)
     fmt.fmt.pix.width = dev->width;
     fmt.fmt.pix.height = dev->height;
     fmt.fmt.pix.pixelformat = dev->fcc;
-    if(dev->fcc == V4L2_PIX_FMT_NV12)
-       fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
     fmt.fmt.pix.field = V4L2_FIELD_NONE;
     if (dev->fcc == V4L2_PIX_FMT_MJPEG)
         fmt.fmt.pix.sizeimage = dev->width * dev->height * 2/*1.5*/;
@@ -3618,7 +3621,8 @@ uvc_events_process_control_data(struct uvc_device *dev,
                 memcpy(&dev->roll_val, data->data, data->length);
                 LOG_INFO("set roll :%d \n", dev->roll_val);
 #ifdef CAMERA_CONTROL
-                camera_control_set_roll(dev->roll_val);
+                //camera_control_set_roll(dev->roll_val);
+                camera_pu_control_set(UVC_PU_ROLL_CONTROL,dev->roll_val);
 #endif
             }
             break;

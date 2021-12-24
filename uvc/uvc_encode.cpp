@@ -331,7 +331,30 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
                   rga_buffer_t src;
                   IM_STATUS STATUS;
                   int dst_fd = buffer->fd;
-                  src = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
+
+                  if (e->mpi_data->common_cfg.rotation) {
+                      rga_buffer_t pat;
+                      if (e->mpi_data->common_cfg.rotation == 1) {
+                          pat = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
+                          src = wrapbuffer_fd(e->mpi_data->yuv_rotation_fd, height, width, RK_FORMAT_YCbCr_420_SP);
+                          imrotate(pat, src, IM_HAL_TRANSFORM_ROT_90, 1);
+                          dst = wrapbuffer_fd(dst_fd, height, width, RK_FORMAT_YUYV_422);//host need change w&h
+                      } else if (e->mpi_data->common_cfg.rotation == 3) {
+                          pat = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
+                          src = wrapbuffer_fd(e->mpi_data->yuv_rotation_fd, height, width, RK_FORMAT_YCbCr_420_SP);
+                          imrotate(pat, src, IM_HAL_TRANSFORM_ROT_270, 1);
+                          dst = wrapbuffer_fd(dst_fd, height, width, RK_FORMAT_YUYV_422);//host need change w&h
+                      } else {
+                          pat = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
+                          src = wrapbuffer_fd(e->mpi_data->yuv_rotation_fd, width, height, RK_FORMAT_YCbCr_420_SP);
+                          imrotate(pat, src, IM_HAL_TRANSFORM_ROT_180, 1);
+                          dst = wrapbuffer_fd(dst_fd, width, height, RK_FORMAT_YUYV_422);//buffer->fd
+                      }
+                  } else {
+                      src = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
+                      dst = wrapbuffer_fd(dst_fd, width, height, RK_FORMAT_YUYV_422);//buffer->fd
+                  }
+
                   src.format = RK_FORMAT_YCbCr_420_SP;
                   if( fcc == V4L2_PIX_FMT_YUYV) {
                     dst = wrapbuffer_fd(dst_fd, width, height, RK_FORMAT_YUYV_422);//buffer->fd
@@ -355,6 +378,8 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
 #else
                NV12_to_YUYV(width, height, virt, buffer->buffer);
 #endif
+               if(fcc == V4L2_PIX_FMT_NV12)
+                 buffer->size = width * height * 3 / 2;
                uvc_buffer_read_set(e->video_id, buffer);
                //uvc_user_unlock();
            } else {
@@ -374,6 +399,15 @@ bool uvc_encode_process(struct uvc_encode *e, void *virt, struct MPP_ENC_INFO *i
     case V4L2_PIX_FMT_MJPEG:
     case V4L2_PIX_FMT_H264:
     case V4L2_PIX_FMT_H265:
+        if (e->mpi_data->type == MPP_VIDEO_CodingMJPEG && e->mpi_data->common_cfg.rotation == 2) {
+            rga_buffer_t dst;
+            rga_buffer_t src;
+            src = wrapbuffer_fd(info->fd, width, height, RK_FORMAT_YCbCr_420_SP);
+            dst = wrapbuffer_fd(e->mpi_data->yuv_rotation_fd, width, height, RK_FORMAT_YCbCr_420_SP);
+            imrotate(src, dst, IM_HAL_TRANSFORM_ROT_180, 1);
+            info->fd = e->mpi_data->yuv_rotation_fd;
+        }
+
         if (info->fd >= 0 && mpi_enc_test_run(&e->mpi_data, info) == MPP_OK)
         {
 #ifdef ENABLE_BUFFER_TIME_DEBUG
