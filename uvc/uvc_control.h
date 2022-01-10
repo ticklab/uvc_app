@@ -56,6 +56,7 @@ extern "C"
 #define UVC_CONTROL_LOOP_ONCE (1 << 0)
 #define UVC_CONTROL_CHECK_STRAIGHT (1 << 1)
 #define UVC_CONTROL_CAMERA (1 << 2)
+#define CAM_MAX_NUM 3
 
 extern int enable_minilog;
 extern int uvc_app_log_level;
@@ -73,7 +74,7 @@ void set_uvc_control_stop(void);
 void set_uvc_control_restart(void);
 void uvc_control_start_setcallback(int (*callback)(int fd, int width, int height, int fps, int format, int eptz));
 void uvc_control_stop_setcallback(void (*callback)());
-void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps);
+void uvc_control_init(int width, int height, int fcc, int h265, unsigned int fps, int id);
 void uvc_control_exit();
 void uvc_control_inbuf_deinit();
 int get_uvc_streaming_intf(void);

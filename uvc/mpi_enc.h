@@ -222,6 +222,7 @@ typedef struct
 {
     RK_U32 change;
     RK_U32 gop; //0
+    RK_U32 gop_normal; //0
     MppEncRcMode rc_mode;
     RK_U32 framerate; ////simple to set.
     MppFrameColorRange range; // full: MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;
@@ -243,6 +244,7 @@ typedef struct
 {
     RK_U32 change;
     RK_U32 gop; //0
+    RK_U32 gop_normal; //0
     MppEncRcMode rc_mode;
     RK_U32 framerate;
     MppFrameColorRange range; //full: MPP_FRAME_RANGE_JPEG  limit:MPP_FRAME_RANGE_MPEG;

@@ -141,7 +141,9 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
     case UVC_IPC_EVENT_CONFIG_CAMERA:
         if (uvc_ipc_info.stop)
         {
-            uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_CONFIG_CAMERA, data);
+            if (uvc_ipc_info.shm_control != NULL) {
+                uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_CONFIG_CAMERA, data);
+            }
         }
         break;
     case MSG_UVC_SET_EPTZ_PAN:
@@ -173,6 +175,10 @@ extern "C" void uvc_ipc_event(enum UVC_IPC_EVENT event, void *data)
         else
 #endif
             uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_SET_EPTZ_TILT, data);
+        break;
+     case UVC_IPC_EVENT_ENABLE_BYPASS:
+            LOG_INFO("switch get stream from bypass link\n");
+            uvc_ipc_info.shm_control->sendUVCBuffer(MSG_UVC_ENABLE_BYPASS, data);
         break;
     default:
         LOG_INFO("no support such uvc_ipc_event event:%d\n", event);
@@ -875,6 +881,24 @@ width:%d,height:%d,vir_width=%d,vir_height=%d,buf_size=%d,range=%d,enc=%d,fps=%d
         message.ParseFromString(sendbuf);
         LOG_INFO("send uvc eptz tilt:%d \n", *tilt);
         uvc_ipc_info.eptz_tilt = *tilt;
+    }
+    break;
+    case MSG_UVC_ENABLE_BYPASS:
+    {
+        UVCMessage message;
+        MethodParams *method_param = new MethodParams;
+        int *enable;
+        if (data == NULL)
+            *enable = 0;
+        else
+            enable = (int *)data;
+        method_param->set_i32_p(*enable);
+        message.set_allocated_method_params(method_param);
+        message.set_msg_type(event);
+        message.set_msg_name("uvcbuffer");
+        message.SerializeToString(&sendbuf);
+        message.ParseFromString(sendbuf);
+        LOG_INFO("send uvc use bypass:%d \n", *enable);
     }
     break;
     default :

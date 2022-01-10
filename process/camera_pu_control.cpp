@@ -303,6 +303,48 @@ extern "C" int video_record_set_roll_mode(int mode) {
    dbserver_free(ret);
    return 0;
 }
+extern "C" int video_record_set_exposure_time(int time) {
+   char *ret = NULL;
+   char *table = TABLE_IMAGE_EXPOSURE;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+      LOG_DEBUG("+++new json object failed.\n");
+      return -1;
+   }
+   LOG_DEBUG("exposure time = %d\n", time);
+   json_object_object_add(js, "sGainMode", json_object_new_string("auto"));
+   char str[8];
+   sprintf(str, "%f", ((float)time / 10000));
+   json_object_object_add(js, "sExposureTime", json_object_new_string(str));
+   ret = dbserver_media_set(table, (char *)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   dbserver_free(ret);
+   return 0;
+}
+extern "C" int video_record_set_ae_mode(int mode) {
+   char *ret = NULL;
+   char *table = TABLE_IMAGE_EXPOSURE;
+   struct json_object *js = NULL;
+   js = json_object_new_object();
+   if (NULL == js)
+   {
+      LOG_DEBUG("+++new json object failed.\n");
+      return -1;
+   }
+   if ( mode == 2){
+      LOG_DEBUG("AE:set auto mode!!\n");
+      json_object_object_add(js, "sExposureMode", json_object_new_string("auto"));
+   }else {
+      LOG_DEBUG("AE:set  manual mode!!\n");
+      json_object_object_add(js, "sExposureMode", json_object_new_string("manual"));
+   }
+   ret = dbserver_media_set(table, (char *)json_object_to_json_string(js), 0);
+   json_object_put(js);
+   dbserver_free(ret);
+   return 0;
+}
 #endif
 
 extern "C" void camera_pu_control_init(int type,int def,int min,int max)
@@ -391,6 +433,12 @@ extern "C" int camera_pu_control_set(int type, int value)
             break;
         case UVC_PU_ROLL_CONTROL:
             video_record_set_roll_mode(value);
+            break;
+        case UVC_PU_EXPOSURE_TIME_CONTROL:
+            video_record_set_exposure_time(value);
+            break;
+        case UVC_PU_AE_MODE_CONTROL:
+            video_record_set_ae_mode(value);
             break;
       default:
          LOG_DEBUG("====unknow pu cmd.\n");

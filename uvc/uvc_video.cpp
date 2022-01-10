@@ -84,13 +84,16 @@ static struct uvc_buffer *uvc_buffer_create(int width, int height, struct uvc_vi
     buffer->height = height;
     buffer->size = buffer->width * buffer->height * 2;
 #ifdef RK_MPP_USE_UVC_VIDEO_BUFFER
+    unsigned int drm_flag = 0;
     buffer->drm_buf_size = buffer->size;
     if (v->drm_fd == -1)
         v->drm_fd = drm_open();
     if (v->drm_fd < 0)
         return NULL;
+    if (v->uvc_user.fcc == V4L2_PIX_FMT_YUYV || v->uvc_user.fcc == V4L2_PIX_FMT_NV12)
+        drm_flag = ROCKCHIP_BO_CACHABLE;
 
-    int ret = drm_alloc(v->drm_fd, buffer->drm_buf_size, 16, &buffer->handle, 0);
+    int ret = drm_alloc(v->drm_fd, buffer->drm_buf_size, 16, &buffer->handle, drm_flag);
     if (ret)
     {
         LOG_ERROR("drm_alloc fail\n");
@@ -201,23 +204,25 @@ static void uvc_buffer_clear(struct uvc_buffer_list *uvc_buffer)
 
 static void *uvc_gadget_pthread(void *arg)
 {
+    struct uvc_function_config *fc = (struct uvc_function_config *)arg;
     int *id = (int *)arg;
 
     prctl(PR_SET_NAME, "uvc_gadget_pthread", 0, 0, 0);
 
-    uvc_gadget_main(*id);
-    uvc_set_user_run_state(true, *id);
+    uvc_gadget_main(fc);
+    uvc_set_user_run_state(true, fc->video);
+
     pthread_exit(NULL);
 }
 
-int uvc_gadget_pthread_create(int *id)
+int uvc_gadget_pthread_create(struct uvc_function_config *fc)
 {
     pthread_t *pid = NULL;
-
-    uvc_memset_uvc_user(*id);
-    if ((pid = uvc_video_get_uvc_pid(*id)))
+    int id = fc->video;
+    uvc_memset_uvc_user(id);
+    if ((pid = uvc_video_get_uvc_pid(id)))
     {
-        if (pthread_create(pid, NULL, uvc_gadget_pthread, id))
+        if (pthread_create(pid, NULL, uvc_gadget_pthread, fc))
         {
             LOG_ERROR("create uvc_gadget_pthread fail!\n");
             return -1;
@@ -257,11 +262,12 @@ int uvc_video_id_check(int id)
     return ret;
 }
 
-int uvc_video_id_add(int id)
+int uvc_video_id_add(struct uvc_function_config *fc)
 {
     int ret = 0;
+    int id = fc->video;
 
-    LOG_DEBUG("add uvc video id: %d\n", id);
+    LOG_INFO("add uvc video id: %d\n", id);
 
     pthread_mutex_lock(&mtx_v);
     if (!_uvc_video_id_check(id))
@@ -272,7 +278,7 @@ int uvc_video_id_add(int id)
             v->id = id;
             lst_v.push_back(v);
             pthread_mutex_unlock(&mtx_v);
-            uvc_gadget_pthread_create(&v->id);
+            uvc_gadget_pthread_create(fc);
             pthread_mutex_lock(&mtx_v);
             pthread_mutex_init(&v->buffer_mutex, NULL);
             pthread_mutex_init(&v->user_mutex, NULL);
@@ -1137,11 +1143,10 @@ int uvc_video_qbuf_index(struct uvc_device *dev, struct uvc_buffer *send_buf, in
             LOG_ERROR("%s ioctl(VIDIOC_QBUF): %m,buf.m.fd=%d,buf.length=%d\n", dev, buf.m.fd,  buf.length);
             return -1;
         }
-
-        /*else
+        else
         {
             LOG_INFO("V4L2: %u buffers allocated index:%d\n", dev->nbufs, index);
-        }*/
+        }
     }
 
     return 0;

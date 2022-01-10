@@ -44,12 +44,18 @@
 #define UVC_EVENT_STREAMOFF     (V4L2_EVENT_PRIVATE_START + 3)
 #define UVC_EVENT_SETUP         (V4L2_EVENT_PRIVATE_START + 4)
 #define UVC_EVENT_DATA          (V4L2_EVENT_PRIVATE_START + 5)
-#define UVC_EVENT_LAST          (V4L2_EVENT_PRIVATE_START + 5)
 #define UVC_EVENT_SUSPEND       (V4L2_EVENT_PRIVATE_START + 6)
 #define UVC_EVENT_RESUME        (V4L2_EVENT_PRIVATE_START + 7)
-#define UVC_EVENT_LAST          (V4L2_EVENT_PRIVATE_START + 7)
+#define UVC_EVENT_LAST          (V4L2_EVENT_PRIVATE_START + 8)
 
 #define MAX_UVC_REQUEST_DATA_LENGTH 60
+
+#define UVC_CTRL_INTERFACE_ID        0x00
+#define UVC_CTRL_CAMERA_TERMINAL_ID  0x01
+#define UVC_CTRL_PROCESSING_UNIT_ID  0x02
+#define UVC_CTRL_EXTENSION_UNIT_ID   0x03
+#define UVC_CTRL_OUTPUT_TERMINAL_ID  0x04
+#define UVC_CTRL_XU_UNIT_ID          0x06
 
 struct uvc_request_data
 {
@@ -87,10 +93,13 @@ extern "C" {
 #include <linux/usb/ch9.h>
 #include <linux/usb/video.h>
 #include <linux/videodev2.h>
+#include "uvc_configfs.h"
 
 #define V4L2_PIX_FMT_H265     v4l2_fourcc('H', '2', '6', '5') /* H265 with start codes */
 #define UVC_PU_FPS_CONTROL 0xff
 #define UVC_PU_ROLL_CONTROL 0xfd
+#define UVC_PU_EXPOSURE_TIME_CONTROL 0xfc
+#define UVC_PU_AE_MODE_CONTROL 0xfb
 
 /* ---------------------------------------------------------------------------
  * Generic stuff
@@ -163,7 +172,9 @@ struct uvc_device
     int is_streaming;
     int run_standalone;
     char *uvc_devname;
+    struct uvc_function_config *fc;
     int suspend;
+    int need_bypass;
     /* uvc control request specific */
     struct uvc_streaming_control probe;
     struct uvc_streaming_control commit;
@@ -183,6 +194,9 @@ struct uvc_device
     int pan_val;
     int tilt_val;
     short roll_val;
+    short iris_val;
+    int exposure_time_val;
+    unsigned char ae_mode_val;
     unsigned char power_line_frequency_val;
     unsigned char ex_tool_ctrl1[4];
     unsigned char ex_sn_data[MAX_UVC_REQUEST_DATA_LENGTH];
@@ -239,7 +253,7 @@ struct uvc_device
 
 
 
-int uvc_gadget_main(int id);
+int uvc_gadget_main(struct uvc_function_config *fc);
 int uvc_video_reqbufs(struct uvc_device *dev, int nbufs);
 int uvc_video_stream(struct uvc_device *dev, int enable);
 

@@ -58,6 +58,7 @@ extern "C" {
 
 #define UVC_SEND_BUF_WHEN_ENC_READY 1
 
+
 #if UVC_DYNAMIC_DEBUG_FPS
 struct uvc_debug_info_def
 {
@@ -123,10 +124,10 @@ struct uvc_video
     struct uvc_device *dev;
 };
 
-int uvc_gadget_pthread_create(int *id);
+int uvc_gadget_pthread_create(struct uvc_function_config *fc);
 
 int uvc_video_id_check(int id);
-int uvc_video_id_add(int id);
+int uvc_video_id_add(struct uvc_function_config *fc);
 void uvc_video_id_remove(int id);
 void uvc_video_id_exit_all();
 int uvc_video_id_get(unsigned int seq);

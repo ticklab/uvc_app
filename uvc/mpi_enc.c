@@ -950,36 +950,40 @@ static MPP_RET test_mpp_run(MpiEncTestData *p, MPP_ENC_INFO_DEF *info)
         //no need to get the sps/pps in addition
         if (p->type == MPP_VIDEO_CodingAVC || p->type == MPP_VIDEO_CodingHEVC)  //force set idr when begin enc
         {
-            if (p->h2645_frm_count < (p->common_cfg.force_idr_count * p->common_cfg.force_idr_period))
-            {
-                if ((p->h2645_frm_count % p->common_cfg.force_idr_period) == 0)
+            if (p->common_cfg.force_idr_count * p->common_cfg.force_idr_period) {
+                if (p->h2645_frm_count < (p->common_cfg.force_idr_count * p->common_cfg.force_idr_period))
                 {
-                    LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d ,H264:%d\n",
-                              p->h2645_frm_count, (p->type == MPP_VIDEO_CodingAVC));
+                    if ((p->h2645_frm_count % p->common_cfg.force_idr_period) == 0)
+                    {
+                        LOG_INFO("mpi force idr frame control ok, h2645_frm_count:%d ,H264:%d\n",
+                                  p->h2645_frm_count, (p->type == MPP_VIDEO_CodingAVC));
+                    }
+                    p->h2645_frm_count++;
                 }
-                p->h2645_frm_count++;
-            }
-            else if (p->h2645_frm_count == p->common_cfg.force_idr_count * p->common_cfg.force_idr_period)
-            {
-                if (p->type == MPP_VIDEO_CodingAVC)
+                else if (p->h2645_frm_count == p->common_cfg.force_idr_count * p->common_cfg.force_idr_period)
                 {
-                    mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h264_cfg.gop);
-                    mpp_enc_bps_set(p, p->h264_cfg.bps);
-                    mpp_set_ref_param(p, p->h264_cfg.gop_mode);
+                    if (p->type == MPP_VIDEO_CodingAVC)
+                    {
+                        p->h264_cfg.gop = p->h264_cfg.gop_normal;
+                        mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h264_cfg.gop);
+                        mpp_enc_bps_set(p, p->h264_cfg.bps);
+                        mpp_set_ref_param(p, p->h264_cfg.gop_mode);
+                    }
+                    else
+                    {
+                        p->h265_cfg.gop = p->h265_cfg.gop_normal;
+                        mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h265_cfg.gop);
+                        mpp_enc_bps_set(p, p->h265_cfg.bps);
+                        mpp_set_ref_param(p, p->h265_cfg.gop_mode);
+                    }
+                    ret = mpi->control(ctx, MPP_ENC_SET_CFG, p->cfg);
+                    if (ret)
+                    {
+                        LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
+                        goto RET;
+                    }
+                    p->h2645_frm_count++;
                 }
-                else
-                {
-                    mpp_enc_cfg_set_s32(p->cfg, "rc:gop", p->h265_cfg.gop);
-                    mpp_enc_bps_set(p, p->h265_cfg.bps);
-                    mpp_set_ref_param(p, p->h265_cfg.gop_mode);
-                }
-                ret = mpi->control(ctx, MPP_ENC_SET_CFG, p->cfg);
-                if (ret)
-                {
-                    LOG_ERROR("mpi control enc set cfg failed ret %d\n", ret);
-                    goto RET;
-                }
-                p->h2645_frm_count++;
             }
         }
     }
@@ -3224,9 +3228,11 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     {
         if (init || (p->h264_cfg.change & BIT(0)))
         {
+            p->h264_cfg.gop_normal = p->h264_cfg.gop;
             if (init && p->common_cfg.force_idr_count * p->common_cfg.force_idr_period)
             {
                 mpp_enc_cfg_set_s32(cfg, "rc:gop", p->common_cfg.force_idr_period);
+                p->h264_cfg.gop = p->common_cfg.force_idr_period;
             }
             else
             {
@@ -3318,7 +3324,7 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
                 mpp_enc_bps_set(p, p->h264_cfg.bps);
             }
         }
-        if (init || (p->h264_cfg.change & BIT(17)))
+        if (init || (p->h264_cfg.change & BIT(18)))
         {
             mpp_set_ref_param(p, p->h264_cfg.gop_mode);
         }
@@ -3332,9 +3338,11 @@ static MPP_RET mpp_enc_cfg_set(MpiEncTestData *p, bool init)
     {
         if (init || (p->h265_cfg.change & BIT(0)))
         {
+            p->h265_cfg.gop_normal = p->h265_cfg.gop;
             if (init && p->common_cfg.force_idr_count * p->common_cfg.force_idr_period)
             {
                 mpp_enc_cfg_set_s32(cfg, "rc:gop", p->common_cfg.force_idr_period);
+                p->h265_cfg.gop = p->common_cfg.force_idr_period;
             }
             else
             {
